@@ -10,7 +10,7 @@ import { can, type Role } from '@/lib/auth/rbac'
  * assertions are about what OUR loop does with them — which tools it offers,
  * what it runs, what it refuses, and what it writes to the audit log.
  */
-const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN']
+const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN']
 let closers: (() => Promise<void>)[] = []
 beforeEach(() => {
   resetSourceCache()
@@ -68,14 +68,14 @@ describe('which tools the model is offered', () => {
   it('follows the role: a project manager sees furniture and map only, never money', async () => {
     const h = harness('project_manager', [msg([text('ok')], 'end_turn')])
     await ask('hi', [], h.deps)
-    expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name)).toEqual(['list_furniture_projects', 'get_map_places'])
+    expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name)).toEqual(['list_furniture_projects', 'get_map_places', 'propose_furniture_archive'])
   })
 
   it('an owner gets every tool, with strict schemas', async () => {
     const h = harness('owner', [msg([text('ok')], 'end_turn')])
     await ask('hi', [], h.deps)
     const tools = h.calls[0]!.tools as Anthropic.Beta.BetaTool[]
-    expect(tools).toHaveLength(7)
+    expect(tools).toHaveLength(16)
     expect(tools.every((t) => t.strict === true && (t.input_schema as { additionalProperties?: boolean }).additionalProperties === false)).toBe(true)
   })
 
@@ -145,6 +145,62 @@ describe('running tools', () => {
     await ask('projects?', [], h.deps)
     expect(h.audits.map((a) => `${a.action}:${a.outcome}`)).toEqual(['assistant.tool:succeeded', 'assistant.ask:succeeded'])
     expect(h.audits[1]!.detail).toMatchObject({ question: 'projects?', toolsUsed: ['list_furniture_projects'] })
+  })
+})
+
+describe('proposed actions: the model proposes, only the person executes', () => {
+  const pid = '11111111-1111-4111-8111-111111111111'
+  async function furniture() {
+    const s = await fakeServer((r) => {
+      if (r.method !== 'GET') return { status: 500, body: { error: 'a proposal must never write' } }
+      if (r.path.startsWith('/rest/v1/projects')) return { status: 200, body: [{ id: pid, name: 'רחוב הרצל 5', city: null, developer_name: null, start_date: null, archived: false }] }
+      if (r.path.startsWith('/rest/v1/apartments')) return { status: 200, body: [] }
+      return { status: 200, body: [] }
+    })
+    closers.push(s.close)
+    process.env.FURNITURE_SUPABASE_URL = s.url
+    process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_x'
+    return s
+  }
+
+  it('a viewer is offered no propose_ tools at all', async () => {
+    const h = harness('viewer', [msg([text('ok')], 'end_turn')])
+    await ask('hi', [], h.deps)
+    expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name).filter((n) => n.startsWith('propose_'))).toEqual([])
+  })
+
+  it('proposing looks the target up, writes nothing, and returns a card described from the source', async () => {
+    const s = await furniture()
+    const h = harness('owner', [msg([toolUse('t1', 'propose_furniture_archive', { projectId: pid, archived: true })], 'tool_use'), msg([text('I prepared it; confirm below.')], 'end_turn')])
+    const r = await ask('archive herzl 5', [], h.deps)
+    expect(s.seen.every((x) => x.method === 'GET')).toBe(true)
+    expect(r).toMatchObject({ ok: true, proposals: [{ kind: 'furniture_archive', params: { projectId: pid, archived: true }, summary: expect.stringContaining('רחוב הרצל 5') }] })
+    expect(JSON.parse(String(toolResults(h.calls[1]!)[0]!.content))).toMatchObject({ status: 'proposed' })
+    expect(h.audits.map((a) => `${a.action}:${a.outcome}`)).toEqual(['assistant.propose:succeeded', 'assistant.ask:succeeded'])
+  })
+
+  it('a proposal for something that is not there is refused, not shown', async () => {
+    await furniture()
+    const h = harness('owner', [msg([toolUse('t1', 'propose_furniture_archive', { projectId: pid, archived: false })], 'tool_use'), msg([text('It is not archived.')], 'end_turn')])
+    const r = await ask('unarchive', [], h.deps)
+    expect(r).not.toHaveProperty('proposals')
+    expect(String(toolResults(h.calls[1]!)[0]!.content)).toMatch(/already active/)
+  })
+
+  it('at most three proposals per answer', async () => {
+    await furniture()
+    const calls = Array.from({ length: 4 }, (_, i) => toolUse(`t${i}`, 'propose_furniture_archive', { projectId: pid, archived: true }))
+    const h = harness('owner', [msg(calls, 'tool_use'), msg([text('ok')], 'end_turn')])
+    const r = await ask('archive it four times', [], h.deps)
+    expect(r.ok && r.proposals).toHaveLength(3)
+    expect(toolResults(h.calls[1]!)[3]).toMatchObject({ is_error: true })
+  })
+
+  it('a role without the action permission cannot propose it even if the model names the tool', async () => {
+    const h = harness('viewer', [msg([toolUse('t1', 'propose_gift_card_resend_all', {})], 'tool_use'), msg([text('no')], 'end_turn')])
+    const r = await ask('resend all', [], h.deps)
+    expect(r).not.toHaveProperty('proposals')
+    expect(h.audits[0]).toMatchObject({ action: 'assistant.tool', outcome: 'denied' })
   })
 })
 

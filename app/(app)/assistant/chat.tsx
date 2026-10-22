@@ -1,12 +1,49 @@
 'use client'
 
 import { useRef, useState, useTransition } from 'react'
-import { askAction } from './actions'
+import { askAction, confirmProposalAction } from './actions'
 import type { Turn } from '@/lib/assistant/run'
+import type { Proposal } from '@/lib/assistant/proposals'
 
 interface Entry extends Turn {
   toolsUsed?: string[]
   notice?: string
+  proposals?: Proposal[]
+}
+
+/** One proposed action. Nothing runs until the person presses Confirm; it can run once. */
+function ProposalCard({ p }: { p: Proposal }) {
+  const [state, setState] = useState<'idle' | 'running' | 'done' | 'dismissed'>('idle')
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
+  if (state === 'dismissed') return <p className="text-meta text-muted">Dismissed: nothing was done.</p>
+  return (
+    <div className="mt-2 rounded-md border border-line bg-sunken/50 px-3 py-2">
+      <p className="text-xs font-semibold text-muted">Needs your confirmation</p>
+      <p dir="auto" className="text-sm text-ink">{p.summary}</p>
+      {state === 'done' && result ? (
+        <p role="status" dir="auto" className={result.ok ? 'mt-1 text-sm text-ok' : 'mt-1 text-sm text-bad'}>{result.message}</p>
+      ) : (
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            disabled={state === 'running'}
+            onClick={async () => {
+              setState('running')
+              const res = await confirmProposalAction({ kind: p.kind, params: p.params }).catch(() => ({ ok: false, message: 'The request failed. Nothing is known to have changed; check the page before retrying.' }))
+              setResult(res)
+              setState('done')
+            }}
+            className="h-10 rounded-full bg-brand px-4 text-sm font-semibold text-forest hover:bg-brand-pressed hover:text-cream disabled:opacity-60"
+          >
+            {state === 'running' ? 'Running…' : 'Confirm'}
+          </button>
+          <button type="button" disabled={state === 'running'} onClick={() => setState('dismissed')} className="h-10 rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken disabled:opacity-60">
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  )
 }
 
 /** Questions the assistant answers today; each maps to one or two read tools. */
@@ -33,7 +70,7 @@ export function AssistantChat({ labels }: { labels: Record<string, string> }) {
         setError(res.message)
         return
       }
-      setEntries((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: res.answer, toolsUsed: res.toolsUsed, notice: res.notice }])
+      setEntries((prev) => [...prev, { role: 'user', text }, { role: 'assistant', text: res.answer, toolsUsed: res.toolsUsed, notice: res.notice, proposals: res.proposals }])
       setQuestion('')
       inputRef.current?.focus()
     })
@@ -56,6 +93,7 @@ export function AssistantChat({ labels }: { labels: Record<string, string> }) {
               <p dir="auto" className="whitespace-pre-wrap break-words text-sm text-ink">
                 {m.text}
               </p>
+              {m.proposals?.map((p, j) => <ProposalCard key={j} p={p} />)}
               {m.role === 'assistant' && (m.toolsUsed?.length || m.notice) ? (
                 <p className="mt-2 text-meta text-muted">
                   {m.toolsUsed?.length ? `Checked: ${m.toolsUsed.map((t) => labels[t] ?? t).join(', ')}` : 'Answered without checking any system'}

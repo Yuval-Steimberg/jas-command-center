@@ -2,10 +2,14 @@ import 'server-only'
 import Anthropic from '@anthropic-ai/sdk'
 import { z } from 'zod'
 import { toolDefinitions, toolsFor, type AssistantTool, type ToolContext } from './tools'
+import type { Proposal } from './proposals'
 
 /**
- * The read-only assistant loop: question in, answer out, with tool calls in
- * between that run through the same permission-checked adapters as the pages.
+ * The assistant loop: question in, answer out, with tool calls in between that
+ * run through the same permission-checked adapters as the pages. The model can
+ * PROPOSE an action (propose_* tools) but never execute one: a proposal is
+ * returned to the person as a confirmation card, and only their click runs it
+ * (confirmProposalAction).
  *
  * Guarantees, each tested in tests/integration/assistant.test.ts:
  * - only tools the user's role allows are offered, and run() re-checks anyway;
@@ -20,7 +24,7 @@ export const SYSTEM_PROMPT = `You are the assistant inside the Just A Second (JA
 - the design agent (the owner's own WhatsApp/Telegram design bot; it is not a customer inbox),
 - the interactive neighbourhood map.
 
-You answer questions about how these systems are doing, using only the tools provided. The tools are read-only. You cannot change anything; when someone asks for an action, say which command-center page or product does it and that a person has to do it there.
+You answer questions about how these systems are doing, using only the tools provided. You cannot change anything yourself. When someone asks for an action you have a propose_ tool for, look the target up first (find_ / list_ / get_ tools), then call the propose_ tool: it puts a confirmation card in front of the person, and nothing happens unless they press Confirm. After proposing, say in one sentence what the card will do and that it needs their confirmation; never say it is done. Propose only what the person asked for, at most three actions per answer. For any other action, say which command-center page or product does it and that a person has to do it there.
 
 How to answer:
 - Every number you state must come from a tool result in this conversation. Never estimate, extrapolate or fill a gap with a typical value.
@@ -34,6 +38,7 @@ How to answer:
 Reply in the language of the question (Hebrew or English). Be brief and lead with the answer. Write plain text: short paragraphs or simple "- " lists, no Markdown headings, tables or bold. When a figure has a period or a time it was checked, say it.`
 
 export const MAX_ROUNDS = 6
+export const MAX_PROPOSALS = 3
 export const DEADLINE_MS = 45_000
 const MAX_RESULT_CHARS = 30_000
 
@@ -63,10 +68,13 @@ export interface AskDeps {
 }
 
 export type AskResult =
-  | { ok: true; answer: string; toolsUsed: string[]; notice?: string }
+  | { ok: true; answer: string; toolsUsed: string[]; notice?: string; proposals?: Proposal[] }
   | { ok: false; message: string }
 
 const PRODUCT_OF: Record<string, string | null> = {
+  find_gift_cards: 'gift_cards',
+  find_website_orders: 'website',
+  find_website_products: 'website',
   get_website_metrics: 'website',
   get_gift_card_summary: 'gift_cards',
   list_furniture_projects: 'furniture',
@@ -81,8 +89,8 @@ const textOf = (content: Anthropic.Beta.BetaContentBlock[]) =>
     .join('\n')
     .trim()
 
-async function runTool(block: Anthropic.Beta.BetaToolUseBlock, allowed: readonly AssistantTool[], deps: AskDeps): Promise<Anthropic.Beta.BetaToolResultBlockParam> {
-  const product = PRODUCT_OF[block.name] ?? null
+async function runTool(block: Anthropic.Beta.BetaToolUseBlock, allowed: readonly AssistantTool[], deps: AskDeps, proposals: Proposal[]): Promise<Anthropic.Beta.BetaToolResultBlockParam> {
+  const product = PRODUCT_OF[block.name] ?? allowed.find((t) => t.name === block.name)?.proposal?.product ?? null
   const fail = async (outcome: 'failed' | 'denied', message: string): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
     await deps.audit({ action: 'assistant.tool', product, target: block.name, outcome, detail: { error: message } })
     return { type: 'tool_result', tool_use_id: block.id, is_error: true, content: message }
@@ -90,9 +98,24 @@ async function runTool(block: Anthropic.Beta.BetaToolUseBlock, allowed: readonly
 
   const tool = allowed.find((t) => t.name === block.name)
   // Defence in depth: only allowed tools are offered, but a tool name is model output.
-  if (!tool || !deps.ctx.can(tool.permission)) return fail('denied', `Tool "${block.name}" is not available to this user.`)
+  if (!tool || !deps.ctx.can(tool.permission) || !(tool.proposal?.permissions ?? []).every((p) => deps.ctx.can(p))) return fail('denied', `Tool "${block.name}" is not available to this user.`)
   const parsed = tool.input.safeParse(block.input)
   if (!parsed.success) return fail('failed', `Invalid input: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'} ${i.message}`).join('; ')}`)
+
+  if (tool.proposal) {
+    if (proposals.length >= MAX_PROPOSALS) return fail('denied', `At most ${MAX_PROPOSALS} actions can be proposed in one answer.`)
+    try {
+      // A lookup only: describes the real target. Nothing is changed here.
+      const prepared = await tool.proposal.prepare(parsed.data)
+      if (!prepared.ok) return fail('failed', `Cannot propose this: ${prepared.reason}`)
+      const proposal: Proposal = { kind: tool.proposal.kind, params: prepared.params, summary: prepared.summary }
+      proposals.push(proposal)
+      await deps.audit({ action: 'assistant.propose', product, target: tool.proposal.kind, outcome: 'succeeded', detail: { params: prepared.params, summary: prepared.summary } })
+      return { type: 'tool_result', tool_use_id: block.id, content: JSON.stringify({ status: 'proposed', summary: prepared.summary, note: 'Shown to the user as a confirmation card. Nothing has been done; it runs only if they press Confirm.' }) }
+    } catch (e) {
+      return fail('failed', e instanceof Error ? e.message : String(e))
+    }
+  }
 
   try {
     const result = await tool.run(parsed.data, deps.ctx)
@@ -115,6 +138,7 @@ export async function ask(question: string, history: Turn[], deps: AskDeps): Pro
     { role: 'user', content: `Today in Israel: ${deps.today}.\n\n${question}` },
   ]
   const toolsUsed: string[] = []
+  const proposals: Proposal[] = []
   const usage = { in: 0, out: 0, cacheRead: 0 }
 
   const finish = async (outcome: 'succeeded' | 'failed', extra: Record<string, unknown>) =>
@@ -123,7 +147,7 @@ export async function ask(question: string, history: Turn[], deps: AskDeps): Pro
       product: null,
       target: null,
       outcome,
-      detail: { question: question.slice(0, 500), toolsOffered: allowed.map((t) => t.name), toolsUsed, usage, ms: now() - started, ...extra },
+      detail: { question: question.slice(0, 500), toolsOffered: allowed.map((t) => t.name), toolsUsed, proposed: proposals.map((p) => p.kind), usage, ms: now() - started, ...extra },
     })
 
   for (let round = 1; round <= MAX_ROUNDS; round++) {
@@ -164,7 +188,9 @@ export async function ask(question: string, history: Turn[], deps: AskDeps): Pro
       }
       toolsUsed.push(...calls.map((c) => c.name))
       // All results of one round go back in ONE user message.
-      const results = await Promise.all(calls.map((c) => runTool(c, allowed, deps)))
+      // Sequential: proposals are capped, and the cap must not race.
+      const results: Anthropic.Beta.BetaToolResultBlockParam[] = []
+      for (const c of calls) results.push(await runTool(c, allowed, deps, proposals))
       messages.push({ role: 'user', content: results })
       continue
     }
@@ -173,8 +199,8 @@ export async function ask(question: string, history: Turn[], deps: AskDeps): Pro
     const answer = textOf(res.content)
     const notice = res.stop_reason === 'max_tokens' ? 'The answer was cut off at the length limit.' : undefined
     await finish('succeeded', { round, stop: res.stop_reason })
-    if (!answer) return { ok: false, message: 'The assistant returned no answer. Try rephrasing the question.' }
-    return { ok: true, answer, toolsUsed: [...new Set(toolsUsed)], notice }
+    if (!answer && !proposals.length) return { ok: false, message: 'The assistant returned no answer. Try rephrasing the question.' }
+    return { ok: true, answer: answer || 'Confirm below to go ahead.', toolsUsed: [...new Set(toolsUsed)], notice, ...(proposals.length ? { proposals } : {}) }
   }
 
   await finish('failed', { stop: 'max_rounds' })
