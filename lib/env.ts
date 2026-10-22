@@ -7,7 +7,8 @@ import 'server-only'
  * what "configured" means and reports the exact missing variables.
  */
 const read = (name: string): string | undefined => {
-  const v = process.env[name]?.trim()
+  // Dashboards make it easy to paste a value with its quotes: "abc" → abc.
+  const v = process.env[name]?.trim().replace(/^(['"])(.*)\1$/, '$2').trim()
   return v ? v : undefined
 }
 

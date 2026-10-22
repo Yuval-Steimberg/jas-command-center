@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { authMode } from '@/lib/auth/mode'
 import { DEV_COOKIE, DEV_SESSION_MS, issueDevSession, passwordMatches } from '@/lib/auth/dev-session'
 import { supabaseUserClient } from '@/lib/supabase'
-import { resolveProfile } from '@/lib/auth/session'
+import { resolveProfile, SetupError } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
 import { allowAttempt, clearAttempts } from '@/lib/auth/rate-limit'
 
@@ -33,7 +33,15 @@ export async function signIn(_prev: LoginState, form: FormData): Promise<LoginSt
     const { data, error } = await client.auth.signInWithPassword({ email: parsed.data.email, password: parsed.data.password })
     // One message for every failure: never reveal which half was wrong.
     if (error || !data.user) return { error: 'Email or password is incorrect.' }
-    const s = await resolveProfile(data.user.id)
+    let s
+    try {
+      s = await resolveProfile(data.user.id)
+    } catch (e) {
+      // The password was right but the command center's own database is not usable.
+      await client.auth.signOut()
+      if (e instanceof SetupError) return { error: e.message }
+      throw e
+    }
     if (!s) {
       await client.auth.signOut()
       return { error: 'This account has no active command center role. Ask the owner to grant one.' }

@@ -1,13 +1,15 @@
 import { redirect } from 'next/navigation'
 import { authMode } from '@/lib/auth/mode'
-import { getSession } from '@/lib/auth/session'
+import { sessionState } from '@/lib/auth/session'
+import { signOut } from './actions'
 import { LoginForm } from './form'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Sign in · JAS Command Center' }
 
 export default async function LoginPage() {
-  if (await getSession()) redirect('/')
+  const { session, setupError } = await sessionState()
+  if (session) redirect('/')
   const mode = authMode()
   return (
     <main className="grid min-h-dvh place-items-center px-4">
@@ -20,6 +22,15 @@ export default async function LoginPage() {
           </div>
         </div>
         <div className="rounded-lg border border-line bg-surface p-5 shadow-card">
+          {setupError ? (
+            <div role="alert" className="mb-4 rounded-md border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">
+              <p className="font-medium">Setup problem</p>
+              <p className="mt-1">{setupError}</p>
+              <form action={signOut} className="mt-2">
+                <button className="text-xs underline underline-offset-2">Clear my sign-in and try again</button>
+              </form>
+            </div>
+          ) : null}
           {mode.kind === 'unconfigured' ? (
             <p role="alert" className="text-sm text-muted">{mode.reason}</p>
           ) : (
