@@ -133,3 +133,40 @@ export type ProductPatch = { price?: number; original_price?: number | null; qua
 
 export const updateWebsiteProduct = (id: number, patch: ProductPatch, expectUpdatedAt: string) =>
   write('product-update', { id, patch, expectUpdatedAt }, (d) => z.object({ product: websiteProduct }).parse(d).product)
+
+/**
+ * Site content: the keys the website manager's content, shop-hours and
+ * partners tabs edit (the website's SITE_CONTENT_SCHEMA, served by
+ * content-list). The website validates each key the way its manager UI does,
+ * refuses executable markup, and refuses a stale edit with 409.
+ * `updatedAt: null` means no stored row: the site shows the default value.
+ */
+export const websiteContentItem = z.object({
+  key: z.string(),
+  label: z.string(),
+  type: z.enum(['text', 'textarea', 'image', 'video']),
+  section: z.string(),
+  sort_order: z.number(),
+  value: z.string(),
+  stored: z.boolean(),
+  updated_at: z.string().nullable(),
+})
+export type WebsiteContentItem = z.infer<typeof websiteContentItem>
+const contentResponse = z.object({ items: z.array(websiteContentItem), sections: z.array(z.string()) })
+export type WebsiteContent = z.infer<typeof contentResponse>
+
+export async function listWebsiteContent(section = ''): Promise<SourceResult<WebsiteContent>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:content:${section}`, SOURCE, async () => {
+    const { data, latencyMs } = await call('content-list', section ? { section } : {}, true)
+    return { data: contentResponse.parse(data), latencyMs }
+  })
+}
+
+export const setWebsiteContent = (key: string, value: string, expectUpdatedAt: string | null) =>
+  write('content-set', { key, value, expectUpdatedAt }, (d) => z.object({ item: z.object({ key: z.string(), value: z.string(), updated_at: z.string().nullable() }) }).parse(d).item)
+
+/** The shop-hours keys and their meaning (the website's src/lib/shopHours.ts). */
+export const SHOP_HOURS_KEYS = ['shop_status_override', 'shop_open_from', 'shop_open_to', 'shop_open_days'] as const
+export const PARTNERS_KEY = 'partners_json'

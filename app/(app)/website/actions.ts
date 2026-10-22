@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, setWebsiteContent, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -137,4 +137,112 @@ export async function updateProductAction(_prev: ActionState, form: FormData): P
     await audit(user, { action: 'website.product.update', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
     return { ok: false, message: `Not saved: ${fail(e)}` }
   }
+}
+
+// ── Site content ──────────────────────────────────────────────────────────────
+
+const contentKey = z.string().regex(/^[a-z0-9_]{1,80}$/)
+/** "" from a hidden input = the key had no stored row when the page loaded. */
+const expectAt = (v: FormDataEntryValue | null) => (typeof v === 'string' && v ? v : null)
+/** Public site text, so the audit keeps it — trimmed, so one log row stays small. */
+const clip = (v: string) => (v.length > 600 ? `${v.slice(0, 600)}…` : v)
+
+type ContentWrite = { ok: true } | { ok: false; message: string }
+
+async function writeContent(user: Awaited<ReturnType<typeof requirePermission>>, key: string, value: string, expectUpdatedAt: string | null, before: string): Promise<ContentWrite> {
+  const target = `content:${key}`
+  const detail = { before: clip(before), after: clip(value) }
+  await audit(user, { action: 'website.content.set', product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await setWebsiteContent(key, value, expectUpdatedAt)
+    await audit(user, { action: 'website.content.set', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    return res.ok ? { ok: true } : { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.content.set', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: fail(e) }
+  }
+}
+
+async function contentWriter() {
+  try {
+    return await requirePermission('website:write')
+  } catch {
+    return null
+  }
+}
+
+export async function setContentAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const user = await contentWriter()
+  if (!user) return { ok: false, message: 'You do not have permission to edit site content.' }
+  const key = contentKey.safeParse(form.get('key'))
+  if (!key.success) return { ok: false, message: 'Invalid content key.' }
+  const value = String(form.get('value') ?? '')
+  const before = String(form.get('was') ?? '')
+  if (value === before) return { ok: false, message: 'Nothing changed.' }
+  const res = await writeContent(user, key.data, value, expectAt(form.get('expectUpdatedAt')), before)
+  revalidatePath('/website/content')
+  return res.ok ? { ok: true, message: 'Saved. The live site shows it now.' } : { ok: false, message: `Not saved: ${res.message}` }
+}
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** The manager's שעות החנות tab: mode, hours and days, each key written only if it changed. */
+export async function saveShopHoursAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const user = await contentWriter()
+  if (!user) return { ok: false, message: 'You do not have permission to change shop hours.' }
+  const mode = String(form.get('shop_status_override') ?? '')
+  const from = String(form.get('shop_open_from') ?? '')
+  const to = String(form.get('shop_open_to') ?? '')
+  const days = form.getAll('day').map(String).filter((d) => /^[0-6]$/.test(d))
+  if (!['auto', 'open', 'closed'].includes(mode)) return { ok: false, message: 'Choose automatic, open or closed.' }
+  if (!HHMM.test(from) || !HHMM.test(to)) return { ok: false, message: 'Hours must be times like 17:00.' }
+  const next: Record<string, string> = {
+    shop_status_override: mode,
+    shop_open_from: from,
+    shop_open_to: to,
+    shop_open_days: [...new Set(days)].sort().join(','),
+  }
+  const changed = Object.entries(next).filter(([k, v]) => v !== String(form.get(`was_${k}`) ?? ''))
+  if (!changed.length) return { ok: false, message: 'Nothing changed.' }
+  const failed: string[] = []
+  for (const [k, v] of changed) {
+    const res = await writeContent(user, k, v, expectAt(form.get(`at_${k}`)), String(form.get(`was_${k}`) ?? ''))
+    if (!res.ok) failed.push(`${k}: ${res.message}`)
+  }
+  revalidatePath('/website/content')
+  if (failed.length === changed.length) return { ok: false, message: `Not saved. ${failed.join(' · ')}` }
+  if (failed.length) return { ok: false, message: `Partly saved. Not saved: ${failed.join(' · ')}. Reload to see what the site has now.` }
+  return { ok: true, message: 'Saved. Online payment follows the new hours now.' }
+}
+
+const partnerName = z.string().trim().min(1).max(100)
+const partnerLogo = z.string().trim().max(2000)
+
+/** The manager's שותפים tab: the partner logos on the home page (one JSON key). */
+export async function savePartnersAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  const user = await contentWriter()
+  if (!user) return { ok: false, message: 'You do not have permission to edit partners.' }
+  const names = form.getAll('name').map(String)
+  const logos = form.getAll('logo').map(String)
+  const removed = new Set(form.getAll('remove').map(String))
+  const list: { name: string; logo: string }[] = []
+  for (let i = 0; i < names.length; i++) {
+    if (removed.has(String(i))) continue
+    const n = partnerName.safeParse(names[i])
+    const l = partnerLogo.safeParse(logos[i])
+    if (!n.success || !l.success) return { ok: false, message: `Partner ${i + 1} needs a name.` }
+    list.push({ name: n.data, logo: l.data })
+  }
+  const newName = String(form.get('new_name') ?? '').trim()
+  const newLogo = String(form.get('new_logo') ?? '').trim()
+  if (newName || newLogo) {
+    if (!partnerName.safeParse(newName).success || !newLogo || !partnerLogo.safeParse(newLogo).success) return { ok: false, message: 'A new partner needs both a name and a logo link.' }
+    list.push({ name: newName, logo: newLogo })
+  }
+  const value = JSON.stringify(list)
+  const before = String(form.get('was') ?? '')
+  if (value === before) return { ok: false, message: 'Nothing changed.' }
+  const res = await writeContent(user, PARTNERS_KEY, value, expectAt(form.get('expectUpdatedAt')), before)
+  revalidatePath('/website/content')
+  return res.ok ? { ok: true, message: `Saved. ${list.length} partner${list.length === 1 ? '' : 's'} on the home page.` } : { ok: false, message: `Not saved: ${res.message}` }
 }

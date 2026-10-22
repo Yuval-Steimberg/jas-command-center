@@ -3,7 +3,7 @@
 import { useFormState, useFormStatus } from 'react-dom'
 import { setOrderNotesAction, setOrderStatusAction, updateProductAction, type ActionState } from './actions'
 
-function Submit({ label, busy, tone = 'plain' }: { label: string; busy: string; tone?: 'plain' | 'primary' }) {
+export function Submit({ label, busy, tone = 'plain' }: { label: string; busy: string; tone?: 'plain' | 'primary' }) {
   const { pending } = useFormStatus()
   return (
     <button
@@ -19,7 +19,7 @@ function Submit({ label, busy, tone = 'plain' }: { label: string; busy: string; 
   )
 }
 
-function Result({ state }: { state: ActionState }) {
+export function Result({ state }: { state: ActionState }) {
   if (!state.message) return null
   return (
     <p role="status" dir="auto" className={state.ok ? 'text-sm text-ok' : 'text-sm text-bad'}>
@@ -28,7 +28,7 @@ function Result({ state }: { state: ActionState }) {
   )
 }
 
-const input = 'h-10 w-full rounded-md border border-line bg-surface px-3 text-sm'
+export const input = 'h-10 w-full rounded-md border border-line bg-surface px-3 text-sm'
 const NEXT: Record<string, string[]> = {
   paid: ['processing', 'shipped', 'delivered'],
   processing: ['shipped', 'delivered', 'paid'],

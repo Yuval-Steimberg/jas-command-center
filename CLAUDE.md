@@ -44,6 +44,9 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
 - Fulfilment statuses only (revenue never moves); products: price/original_price/quantity/featured.
   409 = changed since loaded → shown as "reload", never retried or overwritten.
 - The website has no audit table: the command center's audit (with before/after) is the only record.
+- Site content (`/website/content`): exactly the website's SITE_CONTENT_SCHEMA keys (texts, images, shop hours,
+  partners) via `content-list`/`content-set`; the website validates per key and refuses a stale edit (409).
+  Discount codes, campaigns and review replies share `site_content` but are NOT reachable through it.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):
 - Only column updates the field app itself makes: `projects.archived`, `items.gallery_type` (its
