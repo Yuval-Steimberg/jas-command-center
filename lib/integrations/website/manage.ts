@@ -280,3 +280,105 @@ export const saveWebsitePost = (post: WebsitePostInput, id?: number, expectUpdat
 
 export const deleteWebsitePost = (id: number, expectUpdatedAt: string) =>
   write('blog-delete', { id, expectUpdatedAt }, (d) => z.object({ deleted: z.object({ id: z.number(), slug: z.string() }) }).parse(d).deleted)
+
+/**
+ * Full product management (the manager's product form): every field, create,
+ * delete, categories and the low-stock threshold. The website applies the
+ * form's rules (Hebrew name, slug, price above 0, main image; stock follows
+ * quantity) and refuses a stale edit or a slug already in use with 409.
+ * Images are links: uploading stays in the website's storage.
+ */
+export const PRODUCT_CONDITIONS = ['excellent', 'good', 'fair', 'as-is'] as const
+
+export const websiteProductFull = z.object({
+  id: z.number().int(),
+  name_he: z.string(),
+  name_en: z.string().nullable(),
+  slug: z.string(),
+  description_he: z.string().nullable(),
+  description_en: z.string().nullable(),
+  story_he: z.string().nullable(),
+  story_en: z.string().nullable(),
+  price: z.number().nullable(),
+  original_price: z.number().nullable(),
+  category_id: z.number().int().nullable(),
+  condition: z.string().nullable(),
+  style: z.string().nullable(),
+  dimensions: z.string().nullable(),
+  material: z.string().nullable(),
+  origin: z.string().nullable(),
+  image_url: z.string().nullable(),
+  images: z.array(z.string()).nullable(),
+  featured: z.boolean().nullable(),
+  in_stock: z.boolean().nullable(),
+  quantity: z.number().int().nullable(),
+  tags: z.array(z.string()).nullable(),
+  published: z.boolean().nullable().optional(),
+  created_at: z.string().nullable(),
+  updated_at: z.string(),
+})
+export type WebsiteProductFull = z.infer<typeof websiteProductFull>
+
+export const websiteCategory = z.object({ id: z.number().int(), name_he: z.string(), name_en: z.string().nullable(), slug: z.string() })
+export type WebsiteCategory = z.infer<typeof websiteCategory>
+const productMetaResponse = z.object({ categories: z.array(websiteCategory), lowStockThreshold: z.number().int() })
+export type WebsiteProductMeta = z.infer<typeof productMetaResponse>
+
+export type WebsiteProductInput = {
+  name_he: string
+  name_en: string | null
+  slug: string
+  description_he: string | null
+  description_en: string | null
+  story_he: string | null
+  story_en: string | null
+  price: number
+  original_price: number | null
+  category_id: number | null
+  condition: (typeof PRODUCT_CONDITIONS)[number]
+  style: string | null
+  dimensions: string | null
+  material: string | null
+  origin: string | null
+  image_url: string
+  images: string[]
+  featured: boolean
+  quantity: number
+  tags: string[]
+  published?: boolean
+}
+
+export async function getWebsiteProduct(id: number): Promise<SourceResult<WebsiteProductFull | null>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:product:${id}`, SOURCE, async () => {
+    try {
+      const { data, latencyMs } = await call('product-get', { id }, true)
+      return { data: z.object({ product: websiteProductFull }).parse(data).product, latencyMs }
+    } catch (e) {
+      if (e instanceof SourceError && e.status === 404) return { data: null, latencyMs: 0 }
+      throw e
+    }
+  })
+}
+
+export async function getWebsiteProductMeta(): Promise<SourceResult<WebsiteProductMeta>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce('website:product-meta', SOURCE, async () => {
+    const { data, latencyMs } = await call('product-meta', {}, true)
+    return { data: productMetaResponse.parse(data), latencyMs }
+  })
+}
+
+export const saveWebsiteProduct = (product: WebsiteProductInput, id?: number, expectUpdatedAt?: string) =>
+  write('product-save', id ? { id, expectUpdatedAt, product } : { product }, (d) => z.object({ product: websiteProductFull }).parse(d).product)
+
+export const deleteWebsiteProduct = (id: number, expectUpdatedAt: string) =>
+  write('product-delete', { id, expectUpdatedAt }, (d) => z.object({ deleted: z.object({ id: z.number(), slug: z.string() }).passthrough() }).parse(d).deleted)
+
+export const createWebsiteCategory = (name_he: string, name_en: string | null) =>
+  write('category-create', { name_he, name_en }, (d) => z.object({ category: websiteCategory }).parse(d).category)
+
+export const setWebsiteLowStockThreshold = (threshold: number) =>
+  write('low-stock-set', { threshold }, (d) => z.object({ lowStockThreshold: z.number() }).parse(d).lowStockThreshold)

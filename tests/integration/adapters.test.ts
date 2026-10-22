@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { getWebsitePost, saveWebsitePost, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -191,6 +191,40 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     const input = { title_he: 'חדש', title_en: null, slug: 'new', excerpt_he: null, content_he: null, cover_image: null, images: [], category: null, tags: [], author: null, published: false, featured: false }
     expect(await saveWebsitePost(input)).toMatchObject({ ok: true, value: { slug: 'new' } })
     expect(await saveWebsitePost(input, 4, 'old')).toMatchObject({ ok: false, conflict: true })
+  })
+
+  it('reads, creates, conflicts on and deletes products, with categories', async () => {
+    const full = {
+      id: 7, name_he: 'כיסא', name_en: 'כיסא', slug: 'chair', description_he: null, description_en: null, story_he: null, story_en: null, price: 120, original_price: null,
+      category_id: 1, condition: 'good', style: null, dimensions: null, material: null, origin: null, image_url: 'https://x.co/a.jpg', images: [], featured: false,
+      in_stock: true, quantity: 2, tags: null, published: true, created_at: 't', updated_at: 'u1',
+    }
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (b.action === 'product-get') return b.id === 7 ? { status: 200, body: { product: full } } : { status: 404, body: { error: 'Product not found' } }
+      if (b.action === 'product-meta') return { status: 200, body: { categories: [{ id: 1, name_he: 'כיסאות', name_en: 'Chairs', slug: 'chairs' }], lowStockThreshold: 3, conditions: [] } }
+      if (b.action === 'category-create') return { status: 200, body: { category: { id: 2, name_he: b.name_he, name_en: b.name_en, slug: 'lamps' } } }
+      if (b.action === 'product-save' && b.product.slug === 'taken') return { status: 409, body: { error: 'Another product already uses the address /product/taken' } }
+      if (b.id && b.expectUpdatedAt !== 'u1') return { status: 409, body: { error: 'The product changed since it was loaded. Reload and try again.' } }
+      if (b.action === 'product-delete') return { status: 200, body: { deleted: { id: 7, slug: 'chair', name_he: 'כיסא' } } }
+      return { status: 200, body: { product: { ...full, ...b.product, id: b.id ?? 8 } } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await getWebsiteProduct(7)).toMatchObject({ state: 'ok', data: { slug: 'chair', category_id: 1 } })
+    expect(await getWebsiteProduct(9)).toMatchObject({ state: 'ok', data: null })
+    expect(await getWebsiteProductMeta()).toMatchObject({ state: 'ok', data: { lowStockThreshold: 3, categories: [{ slug: 'chairs' }] } })
+    const input = {
+      name_he: 'מנורה', name_en: null, slug: 'lamp', description_he: null, description_en: null, story_he: null, story_en: null, price: 80, original_price: null,
+      category_id: null, condition: 'good' as const, style: null, dimensions: null, material: null, origin: null, image_url: 'https://x.co/b.jpg', images: [], featured: false, quantity: 1, tags: [],
+    }
+    expect(await saveWebsiteProduct(input)).toMatchObject({ ok: true, value: { id: 8, slug: 'lamp' } })
+    expect(await saveWebsiteProduct({ ...input, slug: 'taken' })).toMatchObject({ ok: false, conflict: true, message: expect.stringMatching(/already uses/) })
+    expect(await saveWebsiteProduct(input, 7, 'old')).toMatchObject({ ok: false, conflict: true })
+    expect(await deleteWebsiteProduct(7, 'u1')).toMatchObject({ ok: true, value: { slug: 'chair' } })
+    expect(await createWebsiteCategory('מנורות', 'Lamps')).toMatchObject({ ok: true, value: { id: 2 } })
+    expect(JSON.parse(s.seen.at(-1)!.body)).toEqual({ action: 'category-create', name_he: 'מנורות', name_en: 'Lamps' })
   })
 
   it('a rejected key names the variable to fix', async () => {
