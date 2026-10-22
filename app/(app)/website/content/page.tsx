@@ -11,7 +11,9 @@ export const dynamic = 'force-dynamic'
 
 /** The website manager's own section names (src/pages/manager/config.ts there), plus the shop-hours keys it edits in their own tab. */
 const SECTION_LABELS: Record<string, string> = {
-  navigation: 'Menu & footer links',
+  navigation: 'Menu & footer',
+  donate: 'Donate furniture',
+  gift_card: 'Gift card page',
   shop: 'Shop hours',
   popup: 'Popup',
   announcement: 'Announcement bar',
