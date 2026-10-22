@@ -52,6 +52,9 @@ export function env() {
       repo: read('MAP_GITHUB_REPO') ?? 'Yuval-Steimberg/Interactive-map',
       branch: read('MAP_GITHUB_BRANCH') ?? 'main',
       githubToken: read('GITHUB_TOKEN'),
+      /** GA4 Data API: the numeric property id (not the G- measurement id) and a service-account key file. */
+      ga4PropertyId: read('MAP_GA4_PROPERTY_ID'),
+      ga4ServiceAccount: read('GA4_SERVICE_ACCOUNT_JSON'),
     },
     /** The read-only AI assistant. Off (and saying so) until the key is set. */
     assistant: { apiKey: read('ANTHROPIC_API_KEY'), model: read('ASSISTANT_MODEL') ?? 'claude-opus-5-5' },

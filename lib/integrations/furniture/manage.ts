@@ -58,6 +58,9 @@ const project = z.object({
   developer_name: z.string().nullable(),
   start_date: z.string().nullable(),
   archived: z.boolean().nullable(),
+  // Added by a later field-app migration; absent on an older database (select=*).
+  street: z.string().nullable().optional(),
+  building_numbers: z.string().nullable().optional(),
 })
 
 export type FurnitureApartment = z.infer<typeof apartment>
@@ -88,7 +91,8 @@ export async function getFurnitureProject(id: string): Promise<SourceResult<Furn
     const h = headers(supabaseKey!)
     const base = `${supabaseUrl}/rest/v1`
     const [p, a, i] = await Promise.all([
-      fetchJson(`${base}/projects?select=id,name,city,developer_name,start_date,archived&id=eq.${id}`, { headers: h }),
+      // select=* for the same reason: street/building_numbers postdate some databases.
+      fetchJson(`${base}/projects?select=*&id=eq.${id}`, { headers: h }),
       // select=* so a database with or without the entrance column both answer (PostgREST fails a query naming a missing column).
       fetchJson(`${base}/apartments?select=*&project_id=eq.${id}&order=building_number.asc,apartment_number.asc&limit=1000`, { headers: h }),
       fetchJson(`${base}/items?select=${ITEM_COLS}&project_id=eq.${id}&order=created_at.asc&limit=${ITEM_CAP}`, { headers: h }),
