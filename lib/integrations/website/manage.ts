@@ -211,3 +211,72 @@ export const deleteWebsiteReviews = (ids: number[]) =>
 
 export const setWebsiteReviewReply = (id: number, reply: string) =>
   write('review-reply', { id, reply }, (d) => z.object({ id: z.number(), reply: z.string() }).parse(d))
+
+/**
+ * Blog posts (the website manager's בלוג tab). Content is the markdown subset
+ * the website's article page parses (## headings, - lists, **bold**, links),
+ * never HTML. Edits and deletes are conditional on updated_at.
+ */
+export const websitePostSummary = z.object({
+  id: z.number().int(),
+  title_he: z.string(),
+  title_en: z.string().nullable(),
+  slug: z.string(),
+  excerpt_he: z.string().nullable(),
+  cover_image: z.string().nullable(),
+  category: z.string().nullable(),
+  tags: z.array(z.string()).nullable(),
+  author: z.string().nullable(),
+  published: z.boolean(),
+  published_at: z.string().nullable(),
+  featured: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+})
+export type WebsitePostSummary = z.infer<typeof websitePostSummary>
+export const websitePost = websitePostSummary.extend({ content_he: z.string().nullable(), images: z.array(z.string()).nullable() })
+export type WebsitePost = z.infer<typeof websitePost>
+
+export type WebsitePostInput = {
+  title_he: string
+  title_en: string | null
+  slug: string
+  excerpt_he: string | null
+  content_he: string | null
+  cover_image: string | null
+  images: string[]
+  category: string | null
+  tags: string[]
+  author: string | null
+  published: boolean
+  featured: boolean
+}
+
+export async function listWebsitePosts(): Promise<SourceResult<WebsitePostSummary[]>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce('website:blog', SOURCE, async () => {
+    const { data, latencyMs } = await call('blog-list', {}, true)
+    return { data: z.object({ posts: z.array(websitePostSummary) }).parse(data).posts, latencyMs }
+  })
+}
+
+export async function getWebsitePost(id: number): Promise<SourceResult<WebsitePost | null>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:blog:${id}`, SOURCE, async () => {
+    try {
+      const { data, latencyMs } = await call('blog-get', { id }, true)
+      return { data: z.object({ post: websitePost }).parse(data).post, latencyMs }
+    } catch (e) {
+      if (e instanceof SourceError && e.status === 404) return { data: null, latencyMs: 0 }
+      throw e
+    }
+  })
+}
+
+export const saveWebsitePost = (post: WebsitePostInput, id?: number, expectUpdatedAt?: string) =>
+  write('blog-save', id ? { id, expectUpdatedAt, post } : { post }, (d) => z.object({ post: websitePostSummary }).parse(d).post)
+
+export const deleteWebsitePost = (id: number, expectUpdatedAt: string) =>
+  write('blog-delete', { id, expectUpdatedAt }, (d) => z.object({ deleted: z.object({ id: z.number(), slug: z.string() }) }).parse(d).deleted)

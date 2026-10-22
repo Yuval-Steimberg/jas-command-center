@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { getWebsitePost, saveWebsitePost, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -173,6 +173,24 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(await setWebsiteReviewsApproved([3], true)).toEqual({ ok: true, value: [3] })
     expect(JSON.parse(s.seen[1]!.body)).toEqual({ action: 'reviews-set-approved', ids: [3], approved: true })
     expect(await deleteWebsiteReviews([3])).toEqual({ ok: true, value: [] })
+  })
+
+  it('reads, creates and conflicts on blog posts', async () => {
+    const summary = { id: 4, title_he: 'כותרת', title_en: null, slug: 'post', excerpt_he: null, cover_image: null, category: null, tags: null, author: null, published: false, published_at: null, featured: false, created_at: 't', updated_at: 'u1' }
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (b.action === 'blog-get') return b.id === 4 ? { status: 200, body: { post: { ...summary, content_he: '## א', images: [] } } } : { status: 404, body: { error: 'Post not found' } }
+      if (b.id && b.expectUpdatedAt !== 'u1') return { status: 409, body: { error: 'The post changed since it was loaded. Reload and try again.' } }
+      return { status: 200, body: { post: { ...summary, ...b.post } } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await getWebsitePost(4)).toMatchObject({ state: 'ok', data: { content_he: '## א' } })
+    expect(await getWebsitePost(5)).toMatchObject({ state: 'ok', data: null })
+    const input = { title_he: 'חדש', title_en: null, slug: 'new', excerpt_he: null, content_he: null, cover_image: null, images: [], category: null, tags: [], author: null, published: false, featured: false }
+    expect(await saveWebsitePost(input)).toMatchObject({ ok: true, value: { slug: 'new' } })
+    expect(await saveWebsitePost(input, 4, 'old')).toMatchObject({ ok: false, conflict: true })
   })
 
   it('a rejected key names the variable to fix', async () => {

@@ -49,6 +49,8 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
   Discount codes, campaigns and review replies share `site_content` but are NOT reachable through it.
 - Reviews (`/website/reviews`): approve / hide / delete (bulk via `form="reviews-bulk"`) + reply. Reviewer email
   is shown only with `website:read_pii`.
+- Blog (`/website/blog`, `/new`, `/[id]`): create/edit/delete via `blog-*`; content is the website's markdown subset,
+  never HTML; edits and deletes conditional on updated_at.
 - The owner decided (2026-10-22) to RETIRE the website's /manager: build admin features here, not there.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):
