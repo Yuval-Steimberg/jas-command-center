@@ -461,3 +461,27 @@ export const sendWebsiteCampaign = (subject: string, bodyText: string, target: {
     (d) => z.object({ test: z.boolean(), recipients: z.number(), failed: z.number().optional(), total: z.number().optional() }).parse(d),
     60_000,
   )
+
+/**
+ * Image upload: the website signs a one-time upload link into its public
+ * product-images bucket (a fresh path per call, never an overwrite); the
+ * command center PUTs the resized image there directly and keeps the public
+ * link. The website's function never carries the bytes.
+ */
+export const IMAGE_FOLDERS = ['products', 'blog', 'content', 'partners'] as const
+export type ImageFolder = (typeof IMAGE_FOLDERS)[number]
+
+export async function uploadWebsiteImage(folder: ImageFolder, bytes: ArrayBuffer, contentType: string): Promise<string> {
+  const m = missing()
+  if (m.length) throw new SourceError(`Website actions are not connected (${m.join(', ')})`, null, null)
+  const { data } = await call('image-upload-url', { folder, contentType }, false)
+  const link = z.object({ signedUrl: z.string().url(), publicUrl: z.string().url() }).parse(data)
+  const res = await fetch(link.signedUrl, {
+    method: 'PUT',
+    headers: { 'Content-Type': contentType, 'x-upsert': 'false', 'cache-control': '31536000' },
+    body: bytes,
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (!res.ok) throw new SourceError(`Storage refused the upload (HTTP ${res.status})`, res.status, null)
+  return link.publicUrl
+}

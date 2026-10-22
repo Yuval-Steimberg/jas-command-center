@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useFormState } from 'react-dom'
 import { createCategoryAction, deleteProductAction, saveProductAction, setLowStockAction, type ActionState } from './actions'
 import { Result, Submit, input } from './forms'
+import { ImageUpload } from './image-upload'
 
 const area = 'w-full rounded-md border border-line bg-surface px-3 py-2 text-sm'
 const CONDITION_LABELS: Record<string, string> = { excellent: 'מצוין · excellent', good: 'טוב · good', fair: 'סביר · fair', 'as-is': 'כמו שהוא · as-is' }
@@ -45,6 +46,7 @@ export function FullProductForm({ p, categories }: { p: ProductValues; categorie
   const [slug, setSlug] = useState(p.slug)
   const [slugTouched, setSlugTouched] = useState(!!p.id)
   const [image, setImage] = useState(p.image_url)
+  const [gallery, setGallery] = useState(p.images.join('\n'))
   return (
     <form
       action={action}
@@ -113,10 +115,14 @@ export function FullProductForm({ p, categories }: { p: ProductValues; categorie
             <img src={image} alt="" className="mt-1 h-24 w-24 rounded-md border border-line object-cover" />
           ) : null}
         </label>
+        <span className="sm:col-span-2 -mt-1 flex flex-wrap gap-2">
+          <ImageUpload folder="products" label="Upload main photo" onUploaded={setImage} />
+          <ImageUpload folder="products" label="Upload gallery photos" multiple onUploaded={(u) => setGallery((g) => (g.trim() ? `${g.trim()}\n${u}` : u))} />
+        </span>
         <label className="flex flex-col gap-1 text-sm"><span className="text-muted">Gallery images (one link per line)</span>
-          <textarea name="images" defaultValue={p.images.join('\n')} rows={4} dir="ltr" className={area} />
+          <textarea name="images" value={gallery} onChange={(e) => setGallery(e.target.value)} rows={4} dir="ltr" className={area} />
         </label>
-        <p className="text-xs text-muted sm:col-span-2">Uploading a new photo still happens in the website&apos;s storage; paste its link here.</p>
+        <p className="text-xs text-muted sm:col-span-2">Uploads are resized on this device and stored on the website; the product shows them once you save.</p>
       </fieldset>
 
       <fieldset className="grid gap-3 sm:grid-cols-2">

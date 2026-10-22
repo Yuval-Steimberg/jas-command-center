@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { useFormState } from 'react-dom'
 import { savePartnersAction, saveShopHoursAction, setContentAction, type ActionState } from './actions'
 import { Result, Submit, input } from './forms'
+import { ImageUpload } from './image-upload'
 
 const area = 'w-full rounded-md border border-line bg-surface px-3 py-2 text-sm'
 
@@ -18,6 +20,7 @@ export interface ContentFieldValues {
 export function ContentField({ item }: { item: ContentFieldValues }) {
   const [state, action] = useFormState<ActionState, FormData>(setContentAction, {})
   const media = item.type === 'image' || item.type === 'video'
+  const [value, setValue] = useState(item.value)
   return (
     <form
       action={action}
@@ -37,9 +40,10 @@ export function ContentField({ item }: { item: ContentFieldValues }) {
         {item.type === 'textarea' ? (
           <textarea name="value" defaultValue={item.value} rows={Math.min(10, Math.max(3, Math.ceil(item.value.length / 90)))} maxLength={15000} dir="auto" className={area} />
         ) : (
-          <input name="value" defaultValue={item.value} maxLength={media ? 2000 : 500} dir={media ? 'ltr' : 'auto'} placeholder={media ? 'https://… or /images/…' : ''} className={input} />
+          <input name="value" value={value} onChange={(e) => setValue(e.target.value)} maxLength={media ? 2000 : 500} dir={media ? 'ltr' : 'auto'} placeholder={media ? 'https://… or /images/…' : ''} className={input} />
         )}
       </label>
+      {item.type === 'image' ? <ImageUpload folder="content" label="Upload a new image" onUploaded={setValue} /> : null}
       {media && item.value ? (
         <a href={item.value} target="_blank" rel="noreferrer noopener" className="text-xs underline-offset-2 hover:underline" dir="ltr">Open current {item.type}</a>
       ) : null}
