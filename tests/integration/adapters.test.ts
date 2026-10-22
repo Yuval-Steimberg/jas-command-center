@@ -106,6 +106,16 @@ describe('gift card adapter (contract: GET /api/integration/v1/summary)', () => 
     expect(h.status).toBe('degraded')
     expect(h.checks.find((c) => c.name === 'Delivery & payments')?.detail).toMatch(/2 paid card/)
   })
+
+  it('a 404 names the missing INTEGRATION_API_KEY on the gift card side, and a pasted page path is ignored', async () => {
+    const s = await fakeServer((r) => (r.path === '/api/integration/v1/summary' ? { status: 404, body: { error: 'not found' } } : { status: 500, body: {} }))
+    closers.push(s.close)
+    process.env.GIFT_CARDS_URL = `${s.url}/admin/`
+    process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
+    const r = await getGiftCardSummary()
+    expect(r.state === 'error' && r.error).toMatch(/^HTTP 404: not found\. .*INTEGRATION_API_KEY .*redeploy/)
+    expect(s.seen[0]!.path).toBe('/api/integration/v1/summary')
+  })
 })
 
 describe('furniture adapter (contract: PostgREST projects + project_summary_counts)', () => {
@@ -127,6 +137,24 @@ describe('furniture adapter (contract: PostgREST projects + project_summary_coun
     expect(r.data[1]).toMatchObject({ id: 'p2', apartments: 0, archived: true })
     expect(s.seen[0]!.headers.apikey).toBe('sb_secret_abc')
     expect(s.seen[0]!.headers.authorization).toBeUndefined() // new-style keys are not JWTs
+  })
+
+  it('accepts a project URL pasted with /rest/v1/ on the end', async () => {
+    const s = await fakeServer((r) => (r.path.startsWith('/rest/v1/rest') ? { status: 404, body: { code: 'PGRST125', message: 'Invalid path specified in request URL' } } : { status: 200, body: [] }))
+    closers.push(s.close)
+    process.env.FURNITURE_SUPABASE_URL = `${s.url}/rest/v1/`
+    process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_abc'
+    expect(await getFurnitureProjects()).toMatchObject({ state: 'ok', data: [] })
+    expect(s.seen.every((x) => x.path.startsWith('/rest/v1/projects') || x.path.startsWith('/rest/v1/project_summary_counts'))).toBe(true)
+  })
+
+  it('explains an invalid-path 404 instead of only echoing it', async () => {
+    const s = await fakeServer(() => ({ status: 404, body: { code: 'PGRST125', message: 'Invalid path specified in request URL' } }))
+    closers.push(s.close)
+    process.env.FURNITURE_SUPABASE_URL = s.url
+    process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_abc'
+    const r = await getFurnitureProjects()
+    expect(r.state === 'error' && r.error).toMatch(/FURNITURE_SUPABASE_URL must be the Furniture-Collect project URL/)
   })
 })
 

@@ -94,3 +94,12 @@ export async function probe(url: string, timeoutMs = 6000): Promise<{ ok: boolea
     return { ok: false, status: null, latencyMs: Math.round(performance.now() - started), error: scrub(e instanceof Error ? e.message : String(e)) }
   }
 }
+
+/** Re-throw a SourceError with a fix appended, keeping its status and latency. */
+export function withHint(e: unknown, hint: (e: SourceError) => string | null): never {
+  if (e instanceof SourceError) {
+    const h = hint(e)
+    if (h) throw new SourceError(`${e.message}. ${h}`, e.status, e.latencyMs)
+  }
+  throw e
+}

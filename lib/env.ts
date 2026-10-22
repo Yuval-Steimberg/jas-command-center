@@ -18,7 +18,10 @@ const url = (name: string): string | undefined => {
   try {
     const u = new URL(v)
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return undefined
-    return u.toString().replace(/\/$/, '')
+    // Every source lives at the root of its host, so only the origin is kept: a pasted
+    // https://x.supabase.co/rest/v1/ or https://gift.example/admin would otherwise
+    // become /rest/v1/rest/v1/projects or /admin/api/health and 404.
+    return u.origin
   } catch {
     return undefined
   }
