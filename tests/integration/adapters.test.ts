@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { uploadWebsiteImage, sendWebsiteCampaign, listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { listWebsiteInquiries, setWebsiteInquiryHandled, uploadWebsiteImage, sendWebsiteCampaign, listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -262,6 +262,25 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(JSON.parse(s.seen[0]!.body)).toEqual({ action: 'image-upload-url', folder: 'products', contentType: 'image/webp' })
     expect(s.seen[1]!.path).toMatch(/^\/storage\/upload\//)
     expect(s.seen[1]!.body).toBe('img')
+  })
+
+  it('reads form messages and marks one handled; a missing table is an error, not an empty inbox', async () => {
+    let missingTable = false
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (missingTable) return { status: 422, body: { error: 'The site_inquiries table does not exist yet: run …' } }
+      if (b.action === 'inquiries-list') return { status: 200, body: { inquiries: [{ id: 1, kind: 'donate', name: 'דנה', phone: '0501234567', email: null, subject: null, message: 'כיסא', photos: ['data:image/jpeg;base64,AA'], emailed: false, handled_at: null, handled_by: null, created_at: 't' }], openCount: 1 } }
+      return b.handled ? { status: 200, body: { inquiry: { id: 1, handled_at: 'h' } } } : { status: 409, body: { error: 'already open' } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await listWebsiteInquiries('open')).toMatchObject({ state: 'ok', data: { openCount: 1, inquiries: [{ kind: 'donate', photos: ['data:image/jpeg;base64,AA'] }] } })
+    expect(await setWebsiteInquiryHandled(1, true, 'o@x')).toMatchObject({ ok: true })
+    expect(await setWebsiteInquiryHandled(1, false, 'o@x')).toMatchObject({ ok: false, conflict: true })
+    missingTable = true
+    resetSourceCache()
+    expect((await listWebsiteInquiries('all')).state).toBe('error')
   })
 
   it('sends a campaign once and is never retried', async () => {

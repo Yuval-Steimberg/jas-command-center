@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, sendWebsiteCampaign, deleteWebsiteDiscount, deleteWebsiteSubscriber, saveWebsiteDiscount, type WebsiteDiscountInput, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, setWebsiteInquiryHandled, sendWebsiteCampaign, deleteWebsiteDiscount, deleteWebsiteSubscriber, saveWebsiteDiscount, type WebsiteDiscountInput, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -676,5 +676,31 @@ export async function sendCampaignAction(_prev: ActionState, form: FormData): Pr
   } catch (e) {
     await audit(user, { action, product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
     return { ok: false, message: test ? `Test not sent: ${fail(e)}` : `The send did not confirm: ${fail(e)}. Check the history below before trying again; some emails may have gone out.` }
+  }
+}
+
+export async function setInquiryHandledAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:operate')
+  } catch {
+    return { ok: false, message: 'You do not have permission to handle messages.' }
+  }
+  const s = await getSession()
+  if (!s || !can(s.user.role, 'website:read_pii', s.overrides)) return { ok: false, message: 'Your role cannot see or change customer details.' }
+  const id = rowId.safeParse(form.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid message.' }
+  const handled = form.get('handled') === 'true'
+  const target = `inquiry:${id.data}`
+  const detail = { handled, kind: String(form.get('kind') ?? '').slice(0, 20) }
+  await audit(user, { action: 'website.inquiry.set_handled', product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await setWebsiteInquiryHandled(id.data, handled, user.email)
+    await audit(user, { action: 'website.inquiry.set_handled', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    revalidatePath('/website/inquiries')
+    return res.ok ? { ok: true, message: handled ? 'Marked handled.' : 'Reopened.' } : { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.inquiry.set_handled', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not changed: ${fail(e)}` }
   }
 }
