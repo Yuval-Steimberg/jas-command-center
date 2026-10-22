@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { listWebsiteOrders, listWebsiteProducts, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -134,6 +134,27 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(s.seen).toHaveLength(1)
     expect(await updateWebsiteProduct(1, { price: 399.9 }, 'u1')).toMatchObject({ ok: true, value: { price: 399.9, updated_at: 'u2' } })
     expect(JSON.parse(s.seen[1]!.body)).toEqual({ action: 'product-update', id: 1, patch: { price: 399.9 }, expectUpdatedAt: 'u1' })
+  })
+
+  it('reads site content and writes one key conditionally; a stale edit is a conflict, not an outage', async () => {
+    const item = { key: 'popup_title', label: 'כותרת', type: 'text', section: 'popup', sort_order: 20, value: 'שלום', stored: true, updated_at: 't0' }
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (b.action === 'content-list') return { status: 200, body: { items: [item, { ...item, key: 'popup_enabled', value: 'false', stored: false, updated_at: null }], sections: ['popup'] } }
+      if (b.expectUpdatedAt === 'stale') return { status: 409, body: { error: 'כותרת changed since it was loaded. Reload and try again.' } }
+      return { status: 200, body: { item: { key: b.key, value: b.value, updated_at: 't1' } } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    const r = await listWebsiteContent()
+    expect(r.state === 'ok' && r.data.items.map((i) => i.updated_at)).toEqual(['t0', null])
+    expect(await setWebsiteContent('popup_title', 'חדש', 't0')).toEqual({ ok: true, value: { key: 'popup_title', value: 'חדש', updated_at: 't1' } })
+    expect(JSON.parse(s.seen[1]!.body)).toEqual({ action: 'content-set', key: 'popup_title', value: 'חדש', expectUpdatedAt: 't0' })
+    expect(await setWebsiteContent('popup_enabled', 'true', null)).toMatchObject({ ok: true })
+    expect(JSON.parse(s.seen[2]!.body).expectUpdatedAt).toBeNull()
+    expect(await setWebsiteContent('popup_title', 'x', 'stale')).toMatchObject({ ok: false, conflict: true })
+    expect(s.seen).toHaveLength(4)
   })
 
   it('a rejected key names the variable to fix', async () => {
