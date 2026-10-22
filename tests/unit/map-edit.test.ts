@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addPlace, editPlace } from '@/lib/integrations/map/edit'
+import { addPlace, editPlace, removePlace } from '@/lib/integrations/map/edit'
 import { parsePlacesData } from '@/lib/integrations/map/parse'
 
 const SOURCE = `// JAS Route
@@ -47,5 +47,23 @@ describe('editing places-data.js as text', () => {
     expect(addPlace(SOURCE, { ...place, name: 'קפה' })).toMatchObject({ ok: false })
     expect(editPlace(SOURCE, 3, { name: 'קפה', sub: null, cat: 'cafe', lat: 32.0618, lng: 34.7778, desc: null, hours: null, contact: null, address: null })).toEqual({ ok: false, message: 'Nothing changed.' })
     expect(editPlace(SOURCE, 99, place)).toMatchObject({ ok: false })
+  })
+
+  it('removes a place by deleting exactly its line, and never the store itself', () => {
+    const r = removePlace(SOURCE, 3)
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    expect(r.source).toBe(SOURCE.replace(/\n  \{id:3,[^\n]*/, ''))
+    expect(r.data.places.map((p) => p.id)).toEqual([1])
+    expect(r.summary).toBe('Remove place #3 "קפה"')
+    expect(removePlace(SOURCE, 1)).toMatchObject({ ok: false, message: expect.stringMatching(/cannot be removed/) })
+    expect(removePlace(SOURCE, 99)).toMatchObject({ ok: false })
+  })
+
+  it('removes the last place when the file has no trailing comma', () => {
+    const src = SOURCE.replace("address:null},\n];", "address:null}\n];")
+    const r = removePlace(src, 3)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.data.places.map((p) => p.id)).toEqual([1])
   })
 })

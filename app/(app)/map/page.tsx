@@ -7,7 +7,7 @@ import { can } from '@/lib/auth/rbac'
 import Link from 'next/link'
 import { listPlacePullRequests, type MapPullRequest } from '@/lib/integrations/map/github'
 import { formatDateTime } from '@/lib/format'
-import { PlaceForm } from './forms'
+import { PlaceForm, RemovePlaceForm } from './forms'
 import { getMapTraffic } from '@/lib/integrations/map/ga4'
 import { env } from '@/lib/env'
 
@@ -48,7 +48,7 @@ export default async function MapPage({ searchParams }: { searchParams: { edit?:
                       <td className="py-2" dir="auto">{r.data.categories.find((c) => c.key === p.cat)?.label ?? p.cat}</td>
                       <td className="max-w-[220px] py-2 text-xs text-muted" dir="auto">{p.hours ?? '—'}</td>
                       <td className="num py-2 text-end font-mono text-xs"><a className="underline-offset-2 hover:underline" href={`https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=18/${p.lat}/${p.lng}`} target="_blank" rel="noreferrer">{p.lat.toFixed(5)}, {p.lng.toFixed(5)}</a></td>
-                      {write ? <td className="py-2 text-end"><Link href={`/map?edit=${p.id}#edit`} className="text-xs underline-offset-2 hover:underline">Edit</Link></td> : null}
+                      {write ? <td className="py-2 text-end"><Link href={`/map?edit=${p.id}#edit`} className="inline-flex h-8 items-center rounded-full border border-line px-3 text-xs font-medium hover:bg-sunken">{p.cat === 'anchor' ? 'Edit' : 'Edit / remove'}</Link></td> : null}
                     </tr>
                   ))}
                 </tbody>
@@ -113,11 +113,17 @@ export default async function MapPage({ searchParams }: { searchParams: { edit?:
             {!tokenSet ? (
               <p className="text-sm text-muted">Set GITHUB_TOKEN on this deployment (fine-grained, the map repository only, Contents and Pull requests: read and write) to propose changes from here.</p>
             ) : editing ? (
-              <PlaceForm key={editing.id} place={editing} categories={r.data.categories} />
+              <div className="flex flex-col gap-4">
+                <PlaceForm key={editing.id} place={editing} categories={r.data.categories} />
+                {editing.cat !== 'anchor' ? <RemovePlaceForm key={`rm-${editing.id}`} place={editing} /> : null}
+              </div>
             ) : editId === 'new' ? (
               <PlaceForm categories={r.data.categories} />
             ) : (
-              <Link href="/map?edit=new#edit" className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">Add a place</Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <Link href="/map?edit=new#edit" className="inline-flex h-10 items-center rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">Add a place</Link>
+                <span className="text-sm text-muted">To change or remove a place, use “Edit / remove” on its row above.</span>
+              </div>
             )}
             {typeof pending === 'string' ? (
               <p className="mt-3 text-sm text-bad">Could not list open changes: {pending}</p>

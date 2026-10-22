@@ -56,7 +56,7 @@ export const mapAdapter: IntegrationAdapter = {
   capabilities: () => [
     // e(): read lazily so the rows follow the deployment's variables.
     { id: 'places', label: 'Places, categories, coordinates', kind: 'read', status: 'available', note: 'Works without a token if the repository is public (60 requests/hour).' },
-    { id: 'edit', label: 'Add / edit a place (as a reviewed pull request)', kind: 'write', status: e().githubToken ? 'available' : 'needs_credentials', note: 'Opens a one-line pull request on Interactive-map; the public map changes when you merge it. Needs GITHUB_TOKEN (fine-grained, that repository only, Contents + Pull requests: read and write).' },
+    { id: 'edit', label: 'Add / edit / remove a place (as a reviewed pull request)', kind: 'write', status: e().githubToken ? 'available' : 'needs_credentials', note: 'Opens a one-line pull request on Interactive-map; the public map changes when you merge it. Needs GITHUB_TOKEN (fine-grained, that repository only, Contents + Pull requests: read and write).' },
     { id: 'projects', label: 'Furniture projects on the map', kind: 'read', status: 'available', note: 'Each furniture project page links its recorded address to OpenStreetMap. They are deliberately not plotted on the public map: that is a route of partner places, and a demolition site is not one.' },
     { id: 'traffic', label: 'Map visitors', kind: 'read', status: e().ga4PropertyId && e().ga4ServiceAccount ? 'available' : 'needs_credentials', note: 'GA4 Data API, read-only service account. Needs MAP_GA4_PROPERTY_ID (numeric) and GA4_SERVICE_ACCOUNT_JSON.' },
   ],

@@ -59,7 +59,9 @@ async function runReport(propertyId: string, bearer: string, body: unknown) {
   })
   const data = (await res.json().catch(() => ({}))) as { error?: { message?: string } }
   if (!res.ok) {
-    const hint = res.status === 403 ? ' (add the service account email as a Viewer on the GA4 property)' : res.status === 400 ? ' (MAP_GA4_PROPERTY_ID must be the numeric property id, not G-…)' : ''
+    // A disabled API is also a 403 and its message already says what to do.
+    const apiOff = /has not been used|is disabled/i.test(data.error?.message ?? '')
+    const hint = res.status === 403 && !apiOff ? ' (add the service account email as a Viewer on the GA4 property)' : res.status === 400 ? ' (MAP_GA4_PROPERTY_ID must be the numeric property id, not G-…)' : ''
     throw new SourceError(`GA4 HTTP ${res.status}: ${data.error?.message ?? 'request failed'}${hint}`, res.status, null)
   }
   return report.parse(data).rows ?? []

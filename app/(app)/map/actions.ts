@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { requirePermission } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
 import { readPlacesSource } from '@/lib/integrations/map/adapter'
-import { addPlace, editPlace, placeInput } from '@/lib/integrations/map/edit'
+import { addPlace, editPlace, placeInput, removePlace } from '@/lib/integrations/map/edit'
 import { openPlacePullRequest } from '@/lib/integrations/map/github'
 import { invalidate } from '@/lib/integrations/cache'
 
@@ -68,6 +68,38 @@ export async function proposePlaceAction(_prev: ActionState, form: FormData): Pr
     return { ok: true, message: `Pull request #${pr.number} opened. The map changes when it is merged on GitHub.`, url: pr.url }
   } catch (e) {
     await audit(user, { action, product: 'map', target, outcome: 'failed', detail: { error: fail(e) } })
+    return { ok: false, message: `Not opened: ${fail(e)}` }
+  }
+}
+
+/** Remove a place, also as a pull request. Same audit trail as add/edit. */
+export async function removePlaceAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('map:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to change the map.' }
+  }
+  const id = Number(text(form, 'id'))
+  if (!Number.isInteger(id)) return { ok: false, message: 'Invalid place.' }
+  const reason = text(form, 'reason')
+  if (!reason || reason.length < 3) return { ok: false, message: 'Give a reason (at least 3 characters). It goes into the pull request.' }
+  const target = `place:${id}`
+  await audit(user, { action: 'map.place.remove', product: 'map', target, outcome: 'requested', detail: { reason } })
+  try {
+    const { source, sha } = await readPlacesSource()
+    const edit = removePlace(source, id)
+    if (!edit.ok) {
+      await audit(user, { action: 'map.place.remove', product: 'map', target, outcome: 'failed', detail: { message: edit.message } })
+      return { ok: false, message: edit.message }
+    }
+    const pr = await openPlacePullRequest({ source: edit.source, fileSha: sha, placeId: id, summary: edit.summary, requestedBy: user.email, reason })
+    await audit(user, { action: 'map.place.remove', product: 'map', target, outcome: 'succeeded', detail: { pullRequest: pr.number, url: pr.url, summary: edit.summary } })
+    invalidate('map:')
+    revalidatePath('/map')
+    return { ok: true, message: `Pull request #${pr.number} opened. The place disappears from the map when it is merged on GitHub.`, url: pr.url }
+  } catch (e) {
+    await audit(user, { action: 'map.place.remove', product: 'map', target, outcome: 'failed', detail: { error: fail(e) } })
     return { ok: false, message: `Not opened: ${fail(e)}` }
   }
 }
