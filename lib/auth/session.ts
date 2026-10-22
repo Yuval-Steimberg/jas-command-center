@@ -6,6 +6,9 @@ import { authMode } from './mode'
 import { DEV_COOKIE, verifyDevSession } from './dev-session'
 import { assertCan, can, primaryRole, type Permission, type Role, type PermissionOverrides } from './rbac'
 import { supabaseAdmin, supabaseUserClient } from '@/lib/supabase'
+import { diagnoseSetupError, SetupError } from './setup-error'
+
+export { SetupError }
 
 export interface CurrentUser {
   id: string
@@ -18,7 +21,7 @@ export interface CurrentUser {
 
 async function loadOverrides(): Promise<PermissionOverrides> {
   const { data, error } = await supabaseAdmin().from('cc_role_permissions').select('role, permission, allowed')
-  if (error) throw new Error(`Could not load permission overrides: ${error.message}`)
+  if (error) throw diagnoseSetupError(error)
   const out: PermissionOverrides = {}
   for (const row of data ?? []) {
     const role = row.role as Role
@@ -27,8 +30,28 @@ async function loadOverrides(): Promise<PermissionOverrides> {
   return out
 }
 
-/** One auth resolution per request, shared by layout, page and actions. */
-export const getSession = cache(async (): Promise<{ user: CurrentUser; overrides: PermissionOverrides } | null> => {
+type Session = { user: CurrentUser; overrides: PermissionOverrides }
+
+/**
+ * One auth resolution per request, shared by layout, page and actions. A setup
+ * problem means "nobody is signed in" for every page (so they redirect to
+ * /login) and is reported on /login itself.
+ */
+export const sessionState = cache(async (): Promise<{ session: Session | null; setupError: string | null }> => {
+  try {
+    return { session: await loadSession(), setupError: null }
+  } catch (e) {
+    if (e instanceof SetupError) {
+      console.error('command center setup problem:', e.message)
+      return { session: null, setupError: e.message }
+    }
+    throw e
+  }
+})
+
+export const getSession = cache(async (): Promise<Session | null> => (await sessionState()).session)
+
+async function loadSession(): Promise<Session | null> {
   const mode = authMode()
   if (mode.kind === 'unconfigured') return null
   if (mode.kind === 'dev') {
@@ -39,7 +62,7 @@ export const getSession = cache(async (): Promise<{ user: CurrentUser; overrides
   const { data, error } = await supabaseUserClient().auth.getUser()
   if (error || !data.user) return null
   return resolveProfile(data.user.id)
-})
+}
 
 /** Map a Supabase Auth user to an active command-center profile with a role, or null. */
 export async function resolveProfile(authUserId: string): Promise<{ user: CurrentUser; overrides: PermissionOverrides } | null> {
@@ -48,7 +71,7 @@ export async function resolveProfile(authUserId: string): Promise<{ user: Curren
     db.from('cc_profiles').select('id, email, full_name, is_active, cc_user_roles(role)').eq('auth_user_id', authUserId).maybeSingle(),
     loadOverrides(),
   ])
-  if (pErr) throw new Error(`Could not load profile: ${pErr.message}`)
+  if (pErr) throw diagnoseSetupError(pErr)
   if (!profile || !profile.is_active) return null
   const roles = ((profile.cc_user_roles ?? []) as { role: string }[]).map((r) => r.role)
   const role = primaryRole(roles)
