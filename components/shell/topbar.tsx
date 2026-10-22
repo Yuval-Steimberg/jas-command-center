@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { Bell, Search, LogOut } from 'lucide-react'
-import { visibleAlerts, liveHealth } from '@/lib/live'
+import { notificationState, liveHealth } from '@/lib/live'
 import { rollup } from '@/lib/integrations/types'
 import { StatusBadge } from '@/components/ui/status'
 import { ROLE_LABELS } from '@/lib/auth/rbac'
@@ -22,12 +22,13 @@ async function SystemStatus() {
 }
 
 async function AlertsBell() {
-  const alerts = await visibleAlerts()
-  const urgent = alerts.filter((a) => a.severity !== 'info').length
+  const state = await notificationState()
+  // Unread when history is available; otherwise every open non-info alert, as before.
+  const count = state.error ? state.live.filter((a) => a.severity !== 'info').length : state.open.filter((n) => n.unread && n.severity !== 'info').length
   return (
-    <Link href="/notifications" aria-label={`Notifications: ${urgent} need attention`} className="relative grid h-9 w-9 place-items-center rounded-md text-ink hover:bg-sunken">
+    <Link href="/notifications" aria-label={`Notifications: ${count} unread`} className="relative grid h-9 w-9 place-items-center rounded-md text-ink hover:bg-sunken">
       <Bell aria-hidden className="h-[18px] w-[18px]" strokeWidth={1.75} />
-      {urgent ? <span className="num absolute -end-0.5 -top-0.5 min-w-[18px] rounded-full bg-bad px-1 text-center text-meta font-semibold leading-[18px] text-cream">{urgent}</span> : null}
+      {count ? <span className="num absolute -end-0.5 -top-0.5 min-w-[18px] rounded-full bg-bad px-1 text-center text-meta font-semibold leading-[18px] text-cream">{count}</span> : null}
     </Link>
   )
 }
@@ -36,15 +37,16 @@ export function Topbar({ user, nav }: { user: CurrentUser; nav: typeof NAV }) {
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-ground/95 px-3 backdrop-blur-sm sm:px-5">
       <MobileNav groups={nav} />
-      <div className="relative hidden max-w-sm flex-1 md:block">
+      <form action="/search" role="search" className="relative hidden max-w-sm flex-1 md:block">
         <Search aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
-        <input
-          disabled
-          placeholder="Search across systems — not built yet"
-          title="Cross-system search is planned for the next iteration"
-          className="h-9 w-full cursor-not-allowed rounded-md border border-line bg-sunken/60 ps-8 pe-3 text-sm placeholder:text-faint"
-        />
-      </div>
+        <label>
+          <span className="sr-only">Search across systems</span>
+          <input name="q" dir="auto" maxLength={100} placeholder="Search projects, places, designs…" className="h-9 w-full rounded-md border border-line bg-surface ps-8 pe-3 text-sm placeholder:text-faint" />
+        </label>
+      </form>
+      <Link href="/search" aria-label="Search" className="grid h-9 w-9 place-items-center rounded-md text-ink hover:bg-sunken md:hidden">
+        <Search aria-hidden className="h-[18px] w-[18px]" strokeWidth={1.75} />
+      </Link>
       <div className="ms-auto flex items-center gap-2">
         <RangeSelect />
         <Suspense fallback={<span className="hidden h-6 w-24 animate-pulse rounded-full bg-sunken sm:block" />}>

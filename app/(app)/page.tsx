@@ -15,6 +15,8 @@ import { presetFrom, resolveRange } from '@/lib/range'
 import { getSession, requireUser } from '@/lib/auth/session'
 import { can, type Product } from '@/lib/auth/rbac'
 import { timeAgo } from '@/lib/format'
+import { activityFeed } from '@/lib/activity/feed'
+import { ActivityList } from '@/components/activity-feed'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +27,19 @@ async function Attention() {
       <CardHeader title="Needs attention" meta={`${alerts.length} item${alerts.length === 1 ? '' : 's'}`} />
       <CardBody>
         <AlertsList alerts={alerts} limit={6} />
+      </CardBody>
+    </Card>
+  )
+}
+
+async function Activity() {
+  const s = (await getSession())!
+  const feed = await activityFeed((p) => can(s.user.role, p, s.overrides), 15)
+  return (
+    <Card>
+      <CardHeader title="Activity feed" meta="Alerts, actions taken here, and timestamped source records" />
+      <CardBody>
+        <ActivityList feed={feed} />
       </CardBody>
     </Card>
   )
@@ -117,15 +132,11 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
         ) : null}
       </div>
 
-      <Card className="mt-6">
-        <CardHeader title="Activity feed" meta="Not connected yet" />
-        <CardBody>
-          <p className="text-sm text-muted">
-            None of the source systems publishes events to a shared place today, so there is no real-time timeline yet. The next iteration adds an event store fed by Supabase
-            database webhooks (furniture), a signed outbound webhook (gift cards) and scheduled polling (website, design agent). Nothing is shown here until those exist.
-          </p>
-        </CardBody>
-      </Card>
+      <div className="mt-6">
+        <Suspense fallback={<CardSkeleton rows={4} />}>
+          <Activity />
+        </Suspense>
+      </div>
     </>
   )
 }

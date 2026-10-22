@@ -46,3 +46,12 @@ or the dev cookie is lost.
 Gotcha: `cc_user_roles` references `cc_profiles` twice (`profile_id`, `granted_by`),
 so any PostgREST embed between them needs a hint (`cc_user_roles!profile_id(...)`)
 or the whole query fails with PGRST201. See `lib/auth/profile-query.ts`.
+
+Search, activity, notifications:
+- `lib/search/` — `match.ts` is pure (Hebrew niqqud/geresh-insensitive). Each group
+  says ok / not_configured / error / unsupported; never render "could not search" as "no results".
+- `lib/activity/build.ts` is pure and only uses records that carry their own timestamp.
+  A source that was not read contributes nothing and is listed in `gaps`.
+- `lib/notifications/` persists the derived alerts. `planSync` resolves an alert only when
+  its family (id prefix) was observed this sweep. Marking read is the user's own inbox state
+  and is deliberately not audited.
