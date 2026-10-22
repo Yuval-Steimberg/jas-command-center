@@ -1,7 +1,8 @@
 import 'server-only'
 import { z } from 'zod'
 import { env } from '@/lib/env'
-import { fetchJson } from '../http'
+import { fetchJson, withHint } from '../http'
+import type { DateRange } from '@/lib/time'
 import { invalidate } from '../cache'
 import { notConfigured, readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
@@ -47,6 +48,42 @@ export async function getDesignAgentStatus(): Promise<SourceResult<DesignAgentSt
   return readSource('agent:status', 30_000, 'Design agent /admin/status', async () => {
     const { data, latencyMs } = await fetchJson(`${url}/admin/status`, { headers: { Authorization: `Bearer ${adminToken}` } })
     return { data: status.parse(data), latencyMs }
+  })
+}
+
+const activityCounts = {
+  ownerMessages: z.number().int(),
+  jobs: z.number().int(),
+  jobsDone: z.number().int(),
+  jobsDead: z.number().int(),
+  projects: z.number().int(),
+  versions: z.number().int(),
+  versionsApproved: z.number().int(),
+  messagesSent: z.number().int(),
+  messagesFailed: z.number().int(),
+}
+const activity = z.object({
+  version: z.literal(1),
+  timezone: z.string(),
+  from: z.string(),
+  to: z.string(),
+  totals: z.object(activityCounts),
+  daily: z.array(z.object({ date: z.string(), ...activityCounts })),
+  jobsByType: z.array(z.object({ type: z.string(), jobs: z.number().int(), done: z.number().int(), dead: z.number().int() })),
+})
+export type DesignAgentActivity = z.infer<typeof activity>
+
+/** Daily activity counts for one range (GET /admin/activity, whatssup-bot PR #39). Counts only. */
+export async function getDesignAgentActivity(range: DateRange): Promise<SourceResult<DesignAgentActivity>> {
+  const { url, adminToken } = env().designAgent
+  const missing = [!url && 'DESIGN_AGENT_URL', !adminToken && 'DESIGN_AGENT_ADMIN_TOKEN'].filter(Boolean) as string[]
+  if (missing.length) return notConfigured(missing)
+  const qs = new URLSearchParams({ from: range.from, to: range.to })
+  return readSource(`agent:activity:${range.from}:${range.to}`, 60_000, 'Design agent /admin/activity', async () => {
+    const { data, latencyMs } = await fetchJson(`${url}/admin/activity?${qs}`, { headers: { Authorization: `Bearer ${adminToken}` } }).catch((e) =>
+      withHint(e, (x) => (x.status === 404 ? 'The running bot predates /admin/activity (whatssup-bot PR #39): redeploy it on Railway' : null)),
+    )
+    return { data: activity.parse(data), latencyMs }
   })
 }
 

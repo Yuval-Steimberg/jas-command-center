@@ -19,6 +19,9 @@ export function RangeSelect() {
         onChange={(e) => {
           const next = new URLSearchParams(params.toString())
           next.set('range', e.target.value)
+          // A preset replaces a custom analytics range (?from=&to= would otherwise win).
+          next.delete('from')
+          next.delete('to')
           router.push(`${path}?${next.toString()}`)
         }}
         className="h-full cursor-pointer appearance-none bg-transparent pe-5 outline-none"

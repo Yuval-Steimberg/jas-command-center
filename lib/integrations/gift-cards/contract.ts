@@ -39,6 +39,30 @@ export const giftCardSummary = z.object({
 })
 export type GiftCardSummary = z.infer<typeof giftCardSummary>
 
+/**
+ * GET /api/integration/v1/sales?from&to — daily cards sold / face value and
+ * redemptions per Israel day for the range and the period before it, computed
+ * by the gift card system's own salesCards(). Reversed redemptions come apart.
+ */
+const salesDay = z.object({ date: z.string(), cardsSold: z.number().int(), salesMinor: minor, redemptions: z.number().int(), redeemedMinor: minor })
+const salesPeriod = z.object({
+  from: z.string(),
+  to: z.string(),
+  totals: z.object({
+    cardsSold: z.number().int(),
+    salesMinor: minor,
+    redemptions: z.number().int(),
+    redeemedMinor: minor,
+    reversedRedemptions: z.number().int(),
+    reversedMinor: minor,
+    averageCardMinor: minor.nullable(),
+  }),
+  daily: z.array(salesDay),
+  byTemplate: z.array(z.object({ templateId: z.string(), name: z.string(), cardsSold: z.number().int(), salesMinor: minor })),
+})
+export const giftCardSales = z.object({ version: z.literal(1), generatedAt: z.string(), timezone: z.string(), current: salesPeriod, previous: salesPeriod })
+export type GiftCardSales = z.infer<typeof giftCardSales>
+
 /** GET /api/health (public). Only the fields we rely on. */
 export const giftCardHealth = z.object({
   ok: z.boolean(),

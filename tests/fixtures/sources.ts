@@ -32,3 +32,37 @@ export const giftSummaryFixture = {
   stats: { soldTotal: 3, soldToday: 0, soldWeek: 1, soldMonth: 3, totalSalesMinor: 75000, outstandingMinor: 45000, redeemedMinor: 30000, partiallyRedeemed: 1, fullyRedeemed: 0, active: 2, suspended: 0, refunded: 0, expiringSoon: 0, failedDeliveries: 0 },
   deliveryHealth: { windowDays: 14, unmatchedPayments: 0, unmatchedPaymentsMinor: 0, paidNotActivated: 0, undelivered: 0, undeliveredByStatus: {} },
 }
+
+const salesDay = (date: string, cardsSold: number, salesMinor: number, redemptions = 0, redeemedMinor = 0) => ({ date, cardsSold, salesMinor, redemptions, redeemedMinor })
+/** gift_card_system GET /api/integration/v1/sales, two-day range. */
+export const giftSalesFixture = {
+  version: 1,
+  generatedAt: '2026-10-22T10:00:00Z',
+  timezone: 'Asia/Jerusalem',
+  current: {
+    from: '2026-10-21',
+    to: '2026-10-22',
+    totals: { cardsSold: 3, salesMinor: 75000, redemptions: 1, redeemedMinor: 8000, reversedRedemptions: 1, reversedMinor: 2000, averageCardMinor: 25000 },
+    daily: [salesDay('2026-10-21', 1, 20000), salesDay('2026-10-22', 2, 55000, 1, 8000)],
+    byTemplate: [{ templateId: 'tpl-a', name: 'חגיגה', cardsSold: 3, salesMinor: 75000 }],
+  },
+  previous: {
+    from: '2026-10-19',
+    to: '2026-10-20',
+    totals: { cardsSold: 0, salesMinor: 0, redemptions: 0, redeemedMinor: 0, reversedRedemptions: 0, reversedMinor: 0, averageCardMinor: null },
+    daily: [salesDay('2026-10-19', 0, 0), salesDay('2026-10-20', 0, 0)],
+    byTemplate: [],
+  },
+}
+
+const agentDay = (date: string, n: number) => ({ date, ownerMessages: n, jobs: n, jobsDone: n, jobsDead: 0, projects: 0, versions: n, versionsApproved: 0, messagesSent: n, messagesFailed: 0 })
+/** whatssup-bot GET /admin/activity. */
+export const agentActivityFixture = (from: string, to: string, n: number) => ({
+  version: 1 as const,
+  timezone: 'Asia/Jerusalem',
+  from,
+  to,
+  totals: { ownerMessages: 2 * n, jobs: 2 * n, jobsDone: 2 * n, jobsDead: 0, projects: 0, versions: 2 * n, versionsApproved: 0, messagesSent: 2 * n, messagesFailed: 0 },
+  daily: [agentDay(from, n), agentDay(to, n)],
+  jobsByType: [{ type: 'render', jobs: 2 * n, done: 2 * n, dead: 0 }],
+})

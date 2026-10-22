@@ -3,8 +3,9 @@ import { env } from '@/lib/env'
 import { fetchJson, SourceError, withHint } from '../http'
 import { notConfigured, readOnce, readSource } from '../read'
 import { invalidate } from '../cache'
+import type { DateRange } from '@/lib/time'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
-import { giftCardDetail, giftCardHealth, giftCardSearch, giftCardSummary, resendAllResult, writeResult, type GiftCardDetail, type GiftCardHealth, type GiftCardSearch, type GiftCardSummary, type ResendAllResult } from './contract'
+import { giftCardDetail, giftCardHealth, giftCardSales, giftCardSearch, giftCardSummary, resendAllResult, writeResult, type GiftCardDetail, type GiftCardHealth, type GiftCardSales, type GiftCardSearch, type GiftCardSummary, type ResendAllResult } from './contract'
 
 export async function getGiftCardSummary(): Promise<SourceResult<GiftCardSummary>> {
   const { url, integrationKey } = env().giftCards
@@ -22,6 +23,22 @@ export async function getGiftCardSummary(): Promise<SourceResult<GiftCardSummary
     })
     const parsed = giftCardSummary.safeParse(data)
     if (!parsed.success) throw new SourceError(`unexpected summary shape (${parsed.error.issues[0]?.path.join('.')})`, 200, latencyMs)
+    return { data: parsed.data, latencyMs }
+  })
+}
+
+/** Daily sales and redemptions for a range plus the period before it (analytics). */
+export async function getGiftCardSales(range: DateRange): Promise<SourceResult<GiftCardSales>> {
+  const { url, integrationKey } = env().giftCards
+  const missing = [!url && 'GIFT_CARDS_URL', !integrationKey && 'GIFT_CARDS_INTEGRATION_KEY'].filter(Boolean) as string[]
+  if (missing.length) return notConfigured(missing)
+  const qs = new URLSearchParams({ from: range.from, to: range.to })
+  return readSource(`gift:sales:${range.from}:${range.to}`, 60_000, 'Gift Card System /api/integration/v1/sales', async () => {
+    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/sales?${qs}`, { headers: { Authorization: `Bearer ${integrationKey}` }, timeoutMs: 15_000 }).catch((e) =>
+      withHint(e, (x) => (x.status === 404 ? 'The gift card deployment predates the sales endpoint (gift_card_system PR #7) or has INTEGRATION_API_KEY unset: redeploy it' : x.status === 401 ? 'The keys differ: GIFT_CARDS_INTEGRATION_KEY here must equal INTEGRATION_API_KEY on the gift card deployment' : null)),
+    )
+    const parsed = giftCardSales.safeParse(data)
+    if (!parsed.success) throw new SourceError(`unexpected sales shape (${parsed.error.issues[0]?.path.join('.')})`, 200, latencyMs)
     return { data: parsed.data, latencyMs }
   })
 }

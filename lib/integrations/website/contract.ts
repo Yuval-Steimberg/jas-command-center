@@ -25,6 +25,21 @@ export const WEBSITE_KPIS = [
 
 const segment = z.object({ key: z.string(), sessions: z.number(), orders: z.number(), revenue: z.number(), share: z.number().nullable(), conversionRate: z.number().nullable() }).passthrough()
 
+/** One Israel day. Event counts are null before tracking existed; orders/revenue always come from orders. */
+export const dailyPoint = z.object({
+  date: z.string(),
+  visitors: z.number().nullable(),
+  sessions: z.number().nullable(),
+  pageviews: z.number().nullable(),
+  productViews: z.number().nullable(),
+  addToCarts: z.number().nullable(),
+  orders: z.number(),
+  revenue: z.number(),
+  legacy: z.boolean().optional(),
+}).passthrough()
+export type DailyPoint = z.infer<typeof dailyPoint>
+const funnelStep = z.object({ key: z.string(), sessions: z.number(), rateFromPrevious: z.number().nullable(), rateFromStart: z.number().nullable() }).passthrough()
+
 export const metricsSnapshot = z.object({
   version: z.literal(1),
   generatedAt: z.string(),
@@ -38,7 +53,11 @@ export const metricsSnapshot = z.object({
     notes: z.array(z.string()),
   }).passthrough(),
   kpis: z.object(Object.fromEntries(WEBSITE_KPIS.map((k) => [k, kpiValue])) as Record<(typeof WEBSITE_KPIS)[number], typeof kpiValue>).passthrough(),
-  funnel: z.array(z.object({ key: z.string(), sessions: z.number(), rateFromPrevious: z.number().nullable(), rateFromStart: z.number().nullable() }).passthrough()),
+  funnel: z.array(funnelStep),
+  // Optional so an older website deployment still validates; analytics says "no daily data" instead.
+  funnelPrevious: z.array(funnelStep).optional(),
+  daily: z.array(dailyPoint).optional(),
+  dailyPrevious: z.array(dailyPoint).optional(),
   channels: z.array(segment),
   devices: z.array(segment),
   sales: z.object({
