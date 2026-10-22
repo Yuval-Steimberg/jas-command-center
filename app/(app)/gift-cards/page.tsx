@@ -4,14 +4,60 @@ import { Freshness, SourceProblem } from '@/components/ui/source-state'
 import { StatusBadge } from '@/components/ui/status'
 import { CapabilityList } from '@/components/capabilities'
 import { giftCardsAdapter, getGiftCardHealth, getGiftCardSummary } from '@/lib/integrations/gift-cards/adapter'
-import { requirePageAccess } from '@/lib/auth/session'
+import Link from 'next/link'
+import { getSession, requirePageAccess } from '@/lib/auth/session'
+import { can } from '@/lib/auth/rbac'
+import { searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
+import { formatDateTime } from '@/lib/format'
+import { ResendAllForm } from './forms'
 import { formatAgorot } from '@/lib/money'
 import { formatCount } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
 
-export default async function GiftCardsPage() {
+const STATUS_FILTERS = ['active', 'partially_redeemed', 'fully_redeemed', 'awaiting_payment', 'suspended', 'refunded', 'expired', 'cancelled'] as const
+
+async function CardSearch({ q, status, pii }: { q: string; status: string | undefined; pii: boolean }) {
+  const r = await searchGiftCards(q, status)
+  if (r.state !== 'ok') return <SourceProblem result={r} what="Card search" />
+  if (!r.data.items.length) return <p className="text-sm text-muted">No cards match.</p>
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead className="text-start text-xs text-muted">
+          <tr>
+            <th className="py-2 pe-3 text-start font-medium">Code</th>
+            <th className="py-2 pe-3 text-start font-medium">Status</th>
+            <th className="py-2 pe-3 text-end font-medium">Balance / value</th>
+            <th className="py-2 pe-3 text-start font-medium">Recipient</th>
+            <th className="py-2 text-start font-medium">Created</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-line/70">
+          {r.data.items.map((c) => (
+            <tr key={c.id}>
+              <td className="whitespace-nowrap py-2 pe-3 font-mono text-xs"><Link href={`/gift-cards/${c.id}`} className="underline-offset-2 hover:underline">{c.maskedCode}</Link></td>
+              <td className="whitespace-nowrap py-2 pe-3">{c.status.replace(/_/g, ' ')}</td>
+              <td className="num whitespace-nowrap py-2 pe-3 text-end">{formatAgorot(c.balanceMinor)} / {formatAgorot(c.initialAmountMinor)}</td>
+              <td className="py-2 pe-3" dir="auto">{pii ? c.recipientName : <span className="text-muted">hidden for your role</span>}</td>
+              <td className="whitespace-nowrap py-2 text-xs text-muted">{formatDateTime(c.createdAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-2 text-meta text-muted">{r.data.total > r.data.items.length ? `Showing ${r.data.items.length} of ${r.data.total}. Narrow the search to see the rest.` : `${r.data.total} card(s).`}</p>
+    </div>
+  )
+}
+
+export default async function GiftCardsPage({ searchParams }: { searchParams?: { q?: string; status?: string } }) {
   await requirePageAccess('gift_cards:read')
+  const s = (await getSession())!
+  const pii = can(s.user.role, 'gift_cards:read_pii', s.overrides)
+  const operate = can(s.user.role, 'gift_cards:operate', s.overrides)
+  const q = (typeof searchParams?.q === 'string' ? searchParams.q : '').trim().slice(0, 100)
+  const status = STATUS_FILTERS.find((x) => x === searchParams?.status)
+  const searching = q.length > 0 || Boolean(status)
   const [summary, health] = await Promise.all([getGiftCardSummary(), getGiftCardHealth()])
   return (
     <>
@@ -19,6 +65,22 @@ export default async function GiftCardsPage() {
         title="Gift cards"
         description="Figures come from the Gift Card System's own admin statistics, so a sale has one definition. Face value sold, outstanding liability and redeemed value are separate numbers and are never added together."
       />
+      <Card className="mb-4">
+        <CardHeader title="Find a card" meta={pii ? 'Code, name, email or phone' : 'Code (your role cannot search by customer details)'} />
+        <CardBody>
+          <form action="/gift-cards" className="mb-3 flex flex-col gap-2 sm:flex-row">
+            <label className="min-w-0 flex-1"><span className="sr-only">Search</span><input name="q" defaultValue={q} dir="auto" maxLength={100} placeholder="Last digits of the code, recipient, buyer email…" className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm" /></label>
+            <label><span className="sr-only">Status</span>
+              <select name="status" defaultValue={status ?? ''} className="h-10 w-full rounded-md border border-line bg-surface px-2 text-sm sm:w-auto">
+                <option value="">Any status</option>
+                {STATUS_FILTERS.map((x) => <option key={x} value={x}>{x.replace(/_/g, ' ')}</option>)}
+              </select>
+            </label>
+            <button className="h-10 rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">Search</button>
+          </form>
+          {searching ? <CardSearch q={pii ? q : q.replace(/[^A-Za-z0-9-]/g, '')} status={status} pii={pii} /> : <p className="text-sm text-muted">Search to list cards. Codes are shown masked; open a card for its delivery history and actions.</p>}
+        </CardBody>
+      </Card>
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="flex flex-col gap-4 lg:col-span-2">
           {summary.state !== 'ok' ? (
@@ -55,8 +117,11 @@ export default async function GiftCardsPage() {
                   <Kpi label="Active, not delivered" value={formatCount(summary.data.deliveryHealth.undelivered)} tone={summary.data.deliveryHealth.undelivered ? 'bad' : undefined} />
                   <Kpi label="Failed deliveries (all)" value={formatCount(summary.data.stats.failedDeliveries)} />
                 </CardBody>
-                <CardBody className="border-t border-line/70 text-xs text-muted">
-                  Fix individual cards in the Gift Card System admin (resend, edit recipient, mark paid). Doing it from here is planned and will call those same actions.
+                <CardBody className="flex flex-col gap-2 border-t border-line/70">
+                  {operate ? <ResendAllForm count={summary.data.deliveryHealth.undelivered} /> : null}
+                  <p className="text-xs text-muted">
+                    Resend runs the gift card system&apos;s own resend. Cards whose address bounced need a new recipient: open the card. Marking a card paid stays in the gift card admin.
+                  </p>
                 </CardBody>
               </Card>
             </>
