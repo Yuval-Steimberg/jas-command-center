@@ -25,7 +25,7 @@ export default async function WebsitePage({ searchParams }: { searchParams?: Rec
         title="Website & shop"
         description="Read from the website's own analytics engine. Revenue comes only from orders in a paid status; checkout and cart events are never counted as sales."
       />
-      <p className="mb-4 text-sm"><Link href="/website/orders" className="underline-offset-2 hover:underline">Orders</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link> · <Link href="/website/content" className="underline-offset-2 hover:underline">Content &amp; shop hours</Link></p>
+      <p className="mb-4 text-sm"><Link href="/website/orders" className="underline-offset-2 hover:underline">Orders</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link> · <Link href="/website/content" className="underline-offset-2 hover:underline">Content &amp; shop hours</Link> · <Link href="/website/reviews" className="underline-offset-2 hover:underline">Reviews</Link></p>
       {r.state !== 'ok' ? (
         <SourceProblem result={r} what="Website analytics" />
       ) : (

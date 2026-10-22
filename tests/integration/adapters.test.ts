@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -155,6 +155,24 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(JSON.parse(s.seen[2]!.body).expectUpdatedAt).toBeNull()
     expect(await setWebsiteContent('popup_title', 'x', 'stale')).toMatchObject({ ok: false, conflict: true })
     expect(s.seen).toHaveLength(4)
+  })
+
+  it('lists and moderates reviews', async () => {
+    const review = { id: 3, product_id: null, customer_name: 'רון', customer_email: 'r@x.co', rating: 4, title: null, content: 'יפה', approved: false, created_at: '2026-10-20T10:00:00Z', product: null, reply: '' }
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (b.action === 'reviews-list') return { status: 200, body: { reviews: [review] } }
+      if (b.action === 'reviews-set-approved') return { status: 200, body: { updated: b.ids } }
+      return { status: 200, body: { deleted: [] } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await listWebsiteReviews('pending')).toMatchObject({ state: 'ok', data: [{ id: 3, approved: false }] })
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ action: 'reviews-list', status: 'pending' })
+    expect(await setWebsiteReviewsApproved([3], true)).toEqual({ ok: true, value: [3] })
+    expect(JSON.parse(s.seen[1]!.body)).toEqual({ action: 'reviews-set-approved', ids: [3], approved: true })
+    expect(await deleteWebsiteReviews([3])).toEqual({ ok: true, value: [] })
   })
 
   it('a rejected key names the variable to fix', async () => {

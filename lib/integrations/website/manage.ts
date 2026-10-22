@@ -170,3 +170,44 @@ export const setWebsiteContent = (key: string, value: string, expectUpdatedAt: s
 /** The shop-hours keys and their meaning (the website's src/lib/shopHours.ts). */
 export const SHOP_HOURS_KEYS = ['shop_status_override', 'shop_open_from', 'shop_open_to', 'shop_open_days'] as const
 export const PARTNERS_KEY = 'partners_json'
+
+/**
+ * Reviews (the website manager's ביקורות tab): approve / hide / delete and a
+ * stored reply. `customer_email` is a customer's address: pages show it only
+ * to roles with website:read_pii.
+ */
+export const websiteReview = z.object({
+  id: z.number().int(),
+  product_id: z.number().int().nullable(),
+  customer_name: z.string(),
+  customer_email: z.string().nullable().optional(),
+  rating: z.number(),
+  title: z.string().nullable(),
+  content: z.string().nullable(),
+  approved: z.boolean(),
+  created_at: z.string(),
+  product: z.object({ id: z.number(), name_he: z.string().nullable(), slug: z.string().nullable() }).nullable(),
+  reply: z.string(),
+})
+export type WebsiteReview = z.infer<typeof websiteReview>
+const reviewsResponse = z.object({ reviews: z.array(websiteReview) })
+
+export type ReviewFilter = 'pending' | 'approved' | ''
+
+export async function listWebsiteReviews(status: ReviewFilter): Promise<SourceResult<WebsiteReview[]>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:reviews:${status}`, SOURCE, async () => {
+    const { data, latencyMs } = await call('reviews-list', status ? { status } : {}, true)
+    return { data: reviewsResponse.parse(data).reviews, latencyMs }
+  })
+}
+
+export const setWebsiteReviewsApproved = (ids: number[], approved: boolean) =>
+  write('reviews-set-approved', { ids, approved }, (d) => z.object({ updated: z.array(z.number()) }).parse(d).updated)
+
+export const deleteWebsiteReviews = (ids: number[]) =>
+  write('reviews-delete', { ids }, (d) => z.object({ deleted: z.array(z.number()) }).parse(d).deleted)
+
+export const setWebsiteReviewReply = (id: number, reply: string) =>
+  write('review-reply', { id, reply }, (d) => z.object({ id: z.number(), reply: z.string() }).parse(d))

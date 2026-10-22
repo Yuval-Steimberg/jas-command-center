@@ -47,6 +47,9 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
 - Site content (`/website/content`): exactly the website's SITE_CONTENT_SCHEMA keys (texts, images, shop hours,
   partners) via `content-list`/`content-set`; the website validates per key and refuses a stale edit (409).
   Discount codes, campaigns and review replies share `site_content` but are NOT reachable through it.
+- Reviews (`/website/reviews`): approve / hide / delete (bulk via `form="reviews-bulk"`) + reply. Reviewer email
+  is shown only with `website:read_pii`.
+- The owner decided (2026-10-22) to RETIRE the website's /manager: build admin features here, not there.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):
 - Only column updates the field app itself makes: `projects.archived`, `items.gallery_type` (its

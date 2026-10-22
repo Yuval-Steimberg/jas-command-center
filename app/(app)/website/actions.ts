@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, PARTNERS_KEY, setWebsiteContent, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, deleteWebsiteReviews, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -245,4 +245,63 @@ export async function savePartnersAction(_prev: ActionState, form: FormData): Pr
   const res = await writeContent(user, PARTNERS_KEY, value, expectAt(form.get('expectUpdatedAt')), before)
   revalidatePath('/website/content')
   return res.ok ? { ok: true, message: `Saved. ${list.length} partner${list.length === 1 ? '' : 's'} on the home page.` } : { ok: false, message: `Not saved: ${res.message}` }
+}
+
+// ── Reviews ──────────────────────────────────────────────────────────────────
+
+const reviewIds = z.array(z.coerce.number().int().positive()).min(1, 'Select at least one review.').max(100, 'At most 100 reviews at once.')
+
+/** approve | hide | delete, for one review or the ticked ones. Delete cannot be undone; hide can. */
+export async function moderateReviewsAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to moderate reviews.' }
+  }
+  const op = z.enum(['approve', 'hide', 'delete']).safeParse(form.get('op'))
+  const ids = reviewIds.safeParse(form.getAll('id'))
+  if (!op.success) return { ok: false, message: 'Unknown action.' }
+  if (!ids.success) return { ok: false, message: ids.error.issues[0]!.message }
+  const action = op.data === 'delete' ? 'website.review.delete' : 'website.review.set_approved'
+  const target = ids.data.length === 1 ? `review:${ids.data[0]}` : `reviews:${ids.data.length}`
+  const detail = { op: op.data, ids: ids.data }
+  await audit(user, { action, product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = op.data === 'delete' ? await deleteWebsiteReviews(ids.data) : await setWebsiteReviewsApproved(ids.data, op.data === 'approve')
+    await audit(user, { action, product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? { ...detail, affected: res.value } : { ...detail, message: res.message } })
+    revalidatePath('/website/reviews')
+    if (!res.ok) return { ok: false, message: `Not changed: ${res.message}` }
+    const n = res.value.length
+    const verb = op.data === 'delete' ? 'Deleted' : op.data === 'approve' ? 'Approved (now on the site)' : 'Hidden from the site'
+    return { ok: true, message: `${verb}: ${n} review${n === 1 ? '' : 's'}.${n < ids.data.length ? ' Some were already gone.' : ''}` }
+  } catch (e) {
+    await audit(user, { action, product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not changed: ${fail(e)}` }
+  }
+}
+
+export async function replyReviewAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to reply to reviews.' }
+  }
+  const id = rowId.safeParse(form.get('id'))
+  const reply = z.string().max(2000, 'A reply is limited to 2000 characters.').safeParse(String(form.get('reply') ?? '').trim())
+  if (!id.success) return { ok: false, message: 'Invalid review.' }
+  if (!reply.success) return { ok: false, message: reply.error.issues[0]!.message }
+  const target = `review:${id.data}`
+  const detail = { before: clip(String(form.get('was') ?? '')), after: clip(reply.data) }
+  await audit(user, { action: 'website.review.reply', product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await setWebsiteReviewReply(id.data, reply.data)
+    await audit(user, { action: 'website.review.reply', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    revalidatePath('/website/reviews')
+    return res.ok ? { ok: true, message: 'Reply saved.' } : { ok: false, message: `Not saved: ${res.message}` }
+  } catch (e) {
+    await audit(user, { action: 'website.review.reply', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not saved: ${fail(e)}` }
+  }
 }
