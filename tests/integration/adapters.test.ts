@@ -60,7 +60,17 @@ describe('website adapter (contract: POST /api/analytics, Bearer AGENT_API_KEY, 
     closers.push(s.close)
     process.env.WEBSITE_URL = s.url
     process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
-    expect(await getWebsiteSnapshot(range)).toMatchObject({ state: 'error', error: 'HTTP 401: Unauthorized' })
+    const r = await getWebsiteSnapshot(range)
+    expect(r.state === 'error' && r.error).toMatch(/^HTTP 401: Unauthorized\. .*AGENT_API_KEY/)
+  })
+
+  it("a host without the analytics function says so, with Vercel's own message", async () => {
+    const s = await fakeServer(() => ({ status: 404, body: { error: { code: 'NOT_FOUND', message: 'The page could not be found' } } }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
+    const r = await getWebsiteSnapshot(range)
+    expect(r.state === 'error' && r.error).toMatch(/^HTTP 404: The page could not be found \(NOT_FOUND\)\. Nothing answers at .*\/api\/analytics/)
   })
 
   it('caches a success and shares it', async () => {
@@ -115,6 +125,21 @@ describe('gift card adapter (contract: GET /api/integration/v1/summary)', () => 
     const r = await getGiftCardSummary()
     expect(r.state === 'error' && r.error).toMatch(/^HTTP 404: not found\. .*INTEGRATION_API_KEY .*redeploy/)
     expect(s.seen[0]!.path).toBe('/api/integration/v1/summary')
+  })
+})
+
+describe('gift card 404 diagnosis from its own health endpoint', () => {
+  it('says the key is not set on the running build, and which build that is', async () => {
+    const s = await fakeServer((r) =>
+      r.path === '/api/health'
+        ? { status: 200, body: { ok: true, branch: 'claude/gift-card-system-build-0oflq7', commit: 'ef34ccd', env: { INTEGRATION_API_KEY_LEN: 0 } } }
+        : { status: 404, body: { error: 'not found' } },
+    )
+    closers.push(s.close)
+    process.env.GIFT_CARDS_URL = s.url
+    process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
+    const r = await getGiftCardSummary()
+    expect(r.state === 'error' && r.error).toMatch(/INTEGRATION_API_KEY is not set on the running gift card deployment \(running claude\/gift-card-system-build-0oflq7 @ ef34ccd\)/)
   })
 })
 

@@ -64,8 +64,7 @@ export async function fetchJson<T = unknown>(url: string, opts: FetchOptions = {
     if (!res.ok) {
       let detail = text
       try {
-        const j = JSON.parse(text) as { error?: unknown; message?: unknown }
-        detail = String(j.error ?? j.message ?? text)
+        detail = errorDetail(JSON.parse(text)) ?? text
       } catch {
         /* not JSON */
       }
@@ -102,4 +101,25 @@ export function withHint(e: unknown, hint: (e: SourceError) => string | null): n
     if (h) throw new SourceError(`${e.message}. ${h}`, e.status, e.latencyMs)
   }
   throw e
+}
+
+/**
+ * The readable part of a JSON error body. Handles `{error: "..."}`, `{message}`
+ * and nested `{error: {code, message}}` (Vercel's own NOT_FOUND) — the last one
+ * used to render as "[object Object]".
+ */
+export function errorDetail(body: unknown): string | null {
+  if (body == null || typeof body !== 'object') return typeof body === 'string' ? body : null
+  const b = body as Record<string, unknown>
+  for (const k of ['error', 'message', 'msg', 'detail']) {
+    const v = b[k]
+    if (typeof v === 'string' && v) return v
+    if (v && typeof v === 'object') {
+      const inner = v as Record<string, unknown>
+      const msg = typeof inner.message === 'string' ? inner.message : null
+      const code = typeof inner.code === 'string' ? inner.code : null
+      if (msg || code) return [msg, code && `(${code})`].filter(Boolean).join(' ')
+    }
+  }
+  return null
 }

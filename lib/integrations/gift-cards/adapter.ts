@@ -11,19 +11,29 @@ export async function getGiftCardSummary(): Promise<SourceResult<GiftCardSummary
   if (missing.length)
     return notConfigured(missing, 'GIFT_CARDS_INTEGRATION_KEY must equal INTEGRATION_API_KEY on the gift card deployment (needs the integration endpoint from the gift_card_system PR).')
   return readSource('gift:summary', 60_000, 'Gift Card System /api/integration/v1/summary', async () => {
-    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/summary`, { headers: { Authorization: `Bearer ${integrationKey}` } }).catch((e) =>
-      withHint(e, (x) =>
-        x.status === 404
-          ? 'The gift card deployment has the endpoint switched off: set INTEGRATION_API_KEY (32+ characters, the same value as GIFT_CARDS_INTEGRATION_KEY here) on its Vercel project for Production, then redeploy it'
-          : x.status === 401
-            ? 'The keys differ: GIFT_CARDS_INTEGRATION_KEY here must equal INTEGRATION_API_KEY on the gift card deployment'
-            : null,
-      ),
-    )
+    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/summary`, { headers: { Authorization: `Bearer ${integrationKey}` } }).catch(async (e) => {
+      if (e instanceof SourceError && e.status === 404) {
+        const h = await getGiftCardHealth()
+        const why = h.state === 'ok' ? disabledReason(h.data) : null
+        withHint(e, () => `${why ?? 'The gift card deployment has the endpoint switched off'}: set INTEGRATION_API_KEY (32+ characters, the same value as GIFT_CARDS_INTEGRATION_KEY here) on the gift card Vercel project for Production, then redeploy that project`)
+      }
+      return withHint(e, (x) => (x.status === 401 ? 'The keys differ: GIFT_CARDS_INTEGRATION_KEY here must equal INTEGRATION_API_KEY on the gift card deployment' : null))
+    })
     const parsed = giftCardSummary.safeParse(data)
     if (!parsed.success) throw new SourceError(`unexpected summary shape (${parsed.error.issues[0]?.path.join('.')})`, 200, latencyMs)
     return { data: parsed.data, latencyMs }
   })
+}
+
+/** What the gift card's own /api/health says about the key, from the running deployment. */
+function disabledReason(h: GiftCardHealth): string | null {
+  const len = h.env?.INTEGRATION_API_KEY_LEN
+  const build = [h.branch, h.commit].filter((x) => typeof x === 'string').join(' @ ')
+  const where = build ? ` (running ${build})` : ''
+  if (typeof len !== 'number') return `The running gift card deployment${where} is older than the key diagnostics, so it was probably not redeployed`
+  if (len === 0) return `INTEGRATION_API_KEY is not set on the running gift card deployment${where}`
+  if (len < 32) return `INTEGRATION_API_KEY on the gift card deployment${where} is only ${len} characters`
+  return null
 }
 
 export async function getGiftCardHealth(): Promise<SourceResult<GiftCardHealth>> {
