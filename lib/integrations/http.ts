@@ -11,7 +11,7 @@ export class SourceError extends Error {
 }
 
 export interface FetchOptions {
-  method?: 'GET' | 'POST'
+  method?: 'GET' | 'POST' | 'PATCH'
   headers?: Record<string, string>
   body?: unknown
   timeoutMs?: number
