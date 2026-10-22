@@ -48,6 +48,8 @@ export function env() {
       branch: read('MAP_GITHUB_BRANCH') ?? 'main',
       githubToken: read('GITHUB_TOKEN'),
     },
+    /** The read-only AI assistant. Off (and saying so) until the key is set. */
+    assistant: { apiKey: read('ANTHROPIC_API_KEY'), model: read('ASSISTANT_MODEL') ?? 'claude-opus-5-5' },
   }
 }
 

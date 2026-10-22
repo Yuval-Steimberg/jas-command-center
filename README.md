@@ -65,7 +65,8 @@ Adding a product: [`docs/ADDING_AN_INTEGRATION.md`](docs/ADDING_AN_INTEGRATION.m
 | Design agent: queue health, dead jobs (+ retry), failed sends, projects | Built — **needs `DESIGN_AGENT_URL` (+ `ADMIN_TOKEN`)** |
 | Map: places, categories, published commit | Built — works without credentials if the repo is public |
 | Alerts (derived live) | Built. Read/unread, assignment and email: next |
-| Activity feed, cross-system search, analytics workspace, AI assistant, writes beyond retry | **Not built** — each page says so |
+| AI assistant (read-only): 7 permission-filtered tools over the adapters, bounded loop, every question and lookup audited | Built, tested against a stubbed API — **needs `ANTHROPIC_API_KEY`** |
+| Activity feed, cross-system search, analytics workspace, assistant write actions, writes beyond retry | **Not built** — each page says so |
 
 None of the integrations has been exercised against a live system: this build
 environment cannot reach any JAS host. Each one is tested against a local fake

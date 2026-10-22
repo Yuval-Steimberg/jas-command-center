@@ -15,6 +15,20 @@ Non-negotiables:
 - Website ₪ (decimal) and gift-card agorot are normalised with `lib/money.ts`
   and never summed across systems.
 
+AI assistant (`lib/assistant/`, page `/assistant`):
+- Its only reach is `TOOLS` in `lib/assistant/tools.ts`: typed, read-only wrappers
+  over the same adapters. No SQL, no URLs, no writes. A new tool names its
+  permission, has a Zod input + strict JSON schema, and trims PII before return
+  (everything returned is sent to the model provider).
+- Tools offered = the user's role; `runTool` re-checks. Every lookup writes
+  `assistant.tool` and every question `assistant.ask` (via = assistant); a failed
+  audit write aborts the answer.
+- System prompt is frozen (date goes in the user turn) so the prompt cache holds.
+  History from the browser is text-only and schema-checked; within one question
+  the loop is append-only. Bounded: `MAX_ROUNDS` 6, `DEADLINE_MS` 45 s.
+- Write actions are not built. When they are: confirmation step in the UI,
+  `requested` audit before, confirmed outcome after — never executed by the model alone.
+
 Source facts that are easy to get wrong:
 - whatssup-bot is the owner's DESIGN agent (allowlisted numbers), not a
   customer WhatsApp bot. No customer inbox exists.

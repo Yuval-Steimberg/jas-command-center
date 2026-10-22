@@ -25,6 +25,7 @@ New Vercel project from this repo (framework: Next.js). Production branch:
 | `FURNITURE_APP_URL` | The field app's production URL |
 | `DESIGN_AGENT_URL`, `DESIGN_AGENT_ADMIN_TOKEN` | Railway → service → Networking (domain) and Variables (`ADMIN_TOKEN`) |
 | `GITHUB_TOKEN` | Only if `Interactive-map` is private |
+| `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys. Set a monthly spend limit (Settings → Limits). Optional `ASSISTANT_MODEL` (default `claude-opus-5-5`) |
 
 Env changes need a redeploy. Generate secrets with `openssl rand -base64 32`.
 Never paste them in chat or commit them.
