@@ -1,6 +1,6 @@
 import 'server-only'
 import { env } from '@/lib/env'
-import { fetchJson, SourceError } from '../http'
+import { fetchJson, SourceError, withHint } from '../http'
 import { notConfigured, readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 import { giftCardHealth, giftCardSummary, type GiftCardHealth, type GiftCardSummary } from './contract'
@@ -11,7 +11,15 @@ export async function getGiftCardSummary(): Promise<SourceResult<GiftCardSummary
   if (missing.length)
     return notConfigured(missing, 'GIFT_CARDS_INTEGRATION_KEY must equal INTEGRATION_API_KEY on the gift card deployment (needs the integration endpoint from the gift_card_system PR).')
   return readSource('gift:summary', 60_000, 'Gift Card System /api/integration/v1/summary', async () => {
-    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/summary`, { headers: { Authorization: `Bearer ${integrationKey}` } })
+    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/summary`, { headers: { Authorization: `Bearer ${integrationKey}` } }).catch((e) =>
+      withHint(e, (x) =>
+        x.status === 404
+          ? 'The gift card deployment has the endpoint switched off: set INTEGRATION_API_KEY (32+ characters, the same value as GIFT_CARDS_INTEGRATION_KEY here) on its Vercel project for Production, then redeploy it'
+          : x.status === 401
+            ? 'The keys differ: GIFT_CARDS_INTEGRATION_KEY here must equal INTEGRATION_API_KEY on the gift card deployment'
+            : null,
+      ),
+    )
     const parsed = giftCardSummary.safeParse(data)
     if (!parsed.success) throw new SourceError(`unexpected summary shape (${parsed.error.issues[0]?.path.join('.')})`, 200, latencyMs)
     return { data: parsed.data, latencyMs }

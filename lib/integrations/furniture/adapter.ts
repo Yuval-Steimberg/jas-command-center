@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { env } from '@/lib/env'
-import { fetchJson, probe } from '../http'
+import { fetchJson, probe, SourceError, withHint } from '../http'
 import { notConfigured, readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 
@@ -45,6 +45,13 @@ function headers(key: string): Record<string, string> {
   return key.startsWith('eyJ') ? { apikey: key, Authorization: `Bearer ${key}` } : { apikey: key }
 }
 
+function furnitureHint(e: SourceError): string | null {
+  if (e.status === 401 || e.status === 403) return 'FURNITURE_SUPABASE_KEY is not a key of this project (use its service role / secret key)'
+  if (e.status === 404 && /invalid path/i.test(e.message)) return 'FURNITURE_SUPABASE_URL must be the Furniture-Collect project URL, https://<ref>.supabase.co, from Supabase → Project Settings → API'
+  if (e.status === 404) return 'The projects table or the project_summary_counts view is missing: check FURNITURE_SUPABASE_URL points at the Furniture-Collect project, not another one'
+  return null
+}
+
 export async function getFurnitureProjects(): Promise<SourceResult<FurnitureProject[]>> {
   const { supabaseUrl, supabaseKey } = env().furniture
   const missing = [!supabaseUrl && 'FURNITURE_SUPABASE_URL', !supabaseKey && 'FURNITURE_SUPABASE_KEY'].filter(Boolean) as string[]
@@ -54,7 +61,7 @@ export async function getFurnitureProjects(): Promise<SourceResult<FurnitureProj
     const [p, c] = await Promise.all([
       fetchJson(`${supabaseUrl}/rest/v1/projects?select=id,name,city,developer_name,start_date,archived,created_at&order=created_at.desc&limit=500`, { headers: h }),
       fetchJson(`${supabaseUrl}/rest/v1/project_summary_counts?select=*&limit=500`, { headers: h }),
-    ])
+    ]).catch((e) => withHint(e, furnitureHint))
     const projects = z.array(project).parse(p.data)
     const byId = new Map(z.array(counts).parse(c.data).map((r) => [r.project_id, r]))
     const data = projects.map((x) => {
