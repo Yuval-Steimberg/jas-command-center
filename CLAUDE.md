@@ -68,3 +68,15 @@ Search, activity, notifications:
 - `lib/notifications/` persists the derived alerts. `planSync` resolves an alert only when
   its family (id prefix) was observed this sweep. Marking read is the user's own inbox state
   and is deliberately not audited.
+
+Analytics (`/analytics`, `lib/analytics/`):
+- `model.ts` is pure and is the ONE shape the page and the CSV export both read (`csv.ts`), so an export equals the screen.
+  Sections never combine: website ₪ and gift-card face value are never added.
+- Every metric id must exist in `lib/metrics-catalog.ts` with the same basis and product (unit test enforces it).
+  `basis: 'period'` = selected range vs the equally long period before; `'now'` = current state, never compared.
+- Period data per source: website MetricsSnapshot (`daily`/`dailyPrevious`, optional for older deploys),
+  gift cards `GET /api/integration/v1/sales` (gift_card_system #7), design agent `GET /admin/activity`
+  (whatssup-bot #39, called once per period). Furniture exposes no item timestamps: progress is "now" only.
+- Custom range `?from=&to=` (validated in `range.ts`, ≤366 days, not future) overrides the preset; the
+  top-bar preset select clears it. `/analytics/export?kind=metrics|daily|tables` is audited as `analytics.export`.
+
