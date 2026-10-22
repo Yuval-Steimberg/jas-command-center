@@ -1,11 +1,12 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, PARTNERS_KEY, deleteWebsiteReviews, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -304,4 +305,89 @@ export async function replyReviewAction(_prev: ActionState, form: FormData): Pro
     await audit(user, { action: 'website.review.reply', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
     return { ok: false, message: `Not saved: ${fail(e)}` }
   }
+}
+
+// ── Blog ─────────────────────────────────────────────────────────────────────
+
+const opt = (max: number, label: string) => z.string().trim().max(max, `${label} is limited to ${max} characters.`).transform((v) => v || null)
+const postForm = z.object({
+  title_he: z.string().trim().min(1, 'The Hebrew title is required.').max(200, 'The title is limited to 200 characters.'),
+  title_en: opt(200, 'The English title'),
+  slug: z.string().trim().regex(/^[a-z0-9_]+(?:-[a-z0-9_]+)*$/, 'The address may use lowercase English letters, digits and dashes only, like how-to-restore-wood.').max(80),
+  excerpt_he: opt(1000, 'The excerpt'),
+  content_he: opt(60000, 'The article'),
+  cover_image: opt(2000, 'The cover image link'),
+  images: z.string().transform((v) => v.split('\n').map((x) => x.trim()).filter(Boolean)).pipe(z.array(z.string().max(2000)).max(30, 'Up to 30 gallery images.')),
+  category: opt(60, 'The category'),
+  tags: z.string().transform((v) => v.split(',').map((x) => x.trim()).filter(Boolean)).pipe(z.array(z.string().max(40, 'A tag is limited to 40 characters.')).max(20, 'Up to 20 tags.')),
+  author: opt(80, 'The author'),
+  published: z.boolean(),
+  featured: z.boolean(),
+})
+
+export async function saveBlogPostAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to edit blog posts.' }
+  }
+  const str = (k: string) => String(form.get(k) ?? '')
+  const parsed = postForm.safeParse({
+    title_he: str('title_he'), title_en: str('title_en'), slug: str('slug'), excerpt_he: str('excerpt_he'), content_he: str('content_he'),
+    cover_image: str('cover_image'), images: str('images'), category: str('category'), tags: str('tags'), author: str('author'),
+    published: form.get('published') === 'on', featured: form.get('featured') === 'on',
+  })
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]!.message }
+  const post: WebsitePostInput = parsed.data
+  const existing = form.get('id') ? rowId.safeParse(form.get('id')) : null
+  if (existing && !existing.success) return { ok: false, message: 'Invalid post.' }
+  const id = existing?.data
+  const expect = str('expectUpdatedAt')
+  if (id && !expect) return { ok: false, message: 'Reload the post and try again.' }
+
+  const action = id ? 'website.blog.update' : 'website.blog.create'
+  const target = id ? `post:${id}` : `post:${post.slug}`
+  // Published text is public; the log keeps what changed in the listing, not the whole article.
+  const detail = { slug: post.slug, title: post.title_he, published: post.published, featured: post.featured, contentLength: post.content_he?.length ?? 0, wasPublished: form.get('wasPublished') === 'true' }
+  await audit(user, { action, product: 'website', target, outcome: 'requested', detail })
+  let saved
+  try {
+    const res = await saveWebsitePost(post, id, id ? expect : undefined)
+    await audit(user, { action, product: 'website', target: `post:${res.ok ? res.value.id : (id ?? post.slug)}`, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    if (!res.ok) return { ok: false, message: res.conflict ? res.message : `Not saved: ${res.message}` }
+    saved = res.value
+  } catch (e) {
+    await audit(user, { action, product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not saved: ${fail(e)}` }
+  }
+  revalidatePath('/website/blog')
+  if (!id) redirect(`/website/blog/${saved.id}?created=1`)
+  revalidatePath(`/website/blog/${id}`)
+  return { ok: true, message: post.published ? 'Saved. It is live on the blog now; the pre-rendered page for search engines updates on the next website deploy.' : 'Saved as a draft (not shown on the site).' }
+}
+
+export async function deleteBlogPostAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to delete blog posts.' }
+  }
+  const id = rowId.safeParse(form.get('id'))
+  const expect = String(form.get('expectUpdatedAt') ?? '')
+  if (!id.success || !expect) return { ok: false, message: 'Invalid post.' }
+  const target = `post:${id.data}`
+  const detail = { slug: String(form.get('slug') ?? '').slice(0, 80), title: String(form.get('title') ?? '').slice(0, 200) }
+  await audit(user, { action: 'website.blog.delete', product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await deleteWebsitePost(id.data, expect)
+    await audit(user, { action: 'website.blog.delete', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    if (!res.ok) return { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.blog.delete', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not deleted: ${fail(e)}` }
+  }
+  revalidatePath('/website/blog')
+  redirect('/website/blog?deleted=1')
 }
