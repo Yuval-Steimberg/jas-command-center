@@ -1,6 +1,6 @@
 import 'server-only'
 import { env } from '@/lib/env'
-import { fetchJson, probe } from '../http'
+import { fetchJson, probe, withHint } from '../http'
 import { notConfigured, readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 import { metricsSnapshot, type MetricsSnapshot } from './contract'
@@ -24,7 +24,15 @@ export async function getWebsiteSnapshot(range: DateRange): Promise<SourceResult
       headers: { Authorization: `Bearer ${agentKey}` },
       body: { action: 'snapshot', range, compare: previousPeriod(range) },
       timeoutMs: 20_000,
-    })
+    }).catch((e) =>
+      withHint(e, (x) =>
+        x.status === 404
+          ? `Nothing answers at ${url}/api/analytics: WEBSITE_URL must be the website's own Vercel address (the one whose deployment includes api/analytics), not a page or another app`
+          : x.status === 401
+            ? 'The website refused the key: WEBSITE_AGENT_API_KEY here must equal AGENT_API_KEY on the website (24+ characters), and the website must be redeployed after setting it'
+            : null,
+      ),
+    )
     const parsed = metricsSnapshot.safeParse(data)
     if (!parsed.success) throw new Error(`unexpected snapshot shape (${parsed.error.issues[0]?.path.join('.')}: ${parsed.error.issues[0]?.message})`)
     return { data: parsed.data, latencyMs }

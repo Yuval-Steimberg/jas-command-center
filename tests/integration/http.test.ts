@@ -46,3 +46,13 @@ describe('fetchJson', () => {
     expect(scrub('eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc')).toBe('[jwt]')
   })
 })
+
+describe('error bodies', () => {
+  it('reads nested {error:{code,message}} instead of printing [object Object]', async () => {
+    const { errorDetail } = await import('@/lib/integrations/http')
+    expect(errorDetail({ error: { code: 'NOT_FOUND', message: 'The page could not be found' } })).toBe('The page could not be found (NOT_FOUND)')
+    expect(errorDetail({ error: 'not found' })).toBe('not found')
+    expect(errorDetail({ message: 'Invalid path' })).toBe('Invalid path')
+    expect(errorDetail({ unrelated: 1 })).toBeNull()
+  })
+})
