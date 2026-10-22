@@ -1,7 +1,8 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
-import { editRecipientAction, resendAllAction, resendCardAction, type ActionState } from './actions'
+import { cardLifecycleAction, editRecipientAction, resendAllAction, resendCardAction, type ActionState } from './actions'
 
 function Submit({ label, busy, tone = 'plain' }: { label: string; busy: string; tone?: 'plain' | 'primary' }) {
   const { pending } = useFormStatus()
@@ -70,6 +71,51 @@ export function ResendAllForm({ count }: { count: number }) {
   return (
     <form action={action} onSubmit={(e) => { if (!window.confirm(`Resend every paid card whose email did not go out (${count} in the last window)? Cards rejected by the recipient's server are skipped.`)) e.preventDefault() }} className="flex flex-col gap-2">
       <div><Submit label="Resend all undelivered" busy="Sending…" tone="primary" /></div>
+      <Result state={state} />
+    </form>
+  )
+}
+
+export type CardOpOption = { op: string; label: string; hint: string; confirm: string }
+
+/**
+ * Owner-only money actions. One form, one action at a time, each behind a
+ * confirmation that says what will happen to the money. `requestId` makes a
+ * double-submitted balance adjustment count once; a new one is drawn after
+ * every answer.
+ */
+export function CardLifecycleForm({ id, label, options }: { id: string; label: string; options: CardOpOption[] }) {
+  const [state, action] = useFormState<ActionState, FormData>(cardLifecycleAction, {})
+  const [op, setOp] = useState(options[0]?.op ?? '')
+  const [requestId, setRequestId] = useState('')
+  useEffect(() => setRequestId(crypto.randomUUID()), [state])
+  const chosen = options.find((o) => o.op === op)
+  if (!options.length) return <p className="text-sm text-muted">No money action applies to a card in this status.</p>
+  return (
+    <form action={action} onSubmit={(e) => { if (!chosen || !window.confirm(`Card ${label}: ${chosen.confirm}`)) e.preventDefault() }} className="flex flex-col gap-2">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="requestId" value={requestId} />
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted">Action</span>
+        <select name="op" value={op} onChange={(e) => setOp(e.target.value)} className={input}>
+          {options.map((o) => <option key={o.op} value={o.op}>{o.label}</option>)}
+        </select>
+      </label>
+      {chosen ? <p className="text-xs text-muted">{chosen.hint}</p> : null}
+      {op === 'adjust' ? (
+        <div className="flex gap-2">
+          <select name="direction" className={`${input} w-32`} defaultValue="increase">
+            <option value="increase">Add</option>
+            <option value="decrease">Remove</option>
+          </select>
+          <input name="amount" inputMode="decimal" required dir="ltr" placeholder="Amount in ₪" className={input} />
+        </div>
+      ) : null}
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted">Reason (stored in both audit logs)</span>
+        <input name="reason" required minLength={3} maxLength={500} dir="auto" placeholder="Verified in Grow on 22/10" className={input} />
+      </label>
+      <div><Submit label="Run" busy="Working…" tone="primary" /></div>
       <Result state={state} />
     </form>
   )

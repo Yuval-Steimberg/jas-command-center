@@ -32,6 +32,12 @@ AI assistant (`lib/assistant/`, page `/assistant`):
   audits `requested` then the outcome (via = assistant), calls the same adapter as the page.
   A new action = a ProposalDef + its EXEC_PARAMS entry + a test that proposing writes nothing.
 
+Gift card money actions (`runCardLifecycle`, card page "Money actions"):
+- Owner-only (`gift_cards:financial`). POST `cards/:id/lifecycle` on the gift card system, which runs its
+  own /admin functions. Adjust sends a `requestId` (one confirmation = one ledger entry).
+- A refund's `provider` field is the truth about the money: `failed`/`not_attempted` means the card is
+  refunded but Grow did NOT pay the buyer back. Show that as a warning, never as "refunded".
+
 Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `/website/products`):
 - Through the website's `_agent-ops.ts` with `WEBSITE_COMMAND_CENTER_KEY` — a separate key from the
   snapshot-only `WEBSITE_AGENT_API_KEY`, which the website's AI agent also holds.

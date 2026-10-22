@@ -5,7 +5,7 @@ import { notConfigured, readOnce, readSource } from '../read'
 import { invalidate } from '../cache'
 import type { DateRange } from '@/lib/time'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
-import { giftCardDetail, giftCardHealth, giftCardSales, giftCardSearch, giftCardSummary, resendAllResult, writeResult, type GiftCardDetail, type GiftCardHealth, type GiftCardSales, type GiftCardSearch, type GiftCardSummary, type ResendAllResult } from './contract'
+import { giftCardDetail, giftCardHealth, giftCardSales, giftCardSearch, giftCardSummary, lifecycleResult, resendAllResult, writeResult, type GiftCardDetail, type GiftCardHealth, type GiftCardSales, type GiftCardSearch, type GiftCardSummary, type ResendAllResult } from './contract'
 
 export async function getGiftCardSummary(): Promise<SourceResult<GiftCardSummary>> {
   const { url, integrationKey } = env().giftCards
@@ -119,6 +119,16 @@ export const editGiftCardRecipient = (id: string, fields: { recipientName?: stri
 export const resendAllUndelivered = (actor: GiftCardActor): Promise<ResendAllResult | { ok: false; message: string }> =>
   write('/api/integration/v1/delivery/resend-undelivered', { actor }, (d) => resendAllResult.parse(d))
 
+/** The owner-only card actions. Each runs the gift card system's own /admin function. */
+export const CARD_OPS = ['suspend', 'reactivate', 'cancel', 'refund', 'reissue', 'adjust', 'mark_paid'] as const
+export type CardOp = (typeof CARD_OPS)[number]
+export type CardOpInput =
+  | { op: Exclude<CardOp, 'adjust'> }
+  | { op: 'adjust'; direction: 'increase' | 'decrease'; amountMinor: number; requestId: string }
+
+export const runCardLifecycle = (id: string, input: CardOpInput, actor: GiftCardActor, reason: string) =>
+  write(`/api/integration/v1/cards/${encodeURIComponent(id)}/lifecycle`, { ...input, actor, reason }, (d) => lifecycleResult.parse(d))
+
 export const giftCardsAdapter: IntegrationAdapter = {
   product: 'gift_cards',
   name: 'Gift cards',
@@ -136,9 +146,9 @@ export const giftCardsAdapter: IntegrationAdapter = {
     { id: 'summary', label: 'Sales, liability, redeemed, failed deliveries, paid-but-not-delivered', kind: 'read', status: 'available' },
     { id: 'search', label: 'Search cards, view details, delivery history and audit (masked code)', kind: 'read', status: 'available' },
     { id: 'resend', label: 'Resend card email, edit recipient, resend all undelivered', kind: 'write', status: 'available', note: 'Calls the gift card system’s own resend / editRecipient / resendAllUndelivered; audited on both sides.' },
-    { id: 'refund', label: 'Refund, suspend, reissue, adjust balance, mark paid', kind: 'write', status: 'not_built', note: 'Money-moving: owner-only (gift_cards:financial) with confirmation; still done in the gift card admin.' },
-    { id: 'grow', label: 'Grow transaction reconciliation', kind: 'read', status: 'needs_credentials', note: 'gift_card_system has no GROW_* API keys (its gotcha #20).' },
-    { id: 'fees', label: 'Payment processing fees', kind: 'read', status: 'unsupported', note: 'Not stored anywhere.' },
+    { id: 'refund', label: 'Refund, suspend, reissue, adjust balance, mark paid', kind: 'write', status: 'available', note: 'Owner-only (gift_cards:financial), on each card’s page, with confirmation. Runs the gift card admin’s own functions. A refund returns money through Grow only once GROW_* API keys are set; until then you are told to credit the buyer in Grow by hand.' },
+    { id: 'grow', label: 'Grow transaction reconciliation', kind: 'read', status: 'needs_credentials', note: 'Set GROW_API_KEY (Grow userId) and GROW_API_SECRET (Grow apiKey) on the gift card deployment, then run npm run verify:grow there. Also enables automatic refunds.' },
+    { id: 'fees', label: 'Payment processing fees', kind: 'read', status: 'unsupported', note: 'Grow does not send fees in its payment callback and nothing stores them. Possible only from Grow’s transaction API once keys exist, if its rows carry a fee field (verify:grow prints them).' },
   ],
   async health() {
     const checks: HealthCheck[] = []
