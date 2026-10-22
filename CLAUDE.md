@@ -41,7 +41,7 @@ Gift card money actions (`runCardLifecycle`, card page "Money actions"):
 Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `/website/products`):
 - Through the website's `_agent-ops.ts` with `WEBSITE_COMMAND_CENTER_KEY` — a separate key from the
   snapshot-only `WEBSITE_AGENT_API_KEY`, which the website's AI agent also holds.
-- Fulfilment statuses only (revenue never moves); products: price/original_price/quantity/featured.
+- Fulfilment statuses only (revenue never moves); products: quick price/original_price/quantity/featured edit on the list.
   409 = changed since loaded → shown as "reload", never retried or overwritten.
 - The website has no audit table: the command center's audit (with before/after) is the only record.
 - Site content (`/website/content`): exactly the website's SITE_CONTENT_SCHEMA keys (texts, images, shop hours,
@@ -51,6 +51,9 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
   is shown only with `website:read_pii`.
 - Blog (`/website/blog`, `/new`, `/[id]`): create/edit/delete via `blog-*`; content is the website's markdown subset,
   never HTML; edits and deletes conditional on updated_at.
+- Products (`/website/products/new`, `/[id]`): full form via `product-save|get|delete`, plus `product-meta`
+  (categories + low-stock threshold), `category-create`, `low-stock-set`. Images are LINKS (upload still happens in
+  the website's storage). `published` is sent only when the website returns that column (`hasPublished`).
 - The owner decided (2026-10-22) to RETIRE the website's /manager: build admin features here, not there.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):

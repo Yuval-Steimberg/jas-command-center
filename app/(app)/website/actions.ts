@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, PARTNERS_KEY, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -390,4 +390,154 @@ export async function deleteBlogPostAction(_prev: ActionState, form: FormData): 
   }
   revalidatePath('/website/blog')
   redirect('/website/blog?deleted=1')
+}
+
+// ── Products (full form) ─────────────────────────────────────────────────────
+
+const shekelField = (label: string) =>
+  z.string().trim().regex(/^\d{1,7}(\.\d{1,2})?$/, `${label} must be an amount in shekels, like 120 or 89.90.`).transform(Number)
+const lines = (max: number, label: string) =>
+  z.string().transform((v) => v.split('\n').map((x) => x.trim()).filter(Boolean)).pipe(z.array(z.string().max(2000)).max(max, `Up to ${max} ${label}.`))
+const fullProductForm = z
+  .object({
+    name_he: z.string().trim().min(1, 'The Hebrew name is required.').max(200, 'The name is limited to 200 characters.'),
+    name_en: opt(200, 'The English name'),
+    slug: z.string().trim().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'The address may use lowercase English letters, digits and dashes only, like teak-armchair.').max(80),
+    description_he: opt(10000, 'The Hebrew description'),
+    description_en: opt(10000, 'The English description'),
+    story_he: opt(10000, 'The Hebrew story'),
+    story_en: opt(10000, 'The English story'),
+    price: shekelField('The price').refine((n) => n > 0, 'The price must be above ₪0.'),
+    original_price: z.union([z.literal('').transform(() => null), shekelField('The strike-through price')]),
+    category_id: z.union([z.literal('').transform(() => null), z.coerce.number().int().positive()]),
+    condition: z.enum(PRODUCT_CONDITIONS),
+    style: opt(100, 'Style'),
+    dimensions: opt(200, 'Dimensions'),
+    material: opt(200, 'Material'),
+    origin: opt(200, 'Origin'),
+    image_url: z.string().trim().min(1, 'A main image is required.').max(2000),
+    images: lines(30, 'gallery images'),
+    featured: z.boolean(),
+    quantity: z.string().trim().regex(/^\d{1,6}$/, 'Quantity must be a whole number from 0.').transform(Number),
+    tags: z.string().transform((v) => v.split(',').map((x) => x.trim()).filter(Boolean)).pipe(z.array(z.string().max(40, 'A tag is limited to 40 characters.')).max(20, 'Up to 20 tags.')),
+    published: z.boolean().optional(),
+  })
+  .refine((p) => p.original_price == null || p.original_price > p.price, { message: 'The strike-through price must be higher than the price.' })
+
+export async function saveProductAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to edit products.' }
+  }
+  const str = (k: string) => String(form.get(k) ?? '')
+  const parsed = fullProductForm.safeParse({
+    name_he: str('name_he'), name_en: str('name_en'), slug: str('slug'), description_he: str('description_he'), description_en: str('description_en'),
+    story_he: str('story_he'), story_en: str('story_en'), price: str('price'), original_price: str('original_price'), category_id: str('category_id'),
+    condition: str('condition'), style: str('style'), dimensions: str('dimensions'), material: str('material'), origin: str('origin'),
+    image_url: str('image_url'), images: str('images'), featured: form.get('featured') === 'on', quantity: str('quantity'), tags: str('tags'),
+    // Only sent when the website has the published column (the form shows the box only then).
+    published: form.get('hasPublished') === '1' ? form.get('published') === 'on' : undefined,
+  })
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]!.message }
+  const product: WebsiteProductInput = parsed.data
+  const existing = form.get('id') ? rowId.safeParse(form.get('id')) : null
+  if (existing && !existing.success) return { ok: false, message: 'Invalid product.' }
+  const id = existing?.data
+  const expect = str('expectUpdatedAt')
+  if (id && !expect) return { ok: false, message: 'Reload the product and try again.' }
+
+  const action = id ? 'website.product.edit' : 'website.product.create'
+  const target = id ? `product:${id}` : `product:${product.slug}`
+  const detail = {
+    slug: product.slug, name: product.name_he, price: product.price, originalPrice: product.original_price, quantity: product.quantity,
+    featured: product.featured, published: product.published ?? null, categoryId: product.category_id,
+    before: id ? { slug: str('was_slug'), price: str('was_price'), quantity: str('was_quantity'), published: str('was_published') } : null,
+  }
+  await audit(user, { action, product: 'website', target, outcome: 'requested', detail })
+  let saved
+  try {
+    const res = await saveWebsiteProduct(product, id, id ? expect : undefined)
+    await audit(user, { action, product: 'website', target: `product:${res.ok ? res.value.id : (id ?? product.slug)}`, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    if (!res.ok) return { ok: false, message: res.conflict ? res.message : `Not saved: ${res.message}` }
+    saved = res.value
+  } catch (e) {
+    await audit(user, { action, product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not saved: ${fail(e)}` }
+  }
+  revalidatePath('/website/products')
+  if (!id) redirect(`/website/products/${saved.id}?created=1`)
+  revalidatePath(`/website/products/${id}`)
+  return { ok: true, message: saved.published === false ? 'Saved as a draft (not shown in the shop).' : 'Saved. The shop shows it now; the pre-rendered product page updates on the next website deploy.' }
+}
+
+export async function deleteProductAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to delete products.' }
+  }
+  const id = rowId.safeParse(form.get('id'))
+  const expect = String(form.get('expectUpdatedAt') ?? '')
+  if (!id.success || !expect) return { ok: false, message: 'Invalid product.' }
+  const target = `product:${id.data}`
+  const detail = { slug: String(form.get('slug') ?? '').slice(0, 80), name: String(form.get('name') ?? '').slice(0, 200) }
+  await audit(user, { action: 'website.product.delete', product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await deleteWebsiteProduct(id.data, expect)
+    await audit(user, { action: 'website.product.delete', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    if (!res.ok) return { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.product.delete', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not deleted: ${fail(e)}` }
+  }
+  revalidatePath('/website/products')
+  redirect('/website/products?deleted=1')
+}
+
+export async function createCategoryAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to add categories.' }
+  }
+  const nameHe = String(form.get('name_he') ?? '').trim()
+  const nameEn = String(form.get('name_en') ?? '').trim()
+  if (!nameHe || nameHe.length > 100 || nameEn.length > 100) return { ok: false, message: 'A Hebrew name (up to 100 characters) is required.' }
+  const detail = { nameHe, nameEn: nameEn || null }
+  await audit(user, { action: 'website.category.create', product: 'website', target: `category:${nameEn || nameHe}`, outcome: 'requested', detail })
+  try {
+    const res = await createWebsiteCategory(nameHe, nameEn || null)
+    await audit(user, { action: 'website.category.create', product: 'website', target: `category:${res.ok ? res.value.id : nameEn || nameHe}`, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    revalidatePath('/website/products', 'layout')
+    return res.ok ? { ok: true, message: `Category "${res.value.name_he}" added. Pick it in the list above.` } : { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.category.create', product: 'website', target: `category:${nameEn || nameHe}`, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not added: ${fail(e)}` }
+  }
+}
+
+export async function setLowStockAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to change this.' }
+  }
+  const n = z.coerce.number().int().min(0).max(1000).safeParse(String(form.get('threshold') ?? '').trim() || 'x')
+  if (!n.success) return { ok: false, message: 'Enter a whole number from 0 to 1000.' }
+  const detail = { to: n.data, from: String(form.get('was') ?? '') }
+  await audit(user, { action: 'website.products.low_stock', product: 'website', target: 'site_content:low_stock_threshold', outcome: 'requested', detail })
+  try {
+    const res = await setWebsiteLowStockThreshold(n.data)
+    await audit(user, { action: 'website.products.low_stock', product: 'website', target: 'site_content:low_stock_threshold', outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    revalidatePath('/website/products')
+    return res.ok ? { ok: true, message: `Low-stock alert is now ${res.value} or fewer.` } : { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.products.low_stock', product: 'website', target: 'site_content:low_stock_threshold', outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not saved: ${fail(e)}` }
+  }
 }
