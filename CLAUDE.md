@@ -32,6 +32,12 @@ AI assistant (`lib/assistant/`, page `/assistant`):
   audits `requested` then the outcome (via = assistant), calls the same adapter as the page.
   A new action = a ProposalDef + its EXEC_PARAMS entry + a test that proposing writes nothing.
 
+Gift card money actions (`runCardLifecycle`, card page "Money actions"):
+- Owner-only (`gift_cards:financial`). POST `cards/:id/lifecycle` on the gift card system, which runs its
+  own /admin functions. Adjust sends a `requestId` (one confirmation = one ledger entry).
+- A refund's `provider` field is the truth about the money: `failed`/`not_attempted` means the card is
+  refunded but Grow did NOT pay the buyer back. Show that as a warning, never as "refunded".
+
 Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `/website/products`):
 - Through the website's `_agent-ops.ts` with `WEBSITE_COMMAND_CENTER_KEY` — a separate key from the
   snapshot-only `WEBSITE_AGENT_API_KEY`, which the website's AI agent also holds.
@@ -44,6 +50,12 @@ Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`
   trigger derives `intended_for_collection`). Item PATCH is conditional on `updated_at`.
 - Never tick `collected`, finish an apartment or confirm a handover from here: those carry the
   collector's name and completion rules that live in the app's client code.
+
+Map writes (`lib/integrations/map/edit.ts` + `github.ts`, page `/map`):
+- A place change is a pull request on Interactive-map, never a commit to the published branch. `edit.ts`
+  rewrites ONE line of places-data.js as text and re-parses the result; the commit names the blob it was
+  computed from, so a file changed in between is refused (409), not overwritten.
+- Map visitors: `ga4.ts`, GA4 Data API with a read-only service account (JWT signed with node:crypto).
 
 Source facts that are easy to get wrong:
 - whatssup-bot is the owner's DESIGN agent (allowlisted numbers), not a

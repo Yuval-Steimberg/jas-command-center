@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fakeServer, resetSourceCache } from './fake-server'
 import { getWebsiteSnapshot, websiteAdapter } from '@/lib/integrations/website/adapter'
-import { editGiftCardRecipient, getGiftCard, getGiftCardSummary, giftCardsAdapter, resendGiftCard, searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
+import { editGiftCardRecipient, getGiftCard, getGiftCardSummary, giftCardsAdapter, resendGiftCard, runCardLifecycle, searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
@@ -231,6 +231,22 @@ describe('gift card search and actions (contract: /api/integration/v1/cards…)'
     await setup(() => ({ status: 422, body: { ok: false, resent: false, message: 'האם התכוונת ל-r@gmail.com?' } }))
     const r = await editGiftCardRecipient(row.id, { recipientEmail: 'r@gmial.com' }, true, { email: 'o@x.co', role: 'owner' }, 'typo')
     expect(r).toEqual({ ok: false, message: 'האם התכוונת ל-r@gmail.com?' })
+  })
+
+  it('money actions post the op, actor and reason to the lifecycle route and carry the refund outcome', async () => {
+    const s = await setup(() => ({ status: 200, body: { ok: true, message: 'x', provider: 'failed', refundedMinor: 15000 } }))
+    const r = await runCardLifecycle(row.id, { op: 'refund' }, { email: 'o@x.co', role: 'owner' }, 'customer asked')
+    expect(r).toMatchObject({ ok: true, provider: 'failed', refundedMinor: 15000 })
+    expect(s.seen[0]!.path).toBe(`/api/integration/v1/cards/${row.id}/lifecycle`)
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ op: 'refund', actor: { email: 'o@x.co', role: 'owner' }, reason: 'customer asked' })
+  })
+
+  it('an adjustment sends its request id; an illegal move comes back as the refusal', async () => {
+    const s = await setup(() => ({ status: 422, body: { ok: false, message: 'adjustment would drive balance below zero' } }))
+    const r = await runCardLifecycle(row.id, { op: 'adjust', direction: 'decrease', amountMinor: 99900, requestId: '22222222-2222-4222-8222-222222222222' }, { email: 'o@x.co', role: 'owner' }, 'fix')
+    expect(r).toEqual({ ok: false, message: 'adjustment would drive balance below zero' })
+    expect(JSON.parse(s.seen[0]!.body)).toMatchObject({ op: 'adjust', amountMinor: 99900, requestId: '22222222-2222-4222-8222-222222222222' })
+    expect(s.seen).toHaveLength(1)
   })
 })
 

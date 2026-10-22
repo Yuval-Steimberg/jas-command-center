@@ -8,7 +8,7 @@ import { can } from '@/lib/auth/rbac'
 import { getGiftCard } from '@/lib/integrations/gift-cards/adapter'
 import { formatAgorot } from '@/lib/money'
 import { formatDateTime } from '@/lib/format'
-import { EditRecipientForm, ResendCardForm } from '../forms'
+import { CardLifecycleForm, EditRecipientForm, ResendCardForm, type CardOpOption } from '../forms'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,12 +19,29 @@ const Row = ({ k, v }: { k: string; v: React.ReactNode }) => (
   </div>
 )
 
+const UNPAID = ['draft', 'awaiting_payment', 'payment_processing', 'failed']
+const LIVE = ['active', 'partially_redeemed']
+
+/** Offered actions follow the gift card system's status machine; it re-checks every one. */
+function cardOps(status: string, balance: string): CardOpOption[] {
+  const o: CardOpOption[] = []
+  if (UNPAID.includes(status)) o.push({ op: 'mark_paid', label: 'Mark paid and activate', hint: 'Only after you have seen the payment in Grow. Runs the same activation as a real payment: credits the card and sends it to the recipient.', confirm: 'you confirmed this payment in Grow. Activate the card and send it now?' })
+  if (LIVE.includes(status)) o.push({ op: 'suspend', label: 'Suspend', hint: 'The card cannot be redeemed until it is reactivated. Balance is kept.', confirm: 'suspend it? It cannot be redeemed until reactivated.' })
+  if (status === 'suspended') o.push({ op: 'reactivate', label: 'Reactivate', hint: 'The card can be redeemed again.', confirm: 'reactivate it?' })
+  if (LIVE.includes(status)) o.push({ op: 'adjust', label: 'Adjust balance', hint: 'Adds or removes value through the ledger. The balance cannot go below zero.', confirm: 'change its balance?' })
+  if ([...LIVE, 'fully_redeemed', 'expired'].includes(status)) o.push({ op: 'reissue', label: 'Reissue (new code)', hint: 'Moves the balance to a new card with a new code. The old code stops working. Send the new card from its own page.', confirm: 'replace it with a new code? The current code stops working.' })
+  if ([...LIVE, 'suspended', 'fully_redeemed'].includes(status)) o.push({ op: 'refund', label: 'Refund', hint: `Zeroes the remaining ${balance} and asks Grow to return it to the buyer. Without Grow API keys the money has to be credited in Grow by hand; you will be told which happened.`, confirm: `refund the remaining ${balance}? The card stops working. This cannot be undone.` })
+  if ([...LIVE, 'suspended'].includes(status)) o.push({ op: 'cancel', label: 'Cancel (no refund)', hint: 'The card stops working and no money is returned.', confirm: 'cancel it without a refund? This cannot be undone.' })
+  return o
+}
+
 export default async function GiftCardPage({ params }: { params: { id: string } }) {
   await requirePageAccess('gift_cards:read')
   if (!z.string().uuid().safeParse(params.id).success) notFound()
   const s = (await getSession())!
   const pii = can(s.user.role, 'gift_cards:read_pii', s.overrides)
   const operate = can(s.user.role, 'gift_cards:operate', s.overrides)
+  const financial = can(s.user.role, 'gift_cards:financial', s.overrides)
   const r = await getGiftCard(params.id)
   if (r === null) notFound()
   if (r.state !== 'ok') {
@@ -127,11 +144,12 @@ export default async function GiftCardPage({ params }: { params: { id: string } 
           ) : (
             <Card><CardBody><p className="text-sm text-muted">Your role can view this card but not change it.</p></CardBody></Card>
           )}
-          <Card>
-            <CardBody>
-              <p className="text-xs text-muted">Refund, suspend, reissue, balance adjustment and mark-paid stay in the Gift Card System admin for now: they move money and need its owner-only checks.</p>
-            </CardBody>
-          </Card>
+          {financial ? (
+            <Card>
+              <CardHeader title="Money actions" meta="Owner only · same functions as the gift card admin" />
+              <CardBody><CardLifecycleForm id={card.id} label={card.maskedCode} options={cardOps(card.status, formatAgorot(card.balanceMinor))} /></CardBody>
+            </Card>
+          ) : null}
         </div>
       </div>
     </>

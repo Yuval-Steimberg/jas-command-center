@@ -108,6 +108,16 @@ export const giftCardDetail = z.object({
 export type GiftCardDetail = z.infer<typeof giftCardDetail>
 
 export const writeResult = z.object({ ok: z.boolean(), message: z.string().nullable().optional(), resent: z.boolean().optional() })
+/** Answer of POST cards/:id/lifecycle. `provider` (refund only) says whether Grow actually returned the money. */
+export const lifecycleResult = z.object({
+  ok: z.boolean(),
+  message: z.string().nullable().optional(),
+  provider: z.enum(['refunded', 'failed', 'not_attempted']).optional(),
+  refundedMinor: z.number().int().optional(),
+  newCard: z.object({ id: z.string(), maskedCode: z.string() }).nullable().optional(),
+})
+export type LifecycleResult = z.infer<typeof lifecycleResult>
+
 export const resendAllResult = z.object({
   queued: z.number().int(),
   delivered: z.number().int(),

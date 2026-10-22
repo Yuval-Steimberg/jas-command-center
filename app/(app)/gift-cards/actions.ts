@@ -6,7 +6,8 @@ import { requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { getSession } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
-import { editGiftCardRecipient, resendAllUndelivered, resendGiftCard } from '@/lib/integrations/gift-cards/adapter'
+import { CARD_OPS, editGiftCardRecipient, resendAllUndelivered, resendGiftCard, runCardLifecycle, type CardOpInput } from '@/lib/integrations/gift-cards/adapter'
+import { formatAgorot, shekelsToAgorot } from '@/lib/money'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -105,5 +106,72 @@ export async function resendAllAction(_prev: ActionState, _form: FormData): Prom
   } catch (e) {
     await audit(user, { action: 'gift_cards.delivery.resend_all', product: 'gift_cards', target: 'delivery', outcome: 'failed', detail: { error: fail(e) } })
     return { ok: false, message: `Resend failed: ${fail(e)}` }
+  }
+}
+
+const OP_LABEL: Record<(typeof CARD_OPS)[number], string> = {
+  suspend: 'Suspended',
+  reactivate: 'Reactivated',
+  cancel: 'Cancelled',
+  refund: 'Refunded',
+  reissue: 'Reissued',
+  adjust: 'Balance adjusted',
+  mark_paid: 'Marked paid and activated',
+}
+
+/**
+ * The money-moving card actions: owner-only (`gift_cards:financial`). Each one
+ * runs the gift card system's own /admin function. A refund reports whether
+ * Grow actually returned the money — the card can be refunded on our side while
+ * the money still has to be credited in Grow by hand.
+ */
+export async function cardLifecycleAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('gift_cards:financial')
+  } catch {
+    return { ok: false, message: 'Only the owner can move money on gift cards.' }
+  }
+  const cardId = id.safeParse(form.get('id'))
+  const why = reason.safeParse(form.get('reason'))
+  const op = z.enum(CARD_OPS).safeParse(form.get('op'))
+  if (!cardId.success) return { ok: false, message: 'Invalid card.' }
+  if (!op.success) return { ok: false, message: 'Choose an action.' }
+  if (!why.success) return { ok: false, message: why.error.issues[0]!.message }
+
+  let input: CardOpInput
+  if (op.data === 'adjust') {
+    const amount = Number(String(form.get('amount') ?? '').replace(/[₪,\s]/g, ''))
+    const direction = z.enum(['increase', 'decrease']).safeParse(form.get('direction'))
+    const requestId = z.string().uuid().safeParse(form.get('requestId'))
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 100_000) return { ok: false, message: 'Enter an amount in ₪ greater than 0.' }
+    if (!direction.success || !requestId.success) return { ok: false, message: 'Reload the page and try again.' }
+    input = { op: 'adjust', direction: direction.data, amountMinor: shekelsToAgorot(amount), requestId: requestId.data }
+  } else {
+    input = { op: op.data }
+  }
+
+  const action = `gift_cards.card.${op.data}`
+  const target = `card:${cardId.data}`
+  await audit(user, { action, product: 'gift_cards', target, outcome: 'requested', detail: { ...input, reason: why.data } })
+  try {
+    const res = await runCardLifecycle(cardId.data, input, { email: user.email, role: user.role }, why.data)
+    const detail = { message: res.message ?? null, ...('provider' in res ? { provider: res.provider, refundedMinor: res.refundedMinor } : {}), ...('newCard' in res && res.newCard ? { newCardId: res.newCard.id } : {}) }
+    await audit(user, { action, product: 'gift_cards', target, outcome: res.ok ? 'succeeded' : 'failed', detail })
+    revalidatePath(`/gift-cards/${cardId.data}`)
+    revalidatePath('/gift-cards')
+    if (!res.ok) return { ok: false, message: `Not done: ${res.message ?? 'the gift card system refused it'}` }
+    if (op.data === 'refund' && 'provider' in res) {
+      const amount = formatAgorot(res.refundedMinor ?? 0)
+      if (res.provider === 'refunded') return { ok: true, message: `Refunded: Grow returned ${amount} to the buyer.` }
+      if (!res.refundedMinor) return { ok: true, message: 'Card marked refunded. It had no balance left to return.' }
+      // ok: true for the card, but the money is NOT back: shown as a warning.
+      return { ok: false, message: `Card marked refunded and its balance zeroed, but Grow did NOT return the money. Credit ${amount} to the buyer in Grow by hand.` }
+    }
+    if (op.data === 'reissue' && 'newCard' in res && res.newCard) return { ok: true, message: `Reissued as ${res.newCard.maskedCode}. The old card no longer works.` }
+    return { ok: true, message: res.message ? `${OP_LABEL[op.data]}: ${res.message}` : `${OP_LABEL[op.data]}.` }
+  } catch (e) {
+    await audit(user, { action, product: 'gift_cards', target, outcome: 'failed', detail: { error: fail(e) } })
+    return { ok: false, message: `Failed: ${fail(e)}. Check the card before retrying.` }
   }
 }

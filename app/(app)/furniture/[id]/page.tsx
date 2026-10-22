@@ -34,6 +34,9 @@ export default async function FurnitureProjectPage({ params }: { params: { id: s
   for (const i of items) byApartment.set(i.apartment_id, [...(byApartment.get(i.apartment_id) ?? []), i])
   const live = items.filter((i) => i.status !== 'discarded')
   const options = DESTINATIONS.map((d) => ({ id: d.id, label: d.label }))
+  // The address the project records, searched on OpenStreetMap. Not geocoded or stored, and
+  // never put on the public neighbourhood map: a demolition site is not a partner place.
+  const where = [[project.street, project.building_numbers].filter(Boolean).join(' '), project.city].filter(Boolean).join(', ')
   return (
     <>
       <PageHeader
@@ -43,6 +46,7 @@ export default async function FurnitureProjectPage({ params }: { params: { id: s
       />
       <p className="mb-4 flex flex-wrap gap-x-3 text-sm">
         <Link href="/furniture" className="underline-offset-2 hover:underline">← All projects</Link>
+        {where ? <a href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(where)}`} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline" dir="auto">Map: {where}</a> : null}
         {appUrl ? (
           <>
             <a href={`${appUrl}/projects/${project.id}`} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">Open in field app</a>

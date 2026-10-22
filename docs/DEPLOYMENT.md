@@ -25,7 +25,9 @@ New Vercel project from this repo (framework: Next.js). Production branch:
 | `FURNITURE_SUPABASE_URL`, `FURNITURE_SUPABASE_KEY` | Furniture Supabase (`fdxqfwmtrqbaeqejynmu`) → Settings → API. See §3 |
 | `FURNITURE_APP_URL` | The field app's production URL |
 | `DESIGN_AGENT_URL`, `DESIGN_AGENT_ADMIN_TOKEN` | Railway → service → Networking (domain) and Variables (`ADMIN_TOKEN`) |
-| `GITHUB_TOKEN` | Only if `Interactive-map` is private |
+| `GITHUB_TOKEN` | To propose map place changes (fine-grained, `Interactive-map` only, Contents + Pull requests: read and write). Reads work without it on a public repo |
+| `MAP_GA4_PROPERTY_ID` | Map visitors: the numeric GA4 property id (not the `G-` measurement id) |
+| `GA4_SERVICE_ACCOUNT_JSON` | Map visitors: a Google service-account key file, its email added as Viewer on that property |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys. Set a monthly spend limit (Settings → Limits). Optional `ASSISTANT_MODEL` (default `claude-opus-5-5`) |
 
 Env changes need a redeploy. Generate secrets with `openssl rand -base64 32`.
