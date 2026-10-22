@@ -53,7 +53,8 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
   never HTML; edits and deletes conditional on updated_at.
 - Products (`/website/products/new`, `/[id]`): full form via `product-save|get|delete`, plus `product-meta`
   (categories + low-stock threshold), `category-create`, `low-stock-set`. Images are LINKS (upload still happens in
-  the website's storage). `published` is sent only when the website returns that column (`hasPublished`).
+  the website's storage, now uploadable: `ImageUpload` resizes in the browser, `uploadImageAction` gets a signed link via
+  `image-upload-url` and PUTs straight to Supabase Storage). `published` is sent only when the website returns that column (`hasPublished`).
 - Marketing (`/website/marketing`): discount codes via `discount-save|delete` (one code per write; the website keeps
   `usedCount`), subscribers (`website:read_pii` to see, + `website:write` to unsubscribe; the address is kept out of
   the audit log), campaign history, and campaign send (`campaign-send`, plain text; a per-page-load requestId makes the

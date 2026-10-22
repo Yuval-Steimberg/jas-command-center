@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useFormState } from 'react-dom'
 import { deleteBlogPostAction, saveBlogPostAction, type ActionState } from './actions'
 import { Result, Submit, input } from './forms'
+import { ImageUpload } from './image-upload'
 
 const area = 'w-full rounded-md border border-line bg-surface px-3 py-2 text-sm'
 
@@ -33,6 +34,8 @@ export function BlogPostForm({ p }: { p: BlogPostValues }) {
   const [state, action] = useFormState<ActionState, FormData>(saveBlogPostAction, {})
   const [slug, setSlug] = useState(p.slug)
   const [slugTouched, setSlugTouched] = useState(!!p.id)
+  const [cover, setCover] = useState(p.cover_image)
+  const [gallery, setGallery] = useState(p.images.join('\n'))
   return (
     <form
       action={action}
@@ -83,10 +86,12 @@ export function BlogPostForm({ p }: { p: BlogPostValues }) {
       </label>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1 text-sm"><span className="text-muted">Cover image link</span>
-          <input name="cover_image" defaultValue={p.cover_image} maxLength={2000} dir="ltr" placeholder="https://… or /images/…" className={input} />
+          <input name="cover_image" value={cover} onChange={(e) => setCover(e.target.value)} maxLength={2000} dir="ltr" placeholder="https://… or /images/…" className={input} />
+          <ImageUpload folder="blog" label="Upload cover" onUploaded={setCover} />
         </label>
         <label className="flex flex-col gap-1 text-sm"><span className="text-muted">Gallery images (one link per line)</span>
-          <textarea name="images" defaultValue={p.images.join('\n')} rows={3} dir="ltr" className={area} />
+          <textarea name="images" value={gallery} onChange={(e) => setGallery(e.target.value)} rows={3} dir="ltr" className={area} />
+          <ImageUpload folder="blog" label="Upload gallery photos" multiple onUploaded={(u) => setGallery((g) => (g.trim() ? `${g.trim()}\n${u}` : u))} />
         </label>
         <label className="flex flex-col gap-1 text-sm"><span className="text-muted">Category</span>
           <input name="category" defaultValue={p.category} maxLength={60} dir="auto" className={input} />

@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { sendWebsiteCampaign, listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { uploadWebsiteImage, sendWebsiteCampaign, listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -246,6 +246,22 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(await deleteWebsiteDiscount('VIP')).toEqual({ ok: true, value: 'VIP' })
     expect(await listWebsiteSubscribers('')).toMatchObject({ state: 'ok', data: { total: 1 } })
     expect(await listWebsiteCampaigns()).toMatchObject({ state: 'ok', data: [{ id: 'c1', recipients: 3 }] })
+  })
+
+  it('uploads an image to the signed link the website returns, never through the website function', async () => {
+    let url = ''
+    const s = await fakeServer((r) => {
+      if (r.path === '/api/analytics') return { status: 200, body: { path: 'cc-products/a.webp', signedUrl: `${url}/storage/upload/cc-products/a.webp?token=t`, publicUrl: `${url}/public/cc-products/a.webp` } }
+      return r.path.startsWith('/storage/upload/') ? { status: 200, body: { Key: 'x' } } : { status: 404, body: {} }
+    })
+    url = s.url
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await uploadWebsiteImage('products', new TextEncoder().encode('img').buffer as ArrayBuffer, 'image/webp')).toBe(`${s.url}/public/cc-products/a.webp`)
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ action: 'image-upload-url', folder: 'products', contentType: 'image/webp' })
+    expect(s.seen[1]!.path).toMatch(/^\/storage\/upload\//)
+    expect(s.seen[1]!.body).toBe('img')
   })
 
   it('sends a campaign once and is never retried', async () => {
