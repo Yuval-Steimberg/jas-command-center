@@ -67,10 +67,10 @@ Adding a product: [`docs/ADDING_AN_INTEGRATION.md`](docs/ADDING_AN_INTEGRATION.m
 | Design agent: queue health, dead jobs (+ retry), failed sends, projects | Built — **needs `DESIGN_AGENT_URL` (+ `ADMIN_TOKEN`)** |
 | Map: places, categories, published commit | Built — works without credentials if the repo is public |
 | Alerts (derived live) + notification history (`cc_notifications`): started/resolved times, per-user read/unread | Built. An alert is resolved only when its source was read successfully. Assignment and email: next |
-| AI assistant (read-only): 7 permission-filtered tools over the adapters, bounded loop, every question and lookup audited | Built, tested against a stubbed API — **needs `ANTHROPIC_API_KEY`** |
+| AI assistant: 10 permission-filtered read tools + 6 `propose_*` actions that only run when the person presses Confirm (re-checked and audited requested → outcome); bounded loop, every question, lookup and proposal audited | Built, tested against a stubbed API — **needs `ANTHROPIC_API_KEY`** |
 | Cross-system search (`/search`): pages, furniture projects, map places, design projects | Built. Gift cards and website orders are listed as "not searchable yet": each needs a narrow endpoint in its source |
 | Activity feed: alerts raised/resolved, actions taken here (audit), design-agent and furniture records with their own timestamps | Built. Website orders and gift card sales are not in it: those sources expose totals only |
-| Analytics workspace, assistant write actions, writes beyond retry | **Not built** — each page says so |
+| Analytics workspace; refunds, cancellations, mark-paid; collected ticks and apartment completion | **Not built** — each page says so |
 
 None of the integrations has been exercised against a live system: this build
 environment cannot reach any JAS host. Each one is tested against a local fake

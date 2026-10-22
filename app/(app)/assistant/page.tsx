@@ -18,7 +18,7 @@ export default async function AssistantPage() {
     <>
       <PageHeader
         title="AI assistant"
-        description="Ask about the business in Hebrew or English. It reads the same live sources as the other pages, only for products your role can see, and it cannot change anything."
+        description="Ask about the business in Hebrew or English. It reads the same live sources as the other pages, only for products your role can see. It can propose a small set of actions (resend a gift card, move an order through fulfilment, change a price or stock, archive a project, retry a design job); nothing runs until you press Confirm, and your role decides what it may propose."
       />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <Card>
@@ -33,7 +33,7 @@ export default async function AssistantPage() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title="What it can check" meta="Read-only. Every question and lookup is in the audit log." />
+          <CardHeader title="What it can check" meta="Every question, lookup, proposal and confirmed action is in the audit log." />
           <CardBody>
             {tools.length ? (
               <ul className="flex flex-col gap-2 text-sm">
