@@ -56,7 +56,8 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
   the website's storage). `published` is sent only when the website returns that column (`hasPublished`).
 - Marketing (`/website/marketing`): discount codes via `discount-save|delete` (one code per write; the website keeps
   `usedCount`), subscribers (`website:read_pii` to see, + `website:write` to unsubscribe; the address is kept out of
-  the audit log), campaign history read-only. Sending a campaign is NOT here yet.
+  the audit log), campaign history, and campaign send (`campaign-send`, plain text; a per-page-load requestId makes the
+  website refuse a repeat with 409; never retried; 60 s timeout + page `maxDuration`).
 - The owner decided (2026-10-22) to RETIRE the website's /manager: build admin features here, not there.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):

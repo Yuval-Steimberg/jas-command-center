@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { sendWebsiteCampaign, listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -246,6 +246,22 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(await deleteWebsiteDiscount('VIP')).toEqual({ ok: true, value: 'VIP' })
     expect(await listWebsiteSubscribers('')).toMatchObject({ state: 'ok', data: { total: 1 } })
     expect(await listWebsiteCampaigns()).toMatchObject({ state: 'ok', data: [{ id: 'c1', recipients: 3 }] })
+  })
+
+  it('sends a campaign once and is never retried', async () => {
+    let calls = 0
+    const s = await fakeServer((r) => {
+      calls++
+      const b = JSON.parse(r.body)
+      return calls > 1 ? { status: 409, body: { error: 'This campaign was already sent' } } : { status: 200, body: { test: false, recipients: 2, failed: 0, total: 2, echo: b.requestId } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await sendWebsiteCampaign('נושא', 'טקסט', { requestId: 'req-12345678', sentBy: 'o@x' })).toMatchObject({ ok: true, value: { recipients: 2 } })
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ action: 'campaign-send', subject: 'נושא', bodyText: 'טקסט', requestId: 'req-12345678', sentBy: 'o@x' })
+    expect(await sendWebsiteCampaign('נושא', 'טקסט', { requestId: 'req-12345678', sentBy: 'o@x' })).toMatchObject({ ok: false, conflict: true })
+    expect(calls).toBe(2)
   })
 
   it('a rejected key names the variable to fix', async () => {

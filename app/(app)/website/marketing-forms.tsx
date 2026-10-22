@@ -1,7 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import { useFormState } from 'react-dom'
-import { deleteDiscountAction, deleteSubscriberAction, saveDiscountAction, type ActionState } from './actions'
+import { deleteDiscountAction, deleteSubscriberAction, saveDiscountAction, sendCampaignAction, type ActionState } from './actions'
 import { Result, Submit, input } from './forms'
 
 export interface DiscountValues {
@@ -99,6 +100,45 @@ export function DeleteSubscriber({ id, email }: { id: number; email: string }) {
     >
       <input type="hidden" name="id" value={id} />
       <button className="h-10 rounded-full border border-line px-3 text-sm hover:bg-sunken">Unsubscribe</button>
+      <Result state={state} />
+    </form>
+  )
+}
+
+/**
+ * Compose and send a campaign. The request id is fixed for this page load, so
+ * a second click on Send (or a resubmit) is refused by the website instead of
+ * emailing everyone twice. A new campaign = reload the page.
+ */
+export function CampaignForm({ subscribers, me }: { subscribers: number | null; me: string }) {
+  const [state, action] = useFormState<ActionState, FormData>(sendCampaignAction, {})
+  const [requestId] = useState(() => crypto.randomUUID())
+  return (
+    <form
+      action={action}
+      onSubmit={(e) => {
+        const f = new FormData(e.currentTarget)
+        const mode = ((e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null)?.value
+        const msg = mode === 'test'
+          ? `Send a test copy to ${me}?`
+          : `Email "${f.get('subject')}" to ${subscribers ?? 'all'} subscribers now? This cannot be undone.`
+        if (!window.confirm(msg)) e.preventDefault()
+      }}
+      className="flex flex-col gap-3"
+    >
+      <input type="hidden" name="requestId" value={requestId} />
+      <label className="flex flex-col gap-1 text-sm"><span className="text-muted">Subject *</span>
+        <input name="subject" required maxLength={200} dir="auto" className={input} />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        <span className="text-muted">Message *</span>
+        <span className="text-xs text-muted">Plain text. A blank line starts a new paragraph; an https:// link becomes clickable. It is sent inside the website&apos;s newsletter design.</span>
+        <textarea name="bodyText" required maxLength={20000} rows={10} dir="auto" className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" />
+      </label>
+      <div className="flex flex-wrap gap-2">
+        <button name="mode" value="test" className="h-10 rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">Send me a test</button>
+        <button name="mode" value="send" className="h-10 rounded-full bg-brand px-4 text-sm font-semibold text-forest hover:bg-brand-pressed hover:text-cream">Send to {subscribers ?? 'all'} subscribers</button>
+      </div>
       <Result state={state} />
     </form>
   )
