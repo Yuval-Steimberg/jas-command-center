@@ -485,3 +485,37 @@ export async function uploadWebsiteImage(folder: ImageFolder, bytes: ArrayBuffer
   if (!res.ok) throw new SourceError(`Storage refused the upload (HTTP ${res.status})`, res.status, null)
   return link.publicUrl
 }
+
+/**
+ * Messages from the site's contact / volunteer / donation forms
+ * (site_inquiries). Names, phones and emails: pages show them only with
+ * website:read_pii. Donation photos are small JPEG data URLs.
+ */
+export const websiteInquiry = z.object({
+  id: z.number().int(),
+  kind: z.enum(['contact', 'volunteer', 'donate']),
+  name: z.string(),
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  subject: z.string().nullable(),
+  message: z.string(),
+  photos: z.array(z.string()).catch([]),
+  emailed: z.boolean(),
+  handled_at: z.string().nullable(),
+  handled_by: z.string().nullable(),
+  created_at: z.string(),
+})
+export type WebsiteInquiry = z.infer<typeof websiteInquiry>
+export type InquiryFilter = 'open' | 'handled' | 'all'
+
+export async function listWebsiteInquiries(status: InquiryFilter): Promise<SourceResult<{ inquiries: WebsiteInquiry[]; openCount: number | null }>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:inquiries:${status}`, SOURCE, async () => {
+    const { data, latencyMs } = await call('inquiries-list', { status }, true)
+    return { data: z.object({ inquiries: z.array(websiteInquiry), openCount: z.number().nullable() }).parse(data), latencyMs }
+  })
+}
+
+export const setWebsiteInquiryHandled = (id: number, handled: boolean, by: string) =>
+  write('inquiry-set-handled', { id, handled, by }, (d) => z.object({ inquiry: z.object({ id: z.number() }).passthrough() }).parse(d).inquiry)
