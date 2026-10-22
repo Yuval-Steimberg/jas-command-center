@@ -67,14 +67,14 @@ function missing() {
 }
 const NOTE = 'WEBSITE_COMMAND_CENTER_KEY must equal COMMAND_CENTER_API_KEY on the website (32+ characters), and the website must be redeployed after setting it.'
 
-async function call(action: string, body: Record<string, unknown>, idempotent: boolean) {
+async function call(action: string, body: Record<string, unknown>, idempotent: boolean, timeoutMs = 20_000) {
   const { url, commandKey } = env().website
   return fetchJson(`${url}/api/analytics`, {
     method: 'POST',
     idempotent,
     headers: { Authorization: `Bearer ${commandKey}` },
     body: { action, ...body },
-    timeoutMs: 20_000,
+    timeoutMs,
   }).catch((e) =>
     withHint(e, (x) =>
       x.status === 401 || x.status === 403
@@ -107,11 +107,11 @@ export async function listWebsiteProducts(q: string): Promise<SourceResult<Websi
 export type WriteOutcome<T> = { ok: true; value: T } | { ok: false; conflict: boolean; message: string }
 
 /** A refusal from the website (409 changed, 422 not allowed) is an answer to show, not an outage. */
-async function write<T>(action: string, body: Record<string, unknown>, parse: (d: unknown) => T): Promise<WriteOutcome<T>> {
+async function write<T>(action: string, body: Record<string, unknown>, parse: (d: unknown) => T, timeoutMs?: number): Promise<WriteOutcome<T>> {
   const m = missing()
   if (m.length) throw new SourceError(`Website actions are not connected (${m.join(', ')})`, null, null)
   try {
-    const { data } = await call(action, body, false)
+    const { data } = await call(action, body, false, timeoutMs)
     return { ok: true, value: parse(data) }
   } catch (e) {
     if (e instanceof SourceError && (e.status === 409 || e.status === 422)) {
@@ -407,7 +407,7 @@ export type WebsiteDiscountInput = Omit<WebsiteDiscount, 'usedCount' | 'createdA
 export const websiteSubscriber = z.object({ id: z.number().int(), email: z.string(), created_at: z.string() })
 export type WebsiteSubscriber = z.infer<typeof websiteSubscriber>
 
-export const websiteCampaign = z.object({ id: z.string(), subject: z.string(), sentAt: z.string(), recipients: z.number(), segment: z.string().optional() }).passthrough()
+export const websiteCampaign = z.object({ id: z.string(), subject: z.string(), sentAt: z.string(), recipients: z.number(), segment: z.string().optional(), failed: z.number().optional(), status: z.string().optional(), sentBy: z.string().optional() }).passthrough()
 export type WebsiteCampaign = z.infer<typeof websiteCampaign>
 
 export async function listWebsiteDiscounts(): Promise<SourceResult<WebsiteDiscount[]>> {
@@ -447,3 +447,17 @@ export async function listWebsiteCampaigns(): Promise<SourceResult<WebsiteCampai
     return { data: rows.flatMap((r) => { const p = websiteCampaign.safeParse(r); return p.success ? [p.data] : [] }), latencyMs }
   })
 }
+
+/**
+ * Sends a newsletter campaign (plain text; the website escapes it and wraps it
+ * in its email shell). `requestId` makes the send happen at most once: the
+ * website refuses a repeat with 409. `testTo` sends one copy and records nothing.
+ * Never retried (write → idempotent false); a long list gets a minute.
+ */
+export const sendWebsiteCampaign = (subject: string, bodyText: string, target: { requestId: string; sentBy: string } | { testTo: string }) =>
+  write(
+    'campaign-send',
+    { subject, bodyText, ...target },
+    (d) => z.object({ test: z.boolean(), recipients: z.number(), failed: z.number().optional(), total: z.number().optional() }).parse(d),
+    60_000,
+  )

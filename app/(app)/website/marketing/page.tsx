@@ -5,9 +5,11 @@ import { getSession, requirePageAccess } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { listWebsiteCampaigns, listWebsiteDiscounts, listWebsiteSubscribers, type WebsiteDiscount } from '@/lib/integrations/website/manage'
 import { formatAgorot, shekelsToAgorot } from '@/lib/money'
-import { DeleteDiscount, DeleteSubscriber, DiscountForm } from '../marketing-forms'
+import { CampaignForm, DeleteDiscount, DeleteSubscriber, DiscountForm } from '../marketing-forms'
 
 export const dynamic = 'force-dynamic'
+/** Sending a campaign waits for the website to finish emailing. */
+export const maxDuration = 60
 
 const ils = (v: number) => formatAgorot(shekelsToAgorot(v))
 const day = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Jerusalem', day: 'numeric', month: 'short', year: 'numeric' })
@@ -115,6 +117,13 @@ export default async function WebsiteMarketingPage({ searchParams }: { searchPar
           </CardBody>
         </Card>
 
+        {write ? (
+          <Card>
+            <CardHeader title="Send a campaign" />
+            <CardBody><CampaignForm subscribers={subs?.state === 'ok' && !q ? subs.data.total : null} me={s.user.email} /></CardBody>
+          </Card>
+        ) : null}
+
         <Card>
           <CardHeader title="Sent campaigns" meta={campaigns.state === 'ok' ? <Freshness checkedAt={campaigns.checkedAt} source={campaigns.source} latencyMs={campaigns.latencyMs} /> : undefined} />
           <CardBody>
@@ -125,12 +134,11 @@ export default async function WebsiteMarketingPage({ searchParams }: { searchPar
                 {campaigns.data.map((c) => (
                   <li key={c.id} className="flex min-h-11 flex-wrap items-center justify-between gap-2 py-2 text-sm">
                     <span dir="auto" className="min-w-0 flex-1 truncate">{c.subject}</span>
-                    <span className="num text-xs text-muted">{c.recipients} recipients · {day(c.sentAt)}</span>
+                    <span className="num text-xs text-muted">{c.status === 'sending' ? 'sending or interrupted' : `${c.recipients} recipients`}{typeof c.failed === 'number' && c.failed ? ` · ${c.failed} failed` : ''} · {day(c.sentAt)}{typeof c.sentBy === 'string' ? ` · ${c.sentBy}` : ''}</span>
                   </li>
                 ))}
               </ul>
             ) : <p className="text-sm text-muted">No campaigns sent yet.</p>}
-            <p className="mt-3 text-xs text-muted">Sending a new campaign still happens in the website manager for now.</p>
           </CardBody>
         </Card>
       </div>

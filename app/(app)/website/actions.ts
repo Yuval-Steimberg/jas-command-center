@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, deleteWebsiteDiscount, deleteWebsiteSubscriber, saveWebsiteDiscount, type WebsiteDiscountInput, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, sendWebsiteCampaign, deleteWebsiteDiscount, deleteWebsiteSubscriber, saveWebsiteDiscount, type WebsiteDiscountInput, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -642,5 +642,39 @@ export async function deleteSubscriberAction(_prev: ActionState, form: FormData)
   } catch (e) {
     await audit(user, { action: 'website.subscriber.delete', product: 'website', target, outcome: 'failed', detail: { error: fail(e) } })
     return { ok: false, message: `Not removed: ${fail(e)}` }
+  }
+}
+
+export async function sendCampaignAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to send newsletters.' }
+  }
+  const subject = String(form.get('subject') ?? '').trim()
+  const bodyText = String(form.get('bodyText') ?? '')
+  const requestId = String(form.get('requestId') ?? '')
+  const test = form.get('mode') === 'test'
+  if (!subject || subject.length > 200) return { ok: false, message: 'A subject of up to 200 characters is required.' }
+  if (!bodyText.trim() || bodyText.length > 20000) return { ok: false, message: 'The message is required (up to 20,000 characters).' }
+  if (!test && !/^[A-Za-z0-9-]{8,64}$/.test(requestId)) return { ok: false, message: 'Reload the page and try again.' }
+  const action = test ? 'website.campaign.test' : 'website.campaign.send'
+  const target = test ? `campaign:test` : `campaign:cc_${requestId}`
+  const detail = { subject, length: bodyText.length, ...(test ? { to: user.email } : {}) }
+  await audit(user, { action, product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await sendWebsiteCampaign(subject, bodyText, test ? { testTo: user.email } : { requestId, sentBy: user.email })
+    await audit(user, { action, product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? { ...detail, recipients: res.value.recipients, failed: res.value.failed ?? 0 } : { ...detail, message: res.message } })
+    if (!res.ok) return { ok: false, message: res.message }
+    revalidatePath('/website/marketing')
+    if (res.value.test) return { ok: true, message: `Test sent to ${user.email}. Check the inbox (and spam) before sending to everyone.` }
+    const failed = res.value.failed ?? 0
+    return failed
+      ? { ok: false, message: `Sent to ${res.value.recipients} of ${res.value.total}; ${failed} failed at the email provider. It is recorded in the history; do not resend the same campaign.` }
+      : { ok: true, message: `Sent to ${res.value.recipients} subscribers.` }
+  } catch (e) {
+    await audit(user, { action, product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: test ? `Test not sent: ${fail(e)}` : `The send did not confirm: ${fail(e)}. Check the history below before trying again; some emails may have gone out.` }
   }
 }
