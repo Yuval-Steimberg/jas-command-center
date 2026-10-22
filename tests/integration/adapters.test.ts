@@ -157,6 +157,19 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(s.seen).toHaveLength(4)
   })
 
+  it('carries a list key\'s field descriptor so the editor can draw it', async () => {
+    const nav = {
+      key: 'nav_links_json', label: 'תפריט עליון', type: 'textarea', section: 'navigation', sort_order: 10, value: '[{"label":"בית","href":"/"}]', stored: false, updated_at: null,
+      list: { maxItems: 12, fields: [{ name: 'label', label: 'טקסט', type: 'text', required: true, max: 60 }, { name: 'href', label: 'כתובת', type: 'path', required: true, max: 200 }] },
+    }
+    const s = await fakeServer(() => ({ status: 200, body: { items: [nav], sections: ['navigation'] } }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    const r = await listWebsiteContent('navigation')
+    expect(r.state === 'ok' && r.data.items[0]!.list).toEqual(nav.list)
+  })
+
   it('lists and moderates reviews', async () => {
     const review = { id: 3, product_id: null, customer_name: 'רון', customer_email: 'r@x.co', rating: 4, title: null, content: 'יפה', approved: false, created_at: '2026-10-20T10:00:00Z', product: null, reply: '' }
     const s = await fakeServer((r) => {

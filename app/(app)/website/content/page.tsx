@@ -5,11 +5,13 @@ import { getSession, requirePageAccess } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { listWebsiteContent, PARTNERS_KEY, SHOP_HOURS_KEYS, type WebsiteContentItem } from '@/lib/integrations/website/manage'
 import { ContentField, PartnersForm, ShopHoursForm, type KeyState } from '../content-forms'
+import { ListField } from '../list-field'
 
 export const dynamic = 'force-dynamic'
 
 /** The website manager's own section names (src/pages/manager/config.ts there), plus the shop-hours keys it edits in their own tab. */
 const SECTION_LABELS: Record<string, string> = {
+  navigation: 'Menu & footer links',
   shop: 'Shop hours',
   popup: 'Popup',
   announcement: 'Announcement bar',
@@ -110,7 +112,13 @@ export default async function WebsiteContentPage({ searchParams }: { searchParam
                 <ul className="flex flex-col gap-4">
                   {items.map((i) => (
                     <li key={i.key}>
-                      {write ? (
+                      {i.list ? (
+                        write ? (
+                          <ListField item={{ key: i.key, label: i.label, value: i.value, updatedAt: i.updated_at, list: i.list }} />
+                        ) : (
+                          <ListView label={i.label} value={i.value} />
+                        )
+                      ) : write ? (
                         <ContentField item={{ key: i.key, label: i.label, type: i.type, value: i.value, updatedAt: i.updated_at }} />
                       ) : (
                         <div className="text-sm">
@@ -127,5 +135,25 @@ export default async function WebsiteContentPage({ searchParams }: { searchParam
         </div>
       )}
     </>
+  )
+}
+
+function ListView({ label, value }: { label: string; value: string }) {
+  let rows: Record<string, string>[] = []
+  try {
+    const parsed = JSON.parse(value)
+    if (Array.isArray(parsed)) rows = parsed
+  } catch {
+    /* shown as empty */
+  }
+  return (
+    <div className="text-sm">
+      <p className="text-muted" dir="auto">{label}</p>
+      <ol className="list-decimal ps-5" dir="auto">
+        {rows.map((r, n) => (
+          <li key={n}>{Object.values(r).filter(Boolean).slice(0, 2).join(' · ')}</li>
+        ))}
+      </ol>
+    </div>
   )
 }
