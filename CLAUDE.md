@@ -54,6 +54,9 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
 - Products (`/website/products/new`, `/[id]`): full form via `product-save|get|delete`, plus `product-meta`
   (categories + low-stock threshold), `category-create`, `low-stock-set`. Images are LINKS (upload still happens in
   the website's storage). `published` is sent only when the website returns that column (`hasPublished`).
+- Marketing (`/website/marketing`): discount codes via `discount-save|delete` (one code per write; the website keeps
+  `usedCount`), subscribers (`website:read_pii` to see, + `website:write` to unsubscribe; the address is kept out of
+  the audit log), campaign history read-only. Sending a campaign is NOT here yet.
 - The owner decided (2026-10-22) to RETIRE the website's /manager: build admin features here, not there.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):

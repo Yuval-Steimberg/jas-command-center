@@ -7,6 +7,6 @@ export function presetFrom(searchParams: Record<string, string | string[] | unde
   return isPreset(v) ? v : DEFAULT_PRESET
 }
 
-export function resolveRange(preset: Preset) {
-  return { preset, label: PRESETS[preset], ...rangeFor(preset) }
+export function resolveRange(preset: Preset, now: Date = new Date()) {
+  return { preset, label: PRESETS[preset], ...rangeFor(preset, now) }
 }
