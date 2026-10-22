@@ -44,7 +44,7 @@ export default async function FurniturePage({ searchParams }: { searchParams?: R
                   {rows.map((p) => (
                     <li key={p.id} className="grid gap-3 py-3 md:grid-cols-[1.4fr_1fr_1fr_auto] md:items-center">
                       <div className="min-w-0">
-                        <div className={cn('truncate text-sm font-medium', p.archived && 'text-muted')} dir="auto">{p.name}</div>
+                        <Link href={`/furniture/${p.id}`} className={cn('block truncate text-sm font-medium underline-offset-2 hover:underline', p.archived && 'text-muted')} dir="auto">{p.name}</Link>
                         <div className="truncate text-xs text-muted">
                           {[p.city, p.developer_name].filter(Boolean).map((t, i) => (
                             <span key={i}>{i ? ' · ' : ''}<bdi>{t}</bdi></span>

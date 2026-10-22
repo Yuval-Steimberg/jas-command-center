@@ -36,6 +36,12 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
   409 = changed since loaded → shown as "reload", never retried or overwritten.
 - The website has no audit table: the command center's audit (with before/after) is the only record.
 
+Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):
+- Only column updates the field app itself makes: `projects.archived`, `items.gallery_type` (its
+  trigger derives `intended_for_collection`). Item PATCH is conditional on `updated_at`.
+- Never tick `collected`, finish an apartment or confirm a handover from here: those carry the
+  collector's name and completion rules that live in the app's client code.
+
 Source facts that are easy to get wrong:
 - whatssup-bot is the owner's DESIGN agent (allowlisted numbers), not a
   customer WhatsApp bot. No customer inbox exists.

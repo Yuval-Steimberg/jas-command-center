@@ -40,12 +40,12 @@ export interface FurnitureProject extends z.infer<typeof project> {
   itemsCollected: number
 }
 
-function headers(key: string): Record<string, string> {
+export function headers(key: string): Record<string, string> {
   // Legacy keys are JWTs and go in Authorization too; the newer sb_secret_ keys go in apikey only.
   return key.startsWith('eyJ') ? { apikey: key, Authorization: `Bearer ${key}` } : { apikey: key }
 }
 
-function furnitureHint(e: SourceError): string | null {
+export function furnitureHint(e: SourceError): string | null {
   if (e.status === 401 || e.status === 403) return 'FURNITURE_SUPABASE_KEY is not a key of this project (use its service role / secret key)'
   if (e.status === 404 && /invalid path/i.test(e.message)) return 'FURNITURE_SUPABASE_URL must be the Furniture-Collect project URL, https://<ref>.supabase.co, from Supabase → Project Settings → API'
   if (e.status === 404) return 'The projects table or the project_summary_counts view is missing: check FURNITURE_SUPABASE_URL points at the Furniture-Collect project, not another one'
@@ -93,10 +93,12 @@ export const furnitureAdapter: IntegrationAdapter = {
   },
   capabilities: () => [
     { id: 'projects', label: 'Projects, apartments mapped/completed, items recorded/collected', kind: 'read', status: 'available' },
-    { id: 'inventory', label: 'Item search, photos, destinations, collector', kind: 'read', status: 'not_built' },
+    { id: 'inventory', label: 'Per project: apartments, items, destination, collected and by whom', kind: 'read', status: 'available', note: 'Photos stay in the field app (private storage).' },
+    { id: 'archive', label: 'Archive / unarchive a project', kind: 'write', status: 'available', note: 'The same column update as the app’s ⋮ menu.' },
+    { id: 'destination', label: 'Move an item between JAS / third party / donation / documentation', kind: 'write', status: 'available', note: 'Conditional on updated_at; the app’s trigger keeps the collection flag in step.' },
     { id: 'impact', label: 'Mass, diversion (planned vs confirmed), CO₂', kind: 'read', status: 'needs_source_change', note: 'Only src/lib/reports/kpis.ts may compute these; needs the app to expose its KPI output.' },
     { id: 'reports', label: 'Impact / ESG reports (PDF)', kind: 'read', status: 'available', note: 'Opens the app’s own /reports pages.' },
-    { id: 'item-edit', label: 'Correct item details / status', kind: 'write', status: 'not_built', note: 'Must use updated_at concurrency: workers edit offline and the app’s sync detects conflicts.' },
+    { id: 'collect', label: 'Tick items collected, finish an apartment, confirm a handover', kind: 'write', status: 'not_built', note: 'These carry the collector’s name and the app’s completion rules, which live in the app’s client code. Done in the field app.' },
   ],
   async health() {
     const e = env().furniture

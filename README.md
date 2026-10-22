@@ -63,6 +63,7 @@ Adding a product: [`docs/ADDING_AN_INTEGRATION.md`](docs/ADDING_AN_INTEGRATION.m
 | Website orders: search, fulfilment status (paid → processing → shipped → delivered), notes · products: price, strike-through price, stock, featured | Built — **needs `WEBSITE_COMMAND_CENTER_KEY`** (= website `COMMAND_CENTER_API_KEY`). Payment states, cancellations, refunds and product content stay in the website manager |
 | Gift cards: health; sales, liability, redeemed, paid-not-delivered | Built — health needs only `GIFT_CARDS_URL`; figures need the gift_card_system PR merged + `INTEGRATION_API_KEY` |
 | Furniture: projects, apartments completed, items collected | Built — **needs furniture Supabase URL + key** |
+| Furniture project page (`/furniture/[id]`): apartments, items, destination, collector · archive/unarchive · move an item between destinations · links to the app's impact/ESG reports | Built. Ticking collected, finishing an apartment and handovers stay in the field app |
 | Design agent: queue health, dead jobs (+ retry), failed sends, projects | Built — **needs `DESIGN_AGENT_URL` (+ `ADMIN_TOKEN`)** |
 | Map: places, categories, published commit | Built — works without credentials if the repo is public |
 | Alerts (derived live) + notification history (`cc_notifications`): started/resolved times, per-user read/unread | Built. An alert is resolved only when its source was read successfully. Assignment and email: next |

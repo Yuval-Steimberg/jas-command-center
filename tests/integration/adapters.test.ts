@@ -5,6 +5,7 @@ import { editGiftCardRecipient, getGiftCard, getGiftCardSummary, giftCardsAdapte
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
+import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
 import { listWebsiteOrders, listWebsiteProducts, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
@@ -270,6 +271,43 @@ describe('furniture adapter (contract: PostgREST projects + project_summary_coun
     process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_abc'
     const r = await getFurnitureProjects()
     expect(r.state === 'error' && r.error).toMatch(/FURNITURE_SUPABASE_URL must be the Furniture-Collect project URL/)
+  })
+})
+
+describe('furniture project detail and writes (contract: PostgREST projects/apartments/items)', () => {
+  const pid = '11111111-1111-4111-8111-111111111111'
+  const iid = '22222222-2222-4222-8222-222222222222'
+  const itemRow = { id: iid, apartment_id: 'a1', description: 'ספה', quantity: 1, gallery_type: 'jas_collection', intended_for_collection: true, collected: false, collected_by: null, status: 'pending', item_type: 'furniture', updated_at: '2026-10-20T10:00:00+00:00' }
+
+  it('reads one project with its apartments and items; an unknown id is a 404, not an error', async () => {
+    const s = await fakeServer((r) => {
+      if (r.path.startsWith('/rest/v1/projects')) return { status: 200, body: r.path.includes(pid) ? [{ id: pid, name: 'בניין א', city: null, developer_name: null, start_date: null, archived: false }] : [] }
+      if (r.path.startsWith('/rest/v1/apartments')) return { status: 200, body: [{ id: 'a1', project_id: pid, building_number: '1', apartment_number: '2', status: 'DOCUMENTING', updated_at: null }] }
+      return { status: 200, body: [itemRow] }
+    })
+    closers.push(s.close)
+    process.env.FURNITURE_SUPABASE_URL = s.url
+    process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_x'
+    expect(await getFurnitureProject(pid)).toMatchObject({ state: 'ok', data: { project: { name: 'בניין א' }, apartments: [{ id: 'a1' }], items: [{ id: iid }] } })
+    expect(await getFurnitureProject('22222222-2222-4222-8222-000000000000')).toBeNull()
+    expect(await getFurnitureProject('not-a-uuid')).toBeNull()
+  })
+
+  it('moves an item only if it is unchanged since loaded, and archives with a plain column update', async () => {
+    const s = await fakeServer((r) => {
+      if (r.method !== 'PATCH') return { status: 405, body: {} }
+      if (r.path.startsWith('/rest/v1/projects')) return { status: 200, body: [{ id: pid, archived: JSON.parse(r.body).archived }] }
+      const fresh = r.path.includes(encodeURIComponent(encodeURIComponent(itemRow.updated_at))) || r.path.includes(encodeURIComponent(itemRow.updated_at))
+      return { status: 200, body: fresh ? [{ ...itemRow, gallery_type: 'third_party', intended_for_collection: false, updated_at: 'later' }] : [] }
+    })
+    closers.push(s.close)
+    process.env.FURNITURE_SUPABASE_URL = s.url
+    process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_x'
+    expect(await setItemDestination(iid, 'third_party', itemRow.updated_at)).toMatchObject({ ok: true, value: { intended_for_collection: false } })
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ gallery_type: 'third_party' })
+    expect(s.seen[0]!.headers.prefer).toBe('return=representation')
+    expect(await setItemDestination(iid, 'donation', 'stale')).toMatchObject({ ok: false, conflict: true })
+    expect(await setProjectArchived(pid, true)).toMatchObject({ ok: true, value: { archived: true } })
   })
 })
 
