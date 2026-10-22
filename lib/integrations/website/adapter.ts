@@ -48,14 +48,18 @@ export const websiteAdapter: IntegrationAdapter = {
     return {
       required: ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY'],
       missing: [!e.url && 'WEBSITE_URL', !e.agentKey && 'WEBSITE_AGENT_API_KEY'].filter(Boolean) as string[],
-      optional: [],
+      optional: ['WEBSITE_COMMAND_CENTER_KEY'],
     }
   },
   capabilities: () => [
     { id: 'analytics', label: 'Traffic, funnel, paid orders, revenue (verified vs unverified)', kind: 'read', status: 'available' },
     { id: 'errors', label: 'JS, API and checkout errors', kind: 'read', status: 'available' },
-    { id: 'orders', label: 'Order list and fulfilment status', kind: 'read', status: 'needs_source_change', note: 'The agent key only reads aggregates. Needs a narrow orders endpoint on the website.' },
-    { id: 'products', label: 'Edit products, prices, stock, images', kind: 'write', status: 'needs_source_change', note: 'Admin-only via Supabase RLS today; needs a server endpoint that reuses website pricing rules.' },
+    env().website.commandKey
+      ? { id: 'orders', label: 'Orders: search, fulfilment status (paid → delivered), notes', kind: 'write', status: 'available', note: 'Through the website’s own endpoint; payment states, cancellations and refunds stay in the website manager.' }
+      : { id: 'orders', label: 'Orders: search, fulfilment status, notes', kind: 'write', status: 'needs_credentials', note: 'Set WEBSITE_COMMAND_CENTER_KEY here and the same value as COMMAND_CENTER_API_KEY on the website.' },
+    env().website.commandKey
+      ? { id: 'products', label: 'Products: price, strike-through price, stock, featured', kind: 'write', status: 'available', note: 'Names, images, categories and publishing stay in the website manager.' }
+      : { id: 'products', label: 'Products: price, strike-through price, stock, featured', kind: 'write', status: 'needs_credentials', note: 'Same key as orders.' },
     { id: 'refunds', label: 'Refunds, tax, processing fees', kind: 'read', status: 'unsupported', note: 'The website does not store them.' },
     { id: 'deploys', label: 'Deployment status', kind: 'read', status: 'needs_credentials', note: 'Needs a Vercel API token.' },
   ],

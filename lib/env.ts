@@ -38,7 +38,8 @@ export function env() {
       devPassword: read('CC_DEV_PASSWORD'),
       sessionSecret: read('CC_SESSION_SECRET'),
     },
-    website: { url: url('WEBSITE_URL'), agentKey: read('WEBSITE_AGENT_API_KEY') },
+    /** agentKey reads the analytics snapshot; commandKey (the website's COMMAND_CENTER_API_KEY) reads and changes orders and products. */
+    website: { url: url('WEBSITE_URL'), agentKey: read('WEBSITE_AGENT_API_KEY'), commandKey: read('WEBSITE_COMMAND_CENTER_KEY') },
     giftCards: { url: url('GIFT_CARDS_URL'), integrationKey: read('GIFT_CARDS_INTEGRATION_KEY') },
     furniture: {
       supabaseUrl: url('FURNITURE_SUPABASE_URL'),

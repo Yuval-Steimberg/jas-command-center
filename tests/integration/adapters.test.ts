@@ -5,9 +5,10 @@ import { editGiftCardRecipient, getGiftCard, getGiftCardSummary, giftCardsAdapte
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
+import { listWebsiteOrders, listWebsiteProducts, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
-const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
+const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
 let closers: (() => Promise<void>)[] = []
 beforeEach(() => {
   resetSourceCache()
@@ -90,6 +91,57 @@ describe('website adapter (contract: POST /api/analytics, Bearer AGENT_API_KEY, 
     process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
     expect((await getWebsiteSnapshot(range)).state).toBe('error')
     expect((await getWebsiteSnapshot(range)).state).toBe('ok')
+  })
+})
+
+describe('website orders and products (contract: POST /api/analytics, Bearer COMMAND_CENTER_API_KEY)', () => {
+  const key = 'c'.repeat(32)
+  const order = { id: 5, order_number: 'JAS-5', customer_name: 'דנה', customer_email: 'd@x.co', customer_phone: null, items: [{ product_id: 1, name_he: 'כיסא', price: 450, quantity: 1 }], subtotal: 450, shipping: 0, total: 450, status: 'paid', notes: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' }
+  const product = { id: 1, slug: 'chair', name_he: 'כיסא', name_en: 'Chair', price: 450, original_price: null, quantity: 1, in_stock: true, featured: false, published: true, image_url: null, updated_at: 'u1', categories: null }
+
+  it('is not configured without its own key, even when the snapshot key is set', async () => {
+    process.env.WEBSITE_URL = 'http://127.0.0.1:9'
+    process.env.WEBSITE_AGENT_API_KEY = 'w'.repeat(24)
+    expect(await listWebsiteOrders('')).toMatchObject({ state: 'not_configured', missing: ['WEBSITE_COMMAND_CENTER_KEY'] })
+  })
+
+  it('lists orders and products with the command-center key and validates them', async () => {
+    const s = await fakeServer((r) => {
+      if (r.headers.authorization !== `Bearer ${key}`) return { status: 403, body: { error: 'no' } }
+      const b = JSON.parse(r.body)
+      return { status: 200, body: b.action === 'orders-list' ? { orders: [order] } : { products: [product] } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await listWebsiteOrders('dana', 'paid')).toMatchObject({ state: 'ok', data: [{ id: 5, status: 'paid' }] })
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ action: 'orders-list', q: 'dana', status: 'paid', limit: 100 })
+    expect(await listWebsiteProducts('')).toMatchObject({ state: 'ok', data: [{ id: 1, price: 450 }] })
+  })
+
+  it('a stale or refused write is an answer, not an outage; writes are not retried', async () => {
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (b.action === 'order-set-status') return { status: 409, body: { error: 'The order changed since it was loaded' } }
+      if (b.patch?.published !== undefined) return { status: 422, body: { error: 'Not editable' } }
+      return { status: 200, body: { product: { ...product, price: b.patch.price, updated_at: 'u2' } } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await setWebsiteOrderStatus(5, 'paid', 'shipped')).toEqual({ ok: false, conflict: true, message: 'The order changed since it was loaded' })
+    expect(s.seen).toHaveLength(1)
+    expect(await updateWebsiteProduct(1, { price: 399.9 }, 'u1')).toMatchObject({ ok: true, value: { price: 399.9, updated_at: 'u2' } })
+    expect(JSON.parse(s.seen[1]!.body)).toEqual({ action: 'product-update', id: 1, patch: { price: 399.9 }, expectUpdatedAt: 'u1' })
+  })
+
+  it('a rejected key names the variable to fix', async () => {
+    const s = await fakeServer(() => ({ status: 403, body: { error: 'The command center key cannot use this action' } }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    const r = await listWebsiteOrders('')
+    expect(r.state === 'error' && r.error).toMatch(/WEBSITE_COMMAND_CENTER_KEY must equal COMMAND_CENTER_API_KEY/)
   })
 })
 
