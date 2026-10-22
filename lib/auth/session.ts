@@ -7,6 +7,7 @@ import { DEV_COOKIE, verifyDevSession } from './dev-session'
 import { assertCan, can, primaryRole, type Permission, type Role, type PermissionOverrides } from './rbac'
 import { supabaseAdmin, supabaseUserClient } from '@/lib/supabase'
 import { diagnoseSetupError, SetupError } from './setup-error'
+import { PROFILE_WITH_ROLES } from './profile-query'
 
 export { SetupError }
 
@@ -68,7 +69,7 @@ async function loadSession(): Promise<Session | null> {
 export async function resolveProfile(authUserId: string): Promise<{ user: CurrentUser; overrides: PermissionOverrides } | null> {
   const db = supabaseAdmin()
   const [{ data: profile, error: pErr }, overrides] = await Promise.all([
-    db.from('cc_profiles').select('id, email, full_name, is_active, cc_user_roles(role)').eq('auth_user_id', authUserId).maybeSingle(),
+    db.from('cc_profiles').select(PROFILE_WITH_ROLES).eq('auth_user_id', authUserId).maybeSingle(),
     loadOverrides(),
   ])
   if (pErr) throw diagnoseSetupError(pErr)

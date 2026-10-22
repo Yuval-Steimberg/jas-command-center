@@ -42,3 +42,7 @@ Commands: `npm run dev | test | typecheck | lint | build`. Local login: set
 `CC_DEV_PASSWORD` + `CC_SESSION_SECRET` in `.env.local` (disabled in production).
 `next dev` redirects to `localhost` — drive it via `localhost`, not 127.0.0.1,
 or the dev cookie is lost.
+
+Gotcha: `cc_user_roles` references `cc_profiles` twice (`profile_id`, `granted_by`),
+so any PostgREST embed between them needs a hint (`cc_user_roles!profile_id(...)`)
+or the whole query fails with PGRST201. See `lib/auth/profile-query.ts`.
