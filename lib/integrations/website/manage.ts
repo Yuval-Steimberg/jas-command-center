@@ -382,3 +382,68 @@ export const createWebsiteCategory = (name_he: string, name_en: string | null) =
 
 export const setWebsiteLowStockThreshold = (threshold: number) =>
   write('low-stock-set', { threshold }, (d) => z.object({ lowStockThreshold: z.number() }).parse(d).lowStockThreshold)
+
+/**
+ * Marketing (the website manager's שיווק tab): discount codes, newsletter
+ * subscribers (customer emails: website:read_pii only) and the campaign
+ * history. The website changes one code at a time on the freshest list and
+ * keeps the usage count the payment webhook maintains.
+ */
+export const websiteDiscount = z.object({
+  code: z.string(),
+  type: z.enum(['percent', 'amount']),
+  value: z.number(),
+  expiresAt: z.string().optional(),
+  usageLimit: z.number().optional(),
+  usedCount: z.number().optional(),
+  minOrder: z.number().optional(),
+  notes: z.string().optional(),
+  active: z.boolean(),
+  createdAt: z.string().optional(),
+})
+export type WebsiteDiscount = z.infer<typeof websiteDiscount>
+export type WebsiteDiscountInput = Omit<WebsiteDiscount, 'usedCount' | 'createdAt'>
+
+export const websiteSubscriber = z.object({ id: z.number().int(), email: z.string(), created_at: z.string() })
+export type WebsiteSubscriber = z.infer<typeof websiteSubscriber>
+
+export const websiteCampaign = z.object({ id: z.string(), subject: z.string(), sentAt: z.string(), recipients: z.number(), segment: z.string().optional() }).passthrough()
+export type WebsiteCampaign = z.infer<typeof websiteCampaign>
+
+export async function listWebsiteDiscounts(): Promise<SourceResult<WebsiteDiscount[]>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce('website:discounts', SOURCE, async () => {
+    const { data, latencyMs } = await call('discounts-list', {}, true)
+    return { data: z.object({ codes: z.array(websiteDiscount) }).parse(data).codes, latencyMs }
+  })
+}
+
+export const saveWebsiteDiscount = (code: WebsiteDiscountInput, mode: 'create' | 'update') =>
+  write('discount-save', { mode, code }, (d) => z.object({ code: websiteDiscount }).parse(d).code)
+
+export const deleteWebsiteDiscount = (code: string) =>
+  write('discount-delete', { code }, (d) => z.object({ deleted: z.string() }).parse(d).deleted)
+
+export async function listWebsiteSubscribers(q: string): Promise<SourceResult<{ subscribers: WebsiteSubscriber[]; total: number }>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:subscribers:${q}`, SOURCE, async () => {
+    const { data, latencyMs } = await call('subscribers-list', { q, limit: 500 }, true)
+    return { data: z.object({ subscribers: z.array(websiteSubscriber), total: z.number() }).parse(data), latencyMs }
+  })
+}
+
+export const deleteWebsiteSubscriber = (id: number) =>
+  write('subscriber-delete', { id }, (d) => z.object({ deleted: z.number() }).parse(d).deleted)
+
+export async function listWebsiteCampaigns(): Promise<SourceResult<WebsiteCampaign[]>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce('website:campaigns', SOURCE, async () => {
+    const { data, latencyMs } = await call('campaigns-list', {}, true)
+    // A malformed history entry is dropped, not allowed to fail the page.
+    const rows = z.object({ campaigns: z.array(z.unknown()) }).parse(data).campaigns
+    return { data: rows.flatMap((r) => { const p = websiteCampaign.safeParse(r); return p.success ? [p.data] : [] }), latencyMs }
+  })
+}

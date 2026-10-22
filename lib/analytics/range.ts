@@ -16,7 +16,7 @@ export function analyticsRange(
   const from = typeof sp?.from === 'string' ? sp.from : null
   const to = typeof sp?.to === 'string' ? sp.to : null
   const preset = () => {
-    const r = resolveRange(presetFrom(sp))
+    const r = resolveRange(presetFrom(sp), now)
     return { range: { from: r.from, to: r.to }, label: PRESETS[r.preset] }
   }
   if (!from && !to) return { ...preset(), custom: false, error: null }

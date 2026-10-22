@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
-import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
+import { FULFILMENT, PARTNERS_KEY, PRODUCT_CONDITIONS, deleteWebsiteDiscount, deleteWebsiteSubscriber, saveWebsiteDiscount, type WebsiteDiscountInput, createWebsiteCategory, deleteWebsiteProduct, saveWebsiteProduct, setWebsiteLowStockThreshold, type WebsiteProductInput, deleteWebsitePost, deleteWebsiteReviews, saveWebsitePost, type WebsitePostInput, setWebsiteContent, setWebsiteReviewReply, setWebsiteReviewsApproved, setWebsiteOrderNotes, setWebsiteOrderStatus, updateWebsiteProduct, type ProductPatch } from '@/lib/integrations/website/manage'
 
 export type ActionState = { ok?: boolean; message?: string }
 
@@ -539,5 +539,108 @@ export async function setLowStockAction(_prev: ActionState, form: FormData): Pro
   } catch (e) {
     await audit(user, { action: 'website.products.low_stock', product: 'website', target: 'site_content:low_stock_threshold', outcome: 'failed', detail: { ...detail, error: fail(e) } })
     return { ok: false, message: `Not saved: ${fail(e)}` }
+  }
+}
+
+// ── Marketing ────────────────────────────────────────────────────────────────
+
+const discountForm = z
+  .object({
+    code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{2,30}$/, 'A code is 2–30 English letters, digits, dashes or underscores.'),
+    type: z.enum(['percent', 'amount']),
+    value: z.string().trim().regex(/^\d{1,6}(\.\d{1,2})?$/, 'Enter the discount as a number, like 10 or 49.90.').transform(Number),
+    expiresAt: z.union([z.literal(''), z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expiry must be a date.')]),
+    usageLimit: z.union([z.literal(''), z.string().regex(/^\d{1,7}$/, 'The usage limit is a whole number.')]),
+    minOrder: z.union([z.literal(''), z.string().regex(/^\d{1,7}(\.\d{1,2})?$/, 'The minimum order is an amount in shekels.')]),
+    notes: z.string().trim().max(500, 'Notes are limited to 500 characters.'),
+    active: z.boolean(),
+  })
+  .refine((d) => d.value > 0, { message: 'The discount must be above 0.' })
+  .refine((d) => d.type === 'amount' || (Number.isInteger(d.value) && d.value <= 100), { message: 'A percent discount is a whole number from 1 to 100.' })
+  .refine((d) => d.usageLimit === '' || Number(d.usageLimit) >= 1, { message: 'The usage limit is at least 1.' })
+
+export async function saveDiscountAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to change discount codes.' }
+  }
+  const str = (k: string) => String(form.get(k) ?? '')
+  const mode = str('mode') === 'update' ? 'update' : 'create'
+  const parsed = discountForm.safeParse({
+    code: str('code'), type: str('type'), value: str('value'), expiresAt: str('expiresAt'), usageLimit: str('usageLimit'),
+    minOrder: str('minOrder'), notes: str('notes'), active: form.get('active') === 'on',
+  })
+  if (!parsed.success) return { ok: false, message: parsed.error.issues[0]!.message }
+  const d = parsed.data
+  const code: WebsiteDiscountInput = {
+    code: d.code, type: d.type, value: d.value, active: d.active,
+    ...(d.expiresAt ? { expiresAt: d.expiresAt } : {}),
+    ...(d.usageLimit ? { usageLimit: Number(d.usageLimit) } : {}),
+    ...(d.minOrder ? { minOrder: Number(d.minOrder) } : {}),
+    ...(d.notes ? { notes: d.notes } : {}),
+  }
+  const action = mode === 'create' ? 'website.discount.create' : 'website.discount.update'
+  const target = `discount:${code.code}`
+  const detail = { ...code, before: mode === 'update' ? str('was').slice(0, 500) : null }
+  await audit(user, { action, product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await saveWebsiteDiscount(code, mode)
+    await audit(user, { action, product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    revalidatePath('/website/marketing')
+    if (!res.ok) return { ok: false, message: res.message }
+    return { ok: true, message: `${res.value.code} saved${res.value.active ? ' and usable at checkout now' : ' (inactive)'}.` }
+  } catch (e) {
+    await audit(user, { action, product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not saved: ${fail(e)}` }
+  }
+}
+
+export async function deleteDiscountAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to delete discount codes.' }
+  }
+  const code = String(form.get('code') ?? '').trim().toUpperCase()
+  if (!/^[A-Z0-9_-]{2,30}$/.test(code)) return { ok: false, message: 'Invalid code.' }
+  const target = `discount:${code}`
+  const detail = { code, before: String(form.get('was') ?? '').slice(0, 500) }
+  await audit(user, { action: 'website.discount.delete', product: 'website', target, outcome: 'requested', detail })
+  try {
+    const res = await deleteWebsiteDiscount(code)
+    await audit(user, { action: 'website.discount.delete', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? detail : { ...detail, message: res.message } })
+    revalidatePath('/website/marketing')
+    return res.ok ? { ok: true, message: `${code} deleted.` } : { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.discount.delete', product: 'website', target, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not deleted: ${fail(e)}` }
+  }
+}
+
+export async function deleteSubscriberAction(_prev: ActionState, form: FormData): Promise<ActionState> {
+  let user
+  try {
+    user = await requirePermission('website:write')
+  } catch {
+    return { ok: false, message: 'You do not have permission to remove subscribers.' }
+  }
+  const s = await getSession()
+  if (!s || !can(s.user.role, 'website:read_pii', s.overrides)) return { ok: false, message: 'Your role cannot see or change customer details.' }
+  const id = rowId.safeParse(form.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid subscriber.' }
+  const target = `subscriber:${id.data}`
+  // The address itself stays out of the audit log; the id is enough to trace it on the website.
+  await audit(user, { action: 'website.subscriber.delete', product: 'website', target, outcome: 'requested', detail: {} })
+  try {
+    const res = await deleteWebsiteSubscriber(id.data)
+    await audit(user, { action: 'website.subscriber.delete', product: 'website', target, outcome: res.ok ? 'succeeded' : 'failed', detail: res.ok ? {} : { message: res.message } })
+    revalidatePath('/website/marketing')
+    return res.ok ? { ok: true, message: 'Unsubscribed.' } : { ok: false, message: res.message }
+  } catch (e) {
+    await audit(user, { action: 'website.subscriber.delete', product: 'website', target, outcome: 'failed', detail: { error: fail(e) } })
+    return { ok: false, message: `Not removed: ${fail(e)}` }
   }
 }

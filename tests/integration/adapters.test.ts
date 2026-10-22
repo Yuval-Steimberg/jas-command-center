@@ -6,7 +6,7 @@ import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
 import { getFurnitureProject, setItemDestination, setProjectArchived } from '@/lib/integrations/furniture/manage'
-import { getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
+import { listWebsiteDiscounts, saveWebsiteDiscount, deleteWebsiteDiscount, listWebsiteSubscribers, listWebsiteCampaigns, getWebsitePost, saveWebsitePost, getWebsiteProduct, getWebsiteProductMeta, saveWebsiteProduct, deleteWebsiteProduct, createWebsiteCategory, deleteWebsiteReviews, listWebsiteReviews, setWebsiteReviewsApproved, listWebsiteContent, listWebsiteOrders, listWebsiteProducts, setWebsiteContent, setWebsiteOrderStatus, updateWebsiteProduct } from '@/lib/integrations/website/manage'
 import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
 
 const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'WEBSITE_COMMAND_CENTER_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
@@ -225,6 +225,27 @@ describe('website orders and products (contract: POST /api/analytics, Bearer COM
     expect(await deleteWebsiteProduct(7, 'u1')).toMatchObject({ ok: true, value: { slug: 'chair' } })
     expect(await createWebsiteCategory('מנורות', 'Lamps')).toMatchObject({ ok: true, value: { id: 2 } })
     expect(JSON.parse(s.seen.at(-1)!.body)).toEqual({ action: 'category-create', name_he: 'מנורות', name_en: 'Lamps' })
+  })
+
+  it('reads and writes marketing, and drops a malformed campaign entry', async () => {
+    const s = await fakeServer((r) => {
+      const b = JSON.parse(r.body)
+      if (b.action === 'discounts-list') return { status: 200, body: { codes: [{ code: 'SPRING', type: 'percent', value: 10, active: true, usedCount: 4, createdAt: 'c' }] } }
+      if (b.action === 'discount-save') return b.mode === 'create' && b.code.code === 'SPRING' ? { status: 409, body: { error: 'The code SPRING already exists' } } : { status: 200, body: { code: { ...b.code, usedCount: 0 } } }
+      if (b.action === 'discount-delete') return { status: 200, body: { deleted: b.code } }
+      if (b.action === 'subscribers-list') return { status: 200, body: { subscribers: [{ id: 1, email: 'a@x.com', created_at: 't' }], total: 1 } }
+      if (b.action === 'campaigns-list') return { status: 200, body: { campaigns: [{ id: 'c1', subject: 'שלום', sentAt: 's', recipients: 3, bodyHtml: '<p/>' }, { broken: true }] } }
+      return { status: 400, body: { error: 'Unknown action' } }
+    })
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_COMMAND_CENTER_KEY = key
+    expect(await listWebsiteDiscounts()).toMatchObject({ state: 'ok', data: [{ code: 'SPRING', usedCount: 4 }] })
+    expect(await saveWebsiteDiscount({ code: 'SPRING', type: 'percent', value: 5, active: true }, 'create')).toMatchObject({ ok: false, conflict: true })
+    expect(await saveWebsiteDiscount({ code: 'VIP', type: 'amount', value: 50, active: true }, 'create')).toMatchObject({ ok: true, value: { code: 'VIP' } })
+    expect(await deleteWebsiteDiscount('VIP')).toEqual({ ok: true, value: 'VIP' })
+    expect(await listWebsiteSubscribers('')).toMatchObject({ state: 'ok', data: { total: 1 } })
+    expect(await listWebsiteCampaigns()).toMatchObject({ state: 'ok', data: [{ id: 'c1', recipients: 3 }] })
   })
 
   it('a rejected key names the variable to fix', async () => {
