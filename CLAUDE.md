@@ -29,6 +29,13 @@ AI assistant (`lib/assistant/`, page `/assistant`):
 - Write actions are not built. When they are: confirmation step in the UI,
   `requested` audit before, confirmed outcome after — never executed by the model alone.
 
+Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `/website/products`):
+- Through the website's `_agent-ops.ts` with `WEBSITE_COMMAND_CENTER_KEY` — a separate key from the
+  snapshot-only `WEBSITE_AGENT_API_KEY`, which the website's AI agent also holds.
+- Fulfilment statuses only (revenue never moves); products: price/original_price/quantity/featured.
+  409 = changed since loaded → shown as "reload", never retried or overwritten.
+- The website has no audit table: the command center's audit (with before/after) is the only record.
+
 Source facts that are easy to get wrong:
 - whatssup-bot is the owner's DESIGN agent (allowlisted numbers), not a
   customer WhatsApp bot. No customer inbox exists.

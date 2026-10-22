@@ -1,7 +1,7 @@
 import 'server-only'
 import { env } from '@/lib/env'
 import { fetchJson, SourceError, withHint } from '../http'
-import { notConfigured, readSource } from '../read'
+import { notConfigured, readOnce, readSource } from '../read'
 import { invalidate } from '../cache'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 import { giftCardDetail, giftCardHealth, giftCardSearch, giftCardSummary, resendAllResult, writeResult, type GiftCardDetail, type GiftCardHealth, type GiftCardSearch, type GiftCardSummary, type ResendAllResult } from './contract'
@@ -67,16 +67,6 @@ export async function searchGiftCards(query: string, status?: string): Promise<S
     const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/cards?${qs}`, { headers: configured().headers })
     return { data: giftCardSearch.parse(data), latencyMs }
   })
-}
-
-/** A read a person is waiting on: never served from, or left in, the shared cache. */
-async function readOnce<T>(key: string, source: string, load: () => Promise<{ data: T; latencyMs: number }>): Promise<SourceResult<T>> {
-  invalidate(key)
-  try {
-    return await readSource(key, 0, source, load)
-  } finally {
-    invalidate(key)
-  }
 }
 
 export async function getGiftCard(id: string): Promise<SourceResult<GiftCardDetail> | null> {

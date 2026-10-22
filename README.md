@@ -60,6 +60,7 @@ Adding a product: [`docs/ADDING_AN_INTEGRATION.md`](docs/ADDING_AN_INTEGRATION.m
 | Auth (Supabase Auth; local dev login), RBAC (5 roles × per-product permissions + DB overrides), audit log | Built, tested |
 | App shell, design system, responsive layout (390 → 1440 px) | Built, checked in Chromium |
 | Website: traffic, funnel, paid vs verified revenue, channels, devices, errors | Built — **needs `WEBSITE_AGENT_API_KEY`** |
+| Website orders: search, fulfilment status (paid → processing → shipped → delivered), notes · products: price, strike-through price, stock, featured | Built — **needs `WEBSITE_COMMAND_CENTER_KEY`** (= website `COMMAND_CENTER_API_KEY`). Payment states, cancellations, refunds and product content stay in the website manager |
 | Gift cards: health; sales, liability, redeemed, paid-not-delivered | Built — health needs only `GIFT_CARDS_URL`; figures need the gift_card_system PR merged + `INTEGRATION_API_KEY` |
 | Furniture: projects, apartments completed, items collected | Built — **needs furniture Supabase URL + key** |
 | Design agent: queue health, dead jobs (+ retry), failed sends, projects | Built — **needs `DESIGN_AGENT_URL` (+ `ADMIN_TOKEN`)** |

@@ -1,5 +1,5 @@
 import 'server-only'
-import { cached } from './cache'
+import { cached, invalidate } from './cache'
 import { SourceError } from './http'
 import type { SourceResult } from './types'
 
@@ -28,3 +28,13 @@ export async function readSource<T>(
 }
 
 export const notConfigured = (missing: string[], note?: string): SourceResult<never> => ({ state: 'not_configured', missing, note })
+
+/** A read a person is waiting on: never served from, or left in, the shared cache. */
+export async function readOnce<T>(key: string, source: string, load: () => Promise<{ data: T; latencyMs: number }>): Promise<SourceResult<T>> {
+  invalidate(key)
+  try {
+    return await readSource(key, 0, source, load)
+  } finally {
+    invalidate(key)
+  }
+}

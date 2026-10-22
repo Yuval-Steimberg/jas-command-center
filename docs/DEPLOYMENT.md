@@ -19,6 +19,7 @@ New Vercel project from this repo (framework: Next.js). Production branch:
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Command center Supabase → Settings → API |
 | `WEBSITE_URL` | The website's production URL |
 | `WEBSITE_AGENT_API_KEY` | Generate 32 random chars; set the same value as `AGENT_API_KEY` on the website's Vercel project (the design agent may already use it as `WEBSITE_METRICS_TOKEN` — reuse that value) |
+| `WEBSITE_COMMAND_CENTER_KEY` | Generate a NEW 32+ char value (not the agent key); set the same value as `COMMAND_CENTER_API_KEY` on the website's Vercel project and redeploy the website. Turns on /website/orders and /website/products |
 | `GIFT_CARDS_URL` | `https://gift.justasecond.co.il` |
 | `GIFT_CARDS_INTEGRATION_KEY` | Generate 40 random chars; set the same value as `INTEGRATION_API_KEY` on the gift card Vercel project (after its PR is merged), then redeploy it |
 | `FURNITURE_SUPABASE_URL`, `FURNITURE_SUPABASE_KEY` | Furniture Supabase (`fdxqfwmtrqbaeqejynmu`) → Settings → API. See §3 |
