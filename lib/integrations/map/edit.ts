@@ -110,3 +110,33 @@ export function editPlace(source: string, id: number, input: PlaceInput): EditRe
   const next = `${source.slice(0, el.start)}${literal(merged)}${source.slice(el.end)}`
   return finish(next, id, `Edit place #${id} "${input.name}" (${changed.join(', ')})`)
 }
+
+/**
+ * Remove one place: its whole line (or, on a shared line, just its literal and comma).
+ * The store itself (the anchor) is never removed — the route is drawn around it.
+ */
+export function removePlace(source: string, id: number): EditResult {
+  const data = parsePlacesData(source)
+  const current = data.places.find((p) => p.id === id)
+  if (!current) return { ok: false, message: `Place #${id} is not in the file.` }
+  if (current.cat === 'anchor') return { ok: false, message: `"${current.name}" is the store the route is built around and cannot be removed.` }
+  if (data.places.length <= 1) return { ok: false, message: 'The map must keep at least one place.' }
+  const { elements } = locsArray(source)
+  const i = elements.findIndex((e) => e.properties.some((p: any) => p.key?.name === 'id' && p.value?.value === id))
+  if (i < 0) return { ok: false, message: `Place #${id} could not be located in the source.` }
+  const el = elements[i]!
+  let start = el.start
+  let end = el.end
+  const comma = source.slice(end).match(/^[ \t]*,/)
+  if (comma) end += comma[0].length
+  else if (i > 0) start = elements[i - 1]!.end // last element without a trailing comma: take the comma before it
+  // Take the whole line when the place sits on a line of its own.
+  const lineStart = source.lastIndexOf('\n', start - 1) + 1
+  const rest = source.slice(end).match(/^[ \t]*(\/\/[^\n]*)?\n/)
+  if (/^[ \t]*$/.test(source.slice(lineStart, start)) && rest && !rest[1]) {
+    start = lineStart
+    end += rest[0].length
+  }
+  const next = `${source.slice(0, start)}${source.slice(end)}`
+  return finish(next, id, `Remove place #${id} "${current.name}"`)
+}

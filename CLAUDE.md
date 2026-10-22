@@ -70,7 +70,7 @@ Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`
   collector's name and completion rules that live in the app's client code.
 
 Map writes (`lib/integrations/map/edit.ts` + `github.ts`, page `/map`):
-- A place change is a pull request on Interactive-map, never a commit to the published branch. `edit.ts`
+- A place change (add / edit / remove; the anchor store is never removed) is a pull request on Interactive-map, never a commit to the published branch. `edit.ts`
   rewrites ONE line of places-data.js as text and re-parses the result; the commit names the blob it was
   computed from, so a file changed in between is refused (409), not overwritten.
 - Map visitors: `ga4.ts`, GA4 Data API with a read-only service account (JWT signed with node:crypto).
