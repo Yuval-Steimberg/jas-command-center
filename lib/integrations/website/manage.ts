@@ -150,7 +150,15 @@ export const websiteContentItem = z.object({
   value: z.string(),
   stored: z.boolean(),
   updated_at: z.string().nullable(),
+  /** Present on a JSON-list key (menu, footer links, team…): what one item holds, so the editor is generic. */
+  list: z
+    .object({
+      maxItems: z.number().int().positive(),
+      fields: z.array(z.object({ name: z.string(), label: z.string(), type: z.enum(['text', 'textarea', 'path', 'image']), required: z.boolean().optional(), max: z.number().int().positive() })),
+    })
+    .optional(),
 })
+export type WebsiteContentList = NonNullable<z.infer<typeof websiteContentItem>['list']>
 export type WebsiteContentItem = z.infer<typeof websiteContentItem>
 const contentResponse = z.object({ items: z.array(websiteContentItem), sections: z.array(z.string()) })
 export type WebsiteContent = z.infer<typeof contentResponse>

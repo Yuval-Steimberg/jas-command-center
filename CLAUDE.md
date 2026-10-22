@@ -47,6 +47,9 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
 - Site content (`/website/content`): exactly the website's SITE_CONTENT_SCHEMA keys (texts, images, shop hours,
   partners) via `content-list`/`content-set`; the website validates per key and refuses a stale edit (409).
   Discount codes, campaigns and review replies share `site_content` but are NOT reachable through it.
+  List keys (`*_json`: menu, footer links, team, board, committee) come with a `list` descriptor (fields, maxItems)
+  from the website's `src/lib/contentLists.ts`; `ListField` is a generic add/remove/reorder editor that saves the
+  whole list as one conditional write. Add a list on the website side only; this editor needs no change.
 - Reviews (`/website/reviews`): approve / hide / delete (bulk via `form="reviews-bulk"`) + reply. Reviewer email
   is shown only with `website:read_pii`.
 - Blog (`/website/blog`, `/new`, `/[id]`): create/edit/delete via `blog-*`; content is the website's markdown subset,
