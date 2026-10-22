@@ -1,0 +1,168 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { fakeServer, resetSourceCache } from './fake-server'
+import { getWebsiteSnapshot, websiteAdapter } from '@/lib/integrations/website/adapter'
+import { getGiftCardSummary, giftCardsAdapter } from '@/lib/integrations/gift-cards/adapter'
+import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
+import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
+import { allHealth } from '@/lib/integrations/registry'
+import { websiteSnapshotFixture, giftSummaryFixture } from '../fixtures/sources'
+
+const ENV_KEYS = ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY', 'GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY', 'FURNITURE_SUPABASE_URL', 'FURNITURE_SUPABASE_KEY', 'FURNITURE_APP_URL', 'DESIGN_AGENT_URL', 'DESIGN_AGENT_ADMIN_TOKEN', 'MAP_SITE_URL']
+let closers: (() => Promise<void>)[] = []
+beforeEach(() => {
+  resetSourceCache()
+  for (const k of ENV_KEYS) delete process.env[k]
+})
+afterEach(async () => {
+  await Promise.all(closers.map((c) => c()))
+  closers = []
+})
+const range = { from: '2026-10-16', to: '2026-10-22' }
+
+describe('not configured is explicit, never zero', () => {
+  it('reports exactly which variables are missing', async () => {
+    expect(await getWebsiteSnapshot(range)).toMatchObject({ state: 'not_configured', missing: ['WEBSITE_URL', 'WEBSITE_AGENT_API_KEY'] })
+    expect(await getGiftCardSummary()).toMatchObject({ state: 'not_configured', missing: ['GIFT_CARDS_URL', 'GIFT_CARDS_INTEGRATION_KEY'] })
+    expect(await getFurnitureProjects()).toMatchObject({ state: 'not_configured' })
+  })
+  it('an unconfigured product is "unknown", never "operational"', async () => {
+    expect((await websiteAdapter.health()).status).toBe('unknown')
+    expect((await designAgentAdapter.health()).status).toBe('unknown')
+  })
+})
+
+describe('website adapter (contract: POST /api/analytics, Bearer AGENT_API_KEY, action=snapshot)', () => {
+  it('sends the agent key and a snapshot request with the previous period, and validates the reply', async () => {
+    const key = 'w'.repeat(24)
+    const s = await fakeServer((r) => (r.headers.authorization === `Bearer ${key}` ? { status: 200, body: websiteSnapshotFixture } : { status: 401, body: { error: 'Unauthorized' } }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_AGENT_API_KEY = key
+    const r = await getWebsiteSnapshot(range)
+    expect(r.state).toBe('ok')
+    const body = JSON.parse(s.seen[0]!.body)
+    expect(body).toEqual({ action: 'snapshot', range, compare: { from: '2026-10-09', to: '2026-10-15' } })
+    expect(s.seen[0]!.path).toBe('/api/analytics')
+  })
+
+  it('refuses a reply whose shape changed instead of rendering wrong numbers', async () => {
+    const s = await fakeServer(() => ({ status: 200, body: { ...websiteSnapshotFixture, kpis: { ...websiteSnapshotFixture.kpis, revenue: { value: '12' } } } }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
+    const r = await getWebsiteSnapshot(range)
+    expect(r).toMatchObject({ state: 'error' })
+    expect(r.state === 'error' && r.error).toMatch(/unexpected snapshot shape \(kpis.revenue/)
+  })
+
+  it('a rejected key is an error the owner can act on', async () => {
+    const s = await fakeServer(() => ({ status: 401, body: { error: 'Unauthorized' } }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
+    expect(await getWebsiteSnapshot(range)).toMatchObject({ state: 'error', error: 'HTTP 401: Unauthorized' })
+  })
+
+  it('caches a success and shares it', async () => {
+    const s = await fakeServer(() => ({ status: 200, body: websiteSnapshotFixture }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
+    await Promise.all([getWebsiteSnapshot(range), getWebsiteSnapshot(range), getWebsiteSnapshot(range)])
+    expect(s.seen).toHaveLength(1)
+  })
+
+  it('does not cache a failure', async () => {
+    let n = 0
+    const s = await fakeServer(() => (++n <= 2 ? { status: 500, body: {} } : { status: 200, body: websiteSnapshotFixture }))
+    closers.push(s.close)
+    process.env.WEBSITE_URL = s.url
+    process.env.WEBSITE_AGENT_API_KEY = 'x'.repeat(24)
+    expect((await getWebsiteSnapshot(range)).state).toBe('error')
+    expect((await getWebsiteSnapshot(range)).state).toBe('ok')
+  })
+})
+
+describe('gift card adapter (contract: GET /api/integration/v1/summary)', () => {
+  it('reads the summary with the integration key', async () => {
+    const s = await fakeServer((r) => (r.headers.authorization === `Bearer ${'g'.repeat(32)}` ? { status: 200, body: giftSummaryFixture } : { status: 401, body: { error: 'unauthorized' } }))
+    closers.push(s.close)
+    process.env.GIFT_CARDS_URL = s.url
+    process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
+    const r = await getGiftCardSummary()
+    expect(r.state === 'ok' && r.data.stats.outstandingMinor).toBe(45000)
+  })
+
+  it('health is degraded, not operational, when paid cards are stuck', async () => {
+    const s = await fakeServer((r) =>
+      r.path === '/api/health'
+        ? { status: 200, body: { ok: true, store: 'supabase', build: 'b1' } }
+        : { status: 200, body: { ...giftSummaryFixture, deliveryHealth: { ...giftSummaryFixture.deliveryHealth, undelivered: 2 } } },
+    )
+    closers.push(s.close)
+    process.env.GIFT_CARDS_URL = s.url
+    process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
+    const h = await giftCardsAdapter.health()
+    expect(h.status).toBe('degraded')
+    expect(h.checks.find((c) => c.name === 'Delivery & payments')?.detail).toMatch(/2 paid card/)
+  })
+})
+
+describe('furniture adapter (contract: PostgREST projects + project_summary_counts)', () => {
+  it('joins counts onto projects and sends the key the way Supabase expects', async () => {
+    const s = await fakeServer((r) => {
+      if (r.path.startsWith('/rest/v1/projects'))
+        return { status: 200, body: [{ id: 'p1', name: 'בניין א', city: 'תל אביב', developer_name: 'Dev', start_date: '2026-09-01', archived: false, created_at: '2026-09-01T00:00:00Z' }, { id: 'p2', name: 'Old', city: null, developer_name: null, start_date: null, archived: true, created_at: '2025-01-01T00:00:00Z' }] }
+      if (r.path.startsWith('/rest/v1/project_summary_counts')) return { status: 200, body: [{ project_id: 'p1', apartment_count: 35, completed_count: 12, items_total: 400, items_to_collect: 250, items_collected: 90 }] }
+      return { status: 404, body: {} }
+    })
+    closers.push(s.close)
+    process.env.FURNITURE_SUPABASE_URL = s.url
+    process.env.FURNITURE_SUPABASE_KEY = 'sb_secret_abc'
+    const r = await getFurnitureProjects()
+    expect(r.state).toBe('ok')
+    if (r.state !== 'ok') return
+    expect(r.data[0]).toMatchObject({ id: 'p1', apartments: 35, apartmentsCompleted: 12, itemsCollected: 90 })
+    // A project with no rows in the view has zero apartments — it exists, it is just empty.
+    expect(r.data[1]).toMatchObject({ id: 'p2', apartments: 0, archived: true })
+    expect(s.seen[0]!.headers.apikey).toBe('sb_secret_abc')
+    expect(s.seen[0]!.headers.authorization).toBeUndefined() // new-style keys are not JWTs
+  })
+})
+
+describe('design agent adapter (contract: /healthz, /admin/status, /admin/jobs/:id/retry)', () => {
+  it('reads a 503 healthz as "stuck", not as unreachable', async () => {
+    const s = await fakeServer(() => ({ status: 503, body: { ok: false, version: { commit: 'abc123', branch: 'main', started_at: 1 }, jobs: { queued: 4, done: 10 }, stuck: 2 } }))
+    closers.push(s.close)
+    process.env.DESIGN_AGENT_URL = s.url
+    const r = await getDesignAgentHealthz()
+    expect(r.state === 'ok' && r.data.stuck).toBe(2)
+    expect((await designAgentAdapter.health()).checks[0]).toMatchObject({ status: 'degraded' })
+  })
+
+  it('retry reports what the bot confirmed', async () => {
+    const s = await fakeServer((r) => (r.method === 'POST' && r.path === '/admin/jobs/7/retry' ? { status: 200, body: { retried: true } } : { status: 404, body: { retried: false } }))
+    closers.push(s.close)
+    process.env.DESIGN_AGENT_URL = s.url
+    process.env.DESIGN_AGENT_ADMIN_TOKEN = 't'.repeat(20)
+    expect(await retryDeadJob(7)).toEqual({ retried: true })
+    expect(await retryDeadJob(8)).toEqual({ retried: false })
+    expect(s.seen[0]!.headers.authorization).toBe(`Bearer ${'t'.repeat(20)}`)
+    await expect(retryDeadJob(-1)).rejects.toThrow(/Invalid job id/)
+  })
+})
+
+describe('isolation', () => {
+  it('one broken product never takes the others down', async () => {
+    const bad = await fakeServer(() => ({ status: 500, body: { error: 'boom' } }))
+    const good = await fakeServer(() => ({ status: 200, body: { ok: true, version: { commit: 'c' }, jobs: {}, stuck: 0 } }))
+    closers.push(bad.close, good.close)
+    process.env.GIFT_CARDS_URL = bad.url
+    process.env.DESIGN_AGENT_URL = good.url
+    process.env.MAP_SITE_URL = good.url
+    const h = await allHealth()
+    expect(h).toHaveLength(5)
+    expect(h.find((x) => x.product === 'gift_cards')?.status).toBe('down')
+    expect(h.find((x) => x.product === 'design_agent')?.checks[0]?.status).toBe('operational')
+  })
+})

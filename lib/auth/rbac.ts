@@ -1,0 +1,109 @@
+/**
+ * Role-based access control. Pure (no I/O) so it is shared by server code and
+ * tests. The browser may use it to decide what to SHOW, never what is ALLOWED:
+ * every server action and route calls assertPermission itself.
+ */
+
+export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'viewer'] as const
+export type Role = (typeof ROLES)[number]
+
+export const ROLE_LABELS: Record<Role, string> = {
+  owner: 'Owner',
+  admin: 'Administrator',
+  operations_manager: 'Operations manager',
+  project_manager: 'Project manager',
+  viewer: 'Read-only viewer',
+}
+
+/** Most privileged first: a user with several roles acts with the first one listed here. */
+const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'viewer']
+
+export const PRODUCTS = ['website', 'gift_cards', 'furniture', 'design_agent', 'map'] as const
+export type Product = (typeof PRODUCTS)[number]
+
+/**
+ * `read`      — aggregates and operational state
+ * `read_pii`  — customer names, emails, phones, addresses
+ * `operate`   — reversible operational actions (retry a job, resend an email)
+ * `write`     — edits to source data (prices, items, places)
+ * `financial` — money-moving or irreversible actions (refund, void, mark paid)
+ */
+export const ACTIONS = ['read', 'read_pii', 'operate', 'write', 'financial'] as const
+export type Action = (typeof ACTIONS)[number]
+
+export type Permission =
+  | `${Product}:${Action}`
+  | 'integrations:read'
+  | 'audit:read'
+  | 'users:manage'
+  | 'assistant:use'
+
+const all = (actions: readonly Action[], products: readonly Product[] = PRODUCTS): Permission[] =>
+  products.flatMap((p) => actions.map((a) => `${p}:${a}` as Permission))
+
+/**
+ * Defaults. Payment and gift-card money actions (`gift_cards:financial`) are
+ * owner-only by default — they get extra protection, per the brief.
+ */
+export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
+  owner: new Set<Permission>([
+    ...all(ACTIONS),
+    'integrations:read',
+    'audit:read',
+    'users:manage',
+    'assistant:use',
+  ]),
+  admin: new Set<Permission>([
+    ...all(['read', 'read_pii', 'operate', 'write']),
+    'website:financial',
+    'integrations:read',
+    'audit:read',
+    'assistant:use',
+  ]),
+  operations_manager: new Set<Permission>([
+    ...all(['read', 'operate']),
+    'gift_cards:read_pii',
+    'furniture:read_pii',
+    'furniture:write',
+    'integrations:read',
+    'assistant:use',
+  ]),
+  project_manager: new Set<Permission>([
+    'furniture:read',
+    'furniture:read_pii',
+    'furniture:operate',
+    'furniture:write',
+    'map:read',
+    'assistant:use',
+  ]),
+  viewer: new Set<Permission>([...all(['read']), 'integrations:read']),
+}
+
+/** Per-deployment overrides (stored in cc_role_permissions). `false` revokes a default. */
+export type PermissionOverrides = Partial<Record<Role, Partial<Record<Permission, boolean>>>>
+
+export function primaryRole(roles: readonly string[]): Role | null {
+  return RANK.find((r) => roles.includes(r)) ?? null
+}
+
+export function can(role: Role | null, permission: Permission, overrides?: PermissionOverrides): boolean {
+  if (!role) return false
+  const override = overrides?.[role]?.[permission]
+  if (override !== undefined) {
+    // The owner can never lose user management — otherwise a bad override locks everyone out.
+    if (role === 'owner' && permission === 'users:manage') return true
+    return override
+  }
+  return DEFAULT_PERMISSIONS[role].has(permission)
+}
+
+export class ForbiddenError extends Error {
+  readonly status = 403
+  constructor(readonly permission: Permission) {
+    super(`Missing permission: ${permission}`)
+  }
+}
+
+export function assertCan(role: Role | null, permission: Permission, overrides?: PermissionOverrides): void {
+  if (!can(role, permission, overrides)) throw new ForbiddenError(permission)
+}

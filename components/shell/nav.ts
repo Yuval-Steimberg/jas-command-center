@@ -1,0 +1,37 @@
+import type { Permission } from '@/lib/auth/rbac'
+
+export interface NavItem {
+  href: string
+  label: string
+  icon: 'overview' | 'website' | 'agent' | 'furniture' | 'map' | 'gift' | 'analytics' | 'assistant' | 'bell' | 'plug' | 'settings'
+  permission?: Permission
+}
+
+export const NAV: { section: string; items: NavItem[] }[] = [
+  { section: '', items: [{ href: '/', label: 'Overview', icon: 'overview' }] },
+  {
+    section: 'Products',
+    items: [
+      { href: '/website', label: 'Website & Shop', icon: 'website', permission: 'website:read' },
+      { href: '/design-agent', label: 'WhatsApp agent', icon: 'agent', permission: 'design_agent:read' },
+      { href: '/furniture', label: 'Furniture collection', icon: 'furniture', permission: 'furniture:read' },
+      { href: '/map', label: 'Interactive map', icon: 'map', permission: 'map:read' },
+      { href: '/gift-cards', label: 'Gift cards', icon: 'gift', permission: 'gift_cards:read' },
+    ],
+  },
+  {
+    section: 'Intelligence',
+    items: [
+      { href: '/analytics', label: 'Analytics', icon: 'analytics' },
+      { href: '/assistant', label: 'AI assistant', icon: 'assistant', permission: 'assistant:use' },
+      { href: '/notifications', label: 'Notifications', icon: 'bell' },
+    ],
+  },
+  {
+    section: 'System',
+    items: [
+      { href: '/integrations', label: 'Integrations', icon: 'plug', permission: 'integrations:read' },
+      { href: '/settings', label: 'Settings', icon: 'settings' },
+    ],
+  },
+]
