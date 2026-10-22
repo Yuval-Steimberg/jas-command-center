@@ -2,8 +2,9 @@ import 'server-only'
 import { env } from '@/lib/env'
 import { fetchJson, SourceError, withHint } from '../http'
 import { notConfigured, readSource } from '../read'
+import { invalidate } from '../cache'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
-import { giftCardHealth, giftCardSummary, type GiftCardHealth, type GiftCardSummary } from './contract'
+import { giftCardDetail, giftCardHealth, giftCardSearch, giftCardSummary, resendAllResult, writeResult, type GiftCardDetail, type GiftCardHealth, type GiftCardSearch, type GiftCardSummary, type ResendAllResult } from './contract'
 
 export async function getGiftCardSummary(): Promise<SourceResult<GiftCardSummary>> {
   const { url, integrationKey } = env().giftCards
@@ -45,6 +46,72 @@ export async function getGiftCardHealth(): Promise<SourceResult<GiftCardHealth>>
   })
 }
 
+/** The signed-in person, recorded in the gift card system's own audit log for every write. */
+export interface GiftCardActor {
+  email: string
+  role: string
+}
+
+function configured() {
+  const { url, integrationKey } = env().giftCards
+  if (!url || !integrationKey) throw new SourceError('Gift cards are not connected (GIFT_CARDS_URL / GIFT_CARDS_INTEGRATION_KEY)', null, null)
+  return { url, headers: { Authorization: `Bearer ${integrationKey}` } }
+}
+
+/** Search through the gift card system's own card list (masked codes). Not cached: a search is a person waiting. */
+export async function searchGiftCards(query: string, status?: string): Promise<SourceResult<GiftCardSearch>> {
+  const { url, integrationKey } = env().giftCards
+  if (!url || !integrationKey) return notConfigured([!url && 'GIFT_CARDS_URL', !integrationKey && 'GIFT_CARDS_INTEGRATION_KEY'].filter(Boolean) as string[])
+  const qs = new URLSearchParams({ q: query, limit: '50', ...(status ? { status } : {}) })
+  return readOnce(`gift:search:${qs}`, 'Gift Card System /api/integration/v1/cards', async () => {
+    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/cards?${qs}`, { headers: configured().headers })
+    return { data: giftCardSearch.parse(data), latencyMs }
+  })
+}
+
+/** A read a person is waiting on: never served from, or left in, the shared cache. */
+async function readOnce<T>(key: string, source: string, load: () => Promise<{ data: T; latencyMs: number }>): Promise<SourceResult<T>> {
+  invalidate(key)
+  try {
+    return await readSource(key, 0, source, load)
+  } finally {
+    invalidate(key)
+  }
+}
+
+export async function getGiftCard(id: string): Promise<SourceResult<GiftCardDetail> | null> {
+  const { url, integrationKey } = env().giftCards
+  if (!url || !integrationKey) return notConfigured([!url && 'GIFT_CARDS_URL', !integrationKey && 'GIFT_CARDS_INTEGRATION_KEY'].filter(Boolean) as string[])
+  const r = await readOnce(`gift:card:${id}`, 'Gift Card System /api/integration/v1/cards/:id', async () => {
+    const { data, latencyMs } = await fetchJson(`${url}/api/integration/v1/cards/${encodeURIComponent(id)}`, { headers: configured().headers })
+    return { data: giftCardDetail.parse(data), latencyMs }
+  })
+  return r.state === 'error' && /^HTTP 404: card not found/.test(r.error) ? null : r
+}
+
+/** Writes return what the gift card system confirmed; a validation refusal (422) is an answer, not an outage. */
+async function write<T>(path: string, body: unknown, parse: (d: unknown) => T): Promise<T | { ok: false; message: string }> {
+  const { url, headers } = configured()
+  try {
+    const { data } = await fetchJson(`${url}${path}`, { method: 'POST', headers, body, timeoutMs: 55_000 })
+    return parse(data)
+  } catch (e) {
+    if (e instanceof SourceError && e.status === 422) return { ok: false, message: e.message.replace(/^HTTP 422: /, '') }
+    throw e
+  } finally {
+    invalidate('gift:summary')
+  }
+}
+
+export const resendGiftCard = (id: string, actor: GiftCardActor, reason: string) =>
+  write(`/api/integration/v1/cards/${encodeURIComponent(id)}/resend`, { actor, reason }, (d) => writeResult.parse(d))
+
+export const editGiftCardRecipient = (id: string, fields: { recipientName?: string; recipientEmail?: string; recipientPhone?: string }, resend: boolean, actor: GiftCardActor, reason: string) =>
+  write(`/api/integration/v1/cards/${encodeURIComponent(id)}/recipient`, { actor, reason, resend, fields }, (d) => writeResult.parse(d))
+
+export const resendAllUndelivered = (actor: GiftCardActor): Promise<ResendAllResult | { ok: false; message: string }> =>
+  write('/api/integration/v1/delivery/resend-undelivered', { actor }, (d) => resendAllResult.parse(d))
+
 export const giftCardsAdapter: IntegrationAdapter = {
   product: 'gift_cards',
   name: 'Gift cards',
@@ -59,10 +126,10 @@ export const giftCardsAdapter: IntegrationAdapter = {
   },
   capabilities: () => [
     { id: 'health', label: 'Deployment health (store, tables, auth layer)', kind: 'read', status: 'available' },
-    { id: 'summary', label: 'Sales, liability, redeemed, failed deliveries, paid-but-not-delivered', kind: 'read', status: 'needs_source_change', note: 'Companion PR adds GET /api/integration/v1/summary; then set INTEGRATION_API_KEY there and GIFT_CARDS_INTEGRATION_KEY here.' },
-    { id: 'search', label: 'Search cards, view details (masked code)', kind: 'read', status: 'not_built' },
-    { id: 'resend', label: 'Resend card email, edit recipient', kind: 'write', status: 'not_built', note: 'Must call the gift card system’s own adminEditRecipient/resend paths, never re-implement them.' },
-    { id: 'refund', label: 'Refund / void', kind: 'write', status: 'not_built', note: 'Owner-only (gift_cards:financial), confirmation required.' },
+    { id: 'summary', label: 'Sales, liability, redeemed, failed deliveries, paid-but-not-delivered', kind: 'read', status: 'available' },
+    { id: 'search', label: 'Search cards, view details, delivery history and audit (masked code)', kind: 'read', status: 'available' },
+    { id: 'resend', label: 'Resend card email, edit recipient, resend all undelivered', kind: 'write', status: 'available', note: 'Calls the gift card system’s own resend / editRecipient / resendAllUndelivered; audited on both sides.' },
+    { id: 'refund', label: 'Refund, suspend, reissue, adjust balance, mark paid', kind: 'write', status: 'not_built', note: 'Money-moving: owner-only (gift_cards:financial) with confirmation; still done in the gift card admin.' },
     { id: 'grow', label: 'Grow transaction reconciliation', kind: 'read', status: 'needs_credentials', note: 'gift_card_system has no GROW_* API keys (its gotcha #20).' },
     { id: 'fees', label: 'Payment processing fees', kind: 'read', status: 'unsupported', note: 'Not stored anywhere.' },
   ],

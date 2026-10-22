@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fakeServer, resetSourceCache } from './fake-server'
 import { getWebsiteSnapshot, websiteAdapter } from '@/lib/integrations/website/adapter'
-import { getGiftCardSummary, giftCardsAdapter } from '@/lib/integrations/gift-cards/adapter'
+import { editGiftCardRecipient, getGiftCard, getGiftCardSummary, giftCardsAdapter, resendGiftCard, searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { getDesignAgentHealthz, designAgentAdapter, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { allHealth } from '@/lib/integrations/registry'
@@ -140,6 +140,44 @@ describe('gift card 404 diagnosis from its own health endpoint', () => {
     process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
     const r = await getGiftCardSummary()
     expect(r.state === 'error' && r.error).toMatch(/INTEGRATION_API_KEY is not set on the running gift card deployment \(running claude\/gift-card-system-build-0oflq7 @ ef34ccd\)/)
+  })
+})
+
+describe('gift card search and actions (contract: /api/integration/v1/cards…)', () => {
+  const row = { id: '11111111-1111-4111-8111-111111111111', maskedCode: '••••-AB12', status: 'active', initialAmountMinor: 20000, balanceMinor: 20000, templateId: 't', buyerName: 'א ב', buyerEmail: 'b@x.co', recipientName: 'ג ד', recipientEmail: 'r@x.co', scheduledDeliveryAt: null, issuedAt: null, expiresAt: null, createdAt: '2026-10-22T00:00:00Z' }
+  const setup = async (handler: Parameters<typeof fakeServer>[0]) => {
+    const s = await fakeServer(handler)
+    closers.push(s.close)
+    process.env.GIFT_CARDS_URL = s.url
+    process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
+    return s
+  }
+
+  it('searches with the key and passes the query through', async () => {
+    const s = await setup(() => ({ status: 200, body: { total: 1, items: [row] } }))
+    const r = await searchGiftCards('יעל', 'active')
+    expect(r.state === 'ok' && r.data.items[0]!.maskedCode).toBe('••••-AB12')
+    expect(decodeURIComponent(s.seen[0]!.path)).toContain('q=יעל')
+    expect(s.seen[0]!.path).toContain('status=active')
+    expect(s.seen[0]!.headers.authorization).toBe(`Bearer ${'g'.repeat(32)}`)
+  })
+
+  it('an unknown card is null, not an outage', async () => {
+    await setup((r) => (r.path.includes('/cards/') ? { status: 404, body: { error: 'card not found' } } : { status: 500, body: {} }))
+    expect(await getGiftCard(row.id)).toBeNull()
+  })
+
+  it('a write sends who did it and the reason, and is never retried', async () => {
+    const s = await setup(() => ({ status: 500, body: { error: 'resend failed' } }))
+    await expect(resendGiftCard(row.id, { email: 'o@x.co', role: 'owner' }, 'never arrived')).rejects.toThrow(/HTTP 500/)
+    expect(s.seen).toHaveLength(1)
+    expect(JSON.parse(s.seen[0]!.body)).toEqual({ actor: { email: 'o@x.co', role: 'owner' }, reason: 'never arrived' })
+  })
+
+  it("a validation refusal comes back as the gift card system's own message", async () => {
+    await setup(() => ({ status: 422, body: { ok: false, resent: false, message: 'האם התכוונת ל-r@gmail.com?' } }))
+    const r = await editGiftCardRecipient(row.id, { recipientEmail: 'r@gmial.com' }, true, { email: 'o@x.co', role: 'owner' }, 'typo')
+    expect(r).toEqual({ ok: false, message: 'האם התכוונת ל-r@gmail.com?' })
   })
 })
 
