@@ -343,7 +343,7 @@ describe('gift card adapter (contract: GET /api/integration/v1/summary)', () => 
     process.env.GIFT_CARDS_INTEGRATION_KEY = 'g'.repeat(32)
     const h = await giftCardsAdapter.health()
     expect(h.status).toBe('degraded')
-    expect(h.checks.find((c) => c.name === 'Delivery & payments')?.detail).toMatch(/2 paid card/)
+    expect(h.checks.find((c) => c.name === 'Delivery & payments')?.detail).toMatch(/2 active card\(s\) not delivered/)
   })
 
   it('a 404 names the missing INTEGRATION_API_KEY on the gift card side, and a pasted page path is ignored', async () => {

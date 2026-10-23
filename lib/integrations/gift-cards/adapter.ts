@@ -172,7 +172,16 @@ export const giftCardsAdapter: IntegrationAdapter = {
       checks.push({
         name: 'Delivery & payments',
         status: problems ? 'degraded' : 'operational',
-        detail: problems ? `${problems} paid card(s) need attention in the last ${d.windowDays} days` : `nothing stuck in the last ${d.windowDays} days`,
+        // Three different problems: name each one, never one number labelled "paid cards".
+        detail: problems
+          ? [
+              d.unmatchedPayments && `${d.unmatchedPayments} payment(s) matched no card`,
+              d.paidNotActivated && `${d.paidNotActivated} paid card(s) not activated`,
+              d.undelivered && `${d.undelivered} active card(s) not delivered`,
+            ]
+              .filter(Boolean)
+              .join(', ') + ` (last ${d.windowDays} days)`
+          : `nothing stuck in the last ${d.windowDays} days`,
         checkedAt: s.checkedAt,
         latencyMs: s.latencyMs,
       })

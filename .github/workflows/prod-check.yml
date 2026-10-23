@@ -1,0 +1,39 @@
+name: Production check
+
+# Runs every Command Center read once against production and prints which
+# sections work: states and counts only, never data. Daily, and on demand
+# (Actions → Production check → Run workflow). Fails when a configured
+# section errors, so GitHub emails the owner about it. Uses the same
+# CRON_SECRET as the alert sweep; the URL is derived from SWEEP_URL.
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check every section
+        env:
+          SWEEP_URL: ${{ secrets.SWEEP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SWEEP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "SWEEP_URL / CRON_SECRET not set."
+            exit 1
+          fi
+          url="${SWEEP_URL%/sweep}/selfcheck"
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' --max-time 90 -H "Authorization: Bearer $CRON_SECRET" "$url")
+          echo "HTTP $code"
+          test "$code" = "200" || { cat /tmp/out.json; exit 1; }
+          jq -r '.health[] | "\(.status | ascii_upcase)  \(.product)", (.checks[] | "    \(.status)  \(.name): \(.detail)")' /tmp/out.json
+          echo
+          jq -r '.probes[] | "\(.state | ascii_upcase)  \(.section) · \(.name): \(.detail)"' /tmp/out.json
+          echo
+          jq -c '.summary' /tmp/out.json
+          test "$(jq -r '.summary.ok' /tmp/out.json)" = "true"
