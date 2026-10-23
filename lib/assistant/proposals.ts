@@ -7,6 +7,7 @@ import { FULFILMENT, listWebsiteOrders, listWebsiteProducts, setWebsiteOrderStat
 import { getFurnitureProject, setProjectArchived } from '@/lib/integrations/furniture/manage'
 import { getDesignAgentStatus, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { formatAgorot, shekelsToAgorot } from '@/lib/money'
+import { OPS_EXEC_PARAMS, OPS_PROPOSALS } from './ops-proposals'
 
 /**
  * Actions the assistant may PROPOSE. Proposing does nothing: the tool looks the
@@ -232,6 +233,7 @@ export const PROPOSALS: readonly ProposalDef[] = [
       return retried ? { ok: true, message: `Job ${p.jobId} is queued again.` } : { ok: false, message: `Job ${p.jobId} is no longer dead. Nothing changed.` }
     },
   },
+  ...OPS_PROPOSALS,
 ]
 
 /** The exec-time schema for each kind: what prepare() added (from, expectUpdatedAt) is required on confirm. */
@@ -242,6 +244,7 @@ export const EXEC_PARAMS: Record<string, z.ZodType<Record<string, unknown>>> = {
   website_product_update: productUpdateExec,
   furniture_archive: furnitureArchive,
   design_agent_retry: designRetry,
+  ...OPS_EXEC_PARAMS,
 }
 
 export const proposalDef = (kind: string) => PROPOSALS.find((p) => p.kind === kind)

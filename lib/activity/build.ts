@@ -1,8 +1,11 @@
 import type { Product } from '@/lib/auth/rbac'
+import { PRODUCT_HREF } from '@/lib/products'
 import type { AuditEntry } from '@/lib/audit/audit'
 import type { DesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import type { FurnitureProject } from '@/lib/integrations/furniture/adapter'
 import type { NotificationRow } from '@/lib/notifications/store'
+import type { Interaction, Movement } from '@/lib/ops/types'
+import { CHANNEL_LABEL } from '@/lib/crm/model'
 
 export interface ActivityItem {
   id: string
@@ -19,9 +22,18 @@ export interface ActivityInputs {
   audit?: AuditEntry[] | null
   agent?: DesignAgentStatus | null
   furniture?: FurnitureProject[] | null
+  /** Inventory movements with the item's "SKU · title". */
+  movements?: { m: Movement; item: string }[] | null
+  /** Contact timeline entries; the contents are never shown here (personal data). */
+  interactions?: Interaction[] | null
 }
 
-const HREF: Record<Product, string> = { website: '/website', gift_cards: '/gift-cards', furniture: '/furniture', design_agent: '/design-agent', map: '/map' }
+const MOVEMENT_TITLE: Partial<Record<Movement['type'], string>> = {
+  intake: 'Taken into inventory', list: 'Listed on the website', reserve: 'Reserved', release: 'Reservation ended', sell: 'Sold', deliver: 'Delivered',
+  return: 'Returned to stock', donate: 'Donated', recycle: 'Sent to recycling', dispose: 'Disposed', conflict: 'Needs checking (possible double sale)',
+}
+
+const HREF: Record<Product, string> = PRODUCT_HREF
 const iso = (ms: number) => new Date(ms).toISOString()
 
 /**
@@ -60,6 +72,17 @@ export function buildActivity(i: ActivityInputs, limit = 30): ActivityItem[] {
   }
 
   for (const p of i.furniture ?? []) out.push({ id: `fp:${p.id}`, at: p.created_at, product: 'furniture', tone: 'neutral', title: `Furniture project added: ${p.name}`, detail: [p.city, p.developer_name].filter(Boolean).join(' · ') || null, href: HREF.furniture })
+
+  for (const { m, item } of i.movements ?? []) {
+    const title = MOVEMENT_TITLE[m.type]
+    if (!title) continue // moves, edits and quantity changes are routine and stay on the item's own history
+    out.push({ id: `im:${m.id}`, at: m.at, product: 'inventory', tone: m.type === 'conflict' ? 'bad' : 'neutral', title: `${title}: ${item}`, detail: m.detail.channel === 'website' ? `website order ${String(m.detail.orderNumber ?? '')}`.trim() : m.actorEmail, href: `/inventory/${m.itemId}` })
+  }
+
+  for (const x of i.interactions ?? []) {
+    if (x.channel === 'website_order') continue // already an inventory sale or a website order
+    out.push({ id: `ci:${x.id}`, at: x.at, product: 'crm', tone: 'neutral', title: `${CHANNEL_LABEL[x.channel]} ${x.direction === 'in' ? 'from' : x.direction === 'out' ? 'to' : 'about'} a contact`, detail: x.actorEmail.startsWith('system:') ? 'recorded by the sync' : x.actorEmail, href: `/crm/${x.contactId}` })
+  }
 
   return out.filter((x) => !Number.isNaN(Date.parse(x.at))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit)
 }

@@ -5,6 +5,7 @@ import { getDesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { notificationStore } from '@/lib/notifications/store'
 import type { SourceResult } from '@/lib/integrations/types'
+import { getOpsStore } from '@/lib/ops'
 import { buildActivity, type ActivityItem } from './build'
 
 export interface ActivityFeed {
@@ -30,13 +31,23 @@ export async function activityFeed(can: (p: Permission) => boolean, limit = 30):
     return null
   }
 
-  const [notifications, audit, agent, furniture] = await Promise.all([
+  const ops = getOpsStore()
+  const [notifications, audit, agent, furniture, movements, interactions] = await Promise.all([
     settle('Alert history', () => notificationStore().history(100)),
     can('audit:read') ? settle('Audit log', () => listAudit(100)) : null,
     can('design_agent:read') ? source('Design agent', getDesignAgentStatus) : null,
     can('furniture:read') ? source('Furniture', getFurnitureProjects) : null,
+    can('inventory:read')
+      ? settle('Inventory', async () => {
+          const ms = await ops.recentMovements(60)
+          const ids = [...new Set(ms.map((m) => m.itemId))]
+          const items = new Map((ids.length ? await ops.listItems({ ids }) : []).map((x) => [x.id, `${x.sku} · ${x.title}`]))
+          return ms.map((m) => ({ m, item: items.get(m.itemId) ?? 'an item' }))
+        })
+      : null,
+    can('crm:read') ? settle('Customers', () => ops.listInteractions({ limit: 60 })) : null,
   ])
   const visible = (notifications ?? []).filter((n) => can(`${n.product}:read`))
   gaps.push('Website orders and gift card sales: the sources expose totals only, not individual events')
-  return { items: buildActivity({ notifications: visible, audit, agent, furniture }, limit), gaps }
+  return { items: buildActivity({ notifications: visible, audit, agent, furniture, movements, interactions }, limit), gaps }
 }

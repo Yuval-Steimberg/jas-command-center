@@ -1,9 +1,11 @@
 import type { Product } from '@/lib/auth/rbac'
+import { PRODUCT_HREF } from '@/lib/products'
 import type { ProductHealth, SourceResult } from '@/lib/integrations/types'
 import type { GiftCardSummary } from '@/lib/integrations/gift-cards/contract'
 import type { DesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import type { MetricsSnapshot } from '@/lib/integrations/website/contract'
 import { productForProject, type ProjectDeployments } from '@/lib/integrations/vercel/summarise'
+import type { OpsSnapshot } from '@/lib/ops/summary'
 
 export type Severity = 'critical' | 'warning' | 'info'
 export interface Alert {
@@ -21,15 +23,10 @@ export interface AlertInputs {
   agentStatus?: SourceResult<DesignAgentStatus>
   website?: SourceResult<MetricsSnapshot>
   deployments?: SourceResult<ProjectDeployments[]>
+  ops?: SourceResult<OpsSnapshot>
 }
 
-const HREF: Record<Product, string> = {
-  website: '/website',
-  gift_cards: '/gift-cards',
-  furniture: '/furniture',
-  design_agent: '/design-agent',
-  map: '/map',
-}
+const HREF: Record<Product, string> = PRODUCT_HREF
 
 /**
  * Turns live source state into the attention list. Pure, so every rule is
@@ -92,6 +89,22 @@ export function deriveAlerts(i: AlertInputs): Alert[] {
         href: '/integrations#deployments',
       })
     }
+  }
+
+  // The command center's own modules. A rule switched off on /tasks raises nothing.
+  const o = i.ops
+  if (o?.state === 'ok') {
+    const on = (rule: string) => o.data.rules[rule] !== false
+    if (o.data.tasks.doubleSale)
+      out.push({ id: 'ops:double-sale', severity: 'critical', product: 'inventory', title: `${o.data.tasks.doubleSale} possible double sale(s) to check`, detail: 'A website order paid for an item that was already reserved, sold or gone here. Check before shipping.', href: '/tasks' })
+    if (on('stale_leads') && o.data.crm.staleLeads)
+      out.push({ id: 'ops:stale-leads', severity: 'warning', product: 'crm', title: `${o.data.crm.staleLeads} new lead(s) not contacted for 3+ days`, detail: 'From the website forms or added here.', href: '/crm/pipeline' })
+    if (on('overdue_tasks') && o.data.tasks.overdue)
+      out.push({ id: 'ops:overdue-tasks', severity: 'warning', product: 'crm', title: `${o.data.tasks.overdue} task(s) past their due date`, detail: 'Open tasks whose due date has passed.', href: '/tasks' })
+    if (on('aging_stock') && o.data.items.agingUnlisted)
+      out.push({ id: 'ops:aging-stock', severity: 'info', product: 'inventory', title: `${o.data.items.agingUnlisted} item(s) in storage 60+ days, not listed`, detail: 'List them, donate them, or recycle them.', href: '/inventory?status=in_storage' })
+    if (o.data.items.reservedExpiringSoon)
+      out.push({ id: 'ops:reservations-expiring', severity: 'info', product: 'inventory', title: `${o.data.items.reservedExpiringSoon} reservation(s) end within 24 hours`, detail: 'They go back on sale automatically unless sold or extended.', href: '/inventory?status=reserved' })
   }
 
   const rank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 }

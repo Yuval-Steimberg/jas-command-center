@@ -26,6 +26,10 @@ import { listAudit } from '@/lib/audit/audit'
 import { emailConfigured } from '@/lib/email/send'
 import { env } from '@/lib/env'
 import { addDays, israelDate } from '@/lib/time'
+import { getOpsSnapshot } from '@/lib/ops/snapshot'
+import { syncStatus } from '@/lib/sync/run'
+import { listIntakeCandidates } from '@/lib/integrations/furniture/intake'
+import { listWebsiteOrdersSince } from '@/lib/integrations/website/manage'
 import { fromCall, fromSource, summarise, type Probe } from './probe'
 
 /**
@@ -81,6 +85,22 @@ export async function runSelfCheck(now = new Date()) {
     env().map.githubToken
       ? fromCall('map', 'Place edit pull requests (GITHUB_TOKEN)', async () => `${(await listPlacePullRequests()).length} open`)
       : Promise.resolve<Probe>({ section: 'map', name: 'Place edit pull requests (GITHUB_TOKEN)', state: 'not_configured', latencyMs: null, detail: 'needs GITHUB_TOKEN' }),
+    // Operations (the command center's own records, migration 0003) and the reads its sync depends on
+    getOpsSnapshot().then((r) =>
+      fromSource('ops', 'Inventory, customers, tasks (migration 0003)', r, (d) => `${d.items.available} available, ${d.items.awaitingDelivery} awaiting delivery, ${d.crm.openLeads} open leads, ${d.tasks.open} open tasks (${d.tasks.doubleSale} double-sale checks)`),
+    ),
+    getOpsSnapshot().then((snap) =>
+      snap.state !== 'ok'
+        ? Promise.resolve<Probe>({ section: 'ops', name: 'Website sync', state: 'not_configured', latencyMs: null, detail: 'needs migration 0003' })
+        : fromCall('ops', 'Website sync', async () => {
+            const st = await syncStatus()
+            const errors = Object.entries(st).filter(([, c]) => c.lastError).map(([k, c]) => `${k}: ${c.lastError}`)
+            if (errors.length) throw new Error(errors.join(' · '))
+            return Object.entries(st).map(([k, c]) => `${k} ${c.lastSuccessAt ? `ok ${c.lastSuccessAt}` : 'never run'}`).join(', ')
+          }),
+    ),
+    listWebsiteOrdersSince(new Date(now.getTime() - 86_400_000).toISOString()).then((r) => fromSource('ops', 'Website orders changed in 24h (orders-list since)', r, (d) => `${d.length} orders`)),
+    listIntakeCandidates().then((r) => fromSource('ops', 'Collected items ready for intake', r, (d) => `${d.length} candidates`)),
     // Platform
     getDeployments().then((r) => fromSource('platform', 'Vercel deployments', r, (d) => `${d.length} projects`)),
     fromCall('platform', 'Staff', async () => {

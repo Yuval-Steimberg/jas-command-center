@@ -206,7 +206,7 @@ others); each adapter reports `not_configured` / `error` / `ok` with
 ### Cross-cutting
 | Capability | Class | Note |
 | --- | --- | --- |
-| Unified customer record | **MISSING**, mostly **UNSUPPORTED** | Only email links website orders ↔ gift-card buyers; the website stores email in plain text, gift cards too. Matching on normalised exact email is defensible for *display*, never for merging. Design-agent "contacts" are the owner only |
+| Unified customer record | **BUILT in the command center** (`cc_contacts`, migration 0003; see `docs/CRM_INVENTORY.md`). Was: **MISSING**, mostly **UNSUPPORTED** | Only email links website orders ↔ gift-card buyers; the website stores email in plain text, gift cards too. Matching on normalised exact email is defensible for *display*, never for merging. Design-agent "contacts" are the owner only |
 | Unified project record | **UNSUPPORTED** | Only furniture has projects |
 | AI assistant with tools | **MISSING** here; exists in bot | See §7 |
 | Notifications / email alerts | **MISSING** | Email needs a provider decision (website uses Resend, gift cards SendGrid) |

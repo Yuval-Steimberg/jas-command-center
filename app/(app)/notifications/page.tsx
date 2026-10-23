@@ -6,6 +6,7 @@ import { notificationState } from '@/lib/live'
 import { getSession, requireUser } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { notificationStore } from '@/lib/notifications/store'
+import { PRODUCT_HREF } from '@/lib/products'
 import { formatDateTime, timeAgo } from '@/lib/format'
 import { cn } from '@/lib/cn'
 import { markReadAction } from './actions'
@@ -20,7 +21,7 @@ const SEV = {
   warning: { Icon: CircleAlert, cls: 'text-warn', label: 'Warning' },
   info: { Icon: Info, cls: 'text-muted', label: 'Info' },
 } as const
-const HREF = { website: '/website', gift_cards: '/gift-cards', furniture: '/furniture', design_agent: '/design-agent', map: '/map' } as const
+const HREF = PRODUCT_HREF
 
 export default async function NotificationsPage() {
   const me = await requireUser()

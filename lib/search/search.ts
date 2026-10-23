@@ -8,6 +8,9 @@ import { listWebsiteOrders, listWebsiteProducts } from '@/lib/integrations/websi
 import { getMapData } from '@/lib/integrations/map/adapter'
 import { getDesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import type { SourceResult } from '@/lib/integrations/types'
+import { getOpsStore, OpsSetupError } from '@/lib/ops'
+import { STATUS_LABEL } from '@/lib/inventory/model'
+import { ROLE_LABEL } from '@/lib/crm/model'
 import { matchDocs, type SearchDoc } from './match'
 
 export interface SearchGroup {
@@ -49,7 +52,36 @@ export async function searchEverything(query: string, can: (p: Permission) => bo
     return { key, label, product, state: 'ok', results: toDocs(r.data).slice(0, 10) }
   }
 
+  // The command center's own records: no SourceResult, so a missing migration or a database error is mapped here.
+  const fromOps = async (key: string, label: string, product: Product, need: Permission, read: () => Promise<SearchDoc[]>): Promise<SearchGroup | null> => {
+    if (!can(need)) return null
+    try {
+      return { key, label, product, state: 'ok', results: matchDocs(await read(), query).slice(0, 10) }
+    } catch (e) {
+      return e instanceof OpsSetupError
+        ? { key, label, product, state: 'not_configured', note: 'Migration 0003 has not been run', results: [] }
+        : { key, label, product, state: 'error', note: e instanceof Error ? e.message : String(e), results: [] }
+    }
+  }
+
   const groups = await Promise.all([
+    fromOps('inventory', 'Inventory items', 'inventory', 'inventory:read', async () =>
+      (await getOpsStore().listItems({ q: query, limit: 50 })).map((i) => ({
+        title: `${i.sku} · ${i.title}`,
+        subtitle: [STATUS_LABEL[i.status], i.category, i.furnitureProjectName].filter(Boolean).join(' · '),
+        href: `/inventory/${i.id}`,
+        text: [i.sku, i.description],
+      })),
+    ),
+    // Contacts are found by name, email or phone: personal data, so the group needs read_pii.
+    fromOps('contacts', 'Customers & contacts', 'crm', 'crm:read_pii', async () =>
+      (await getOpsStore().listContacts({ q: query, limit: 50 })).map((c) => ({
+        title: c.fullName,
+        subtitle: [c.roles.map((r) => ROLE_LABEL[r]).join(', '), c.phone ?? c.email].filter(Boolean).join(' · '),
+        href: `/crm/${c.id}`,
+        text: [c.email, c.phone],
+      })),
+    ),
     { key: 'pages', label: 'Pages', product: null, state: 'ok' as const, results: matchDocs(pages, query) },
     fromSource('furniture', 'Furniture projects', 'furniture', getFurnitureProjects, (ps) =>
       ps.map((p) => ({ title: p.name, subtitle: [p.city, p.developer_name, p.archived ? 'archived' : null].filter(Boolean).join(' · ') || null, href: '/furniture' })),
