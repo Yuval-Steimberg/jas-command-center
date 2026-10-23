@@ -149,3 +149,12 @@ Notification settings + email (`lib/notifications/prefs.ts`, `deliver.ts`, migra
 
 Smoke test: `npm run smoke` (CI job `smoke`) signs in on `next dev` with no source configured and checks 22 pages:
 no 5xx, no error overlay, a heading, no sideways scroll at 390px. A new page goes in `PAGES` in `tests/smoke/smoke.mjs`.
+
+Production check (`lib/selfcheck/`, `/api/cron/selfcheck`, `.github/workflows/prod-check.yml`):
+- Runs every read a page depends on, once, against production, and prints states + counts in the Actions log
+  (never names, emails, codes or keys). Same `CRON_SECRET`; URL derived from the `SWEEP_URL` secret. Daily 05:30 UTC
+  and on demand; fails when a configured section errors. A new page's read goes in `runSelfCheck`.
+- This is how a session without access to the live hosts verifies production: trigger the workflow, read the log.
+
+Design agent business OS (`getDesignAgentOs`, whatssup-bot `GET /admin/os`): pending manager approvals, automations,
+this month's AI cost. Read-only: approvals are decided in the bot's own /cc, where the hash binding lives.

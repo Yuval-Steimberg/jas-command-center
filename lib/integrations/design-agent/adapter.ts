@@ -87,6 +87,59 @@ export async function getDesignAgentActivity(range: DateRange): Promise<SourceRe
   })
 }
 
+const osSummary = z.union([
+  z.object({ available: z.literal(false) }),
+  z.object({
+    available: z.literal(true),
+    approvals: z.object({
+      pending: z.array(z.object({ id: z.number(), agent: z.string(), action: z.string(), level: z.number(), summary: z.string().nullable(), created_at: z.number() })),
+      counts: z.record(z.string(), z.number()),
+    }),
+    automations: z.object({
+      enabled_globally: z.boolean(),
+      list: z.array(
+        z.object({
+          key: z.string(),
+          name: z.string(),
+          kind: z.string(),
+          enabled: z.boolean(),
+          last_run_at: z.number().nullable(),
+          next_run_at: z.number().nullable(),
+          last_status: z.string().nullable(),
+          last_error: z.string().nullable(),
+        }),
+      ),
+    }),
+    costs: z.object({
+      since: z.number(),
+      total_usd: z.number(),
+      calls: z.number(),
+      by_source: z.array(z.object({ source: z.string(), agent: z.string(), calls: z.number(), usd: z.number().nullable() })),
+      budget_usd: z.number().nullable(),
+      budget_used_pct: z.number().nullable(),
+      note: z.string(),
+    }),
+  }),
+])
+export type DesignAgentOs = z.infer<typeof osSummary>
+
+/**
+ * The bot's business OS: pending manager approvals, automations and this month's
+ * AI cost (GET /admin/os, whatssup-bot). Read-only: approvals are decided in the
+ * bot's own Control Center, where the hash binding and execution live.
+ */
+export async function getDesignAgentOs(): Promise<SourceResult<DesignAgentOs>> {
+  const { url, adminToken } = env().designAgent
+  const missing = [!url && 'DESIGN_AGENT_URL', !adminToken && 'DESIGN_AGENT_ADMIN_TOKEN'].filter(Boolean) as string[]
+  if (missing.length) return notConfigured(missing)
+  return readSource('agent:os', 60_000, 'Design agent /admin/os', async () => {
+    const { data, latencyMs } = await fetchJson(`${url}/admin/os`, { headers: { Authorization: `Bearer ${adminToken}` } }).catch((e) =>
+      withHint(e, (x) => (x.status === 404 ? 'The running bot predates /admin/os: redeploy it on Railway' : null)),
+    )
+    return { data: osSummary.parse(data), latencyMs }
+  })
+}
+
 /** Re-queue one dead job through the bot's own endpoint. Returns what the bot confirmed. */
 export async function retryDeadJob(jobId: number): Promise<{ retried: boolean }> {
   const { url, adminToken } = env().designAgent
@@ -121,7 +174,7 @@ export const designAgentAdapter: IntegrationAdapter = {
     { id: 'health', label: 'Queue health, stuck jobs, running commit', kind: 'read', status: 'available' },
     { id: 'status', label: 'Dead jobs, failed outbound messages, recent design projects', kind: 'read', status: 'available' },
     { id: 'retry', label: 'Retry a dead job', kind: 'write', status: 'available' },
-    { id: 'os', label: 'Manager approvals, automations, AI cost', kind: 'read', status: 'needs_source_change', note: '/cc/api is cookie-only; needs a bearer-token variant on the bot.' },
+    { id: 'os', label: 'Manager approvals, automations, AI cost', kind: 'read', status: 'available', note: 'Read-only (GET /admin/os). Approvals are decided in the bot’s own Control Center.' },
     { id: 'inbox', label: 'Customer conversation inbox, assignment, templates', kind: 'read', status: 'unsupported', note: 'The bot only talks to allowlisted owner numbers. A customer inbox would be a new WhatsApp product.' },
   ],
   async health() {

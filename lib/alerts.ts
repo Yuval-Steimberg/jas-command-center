@@ -54,7 +54,7 @@ export function deriveAlerts(i: AlertInputs): Alert[] {
     if (d.undelivered)
       out.push({ id: 'gift:undelivered', severity: 'critical', product: 'gift_cards', title: `${d.undelivered} active gift card(s) not delivered`, detail: Object.entries(d.undeliveredByStatus).map(([k, v]) => `${k}: ${v}`).join(', ') || `Last ${d.windowDays} days.`, href: HREF.gift_cards })
     if (d.unmatchedPayments)
-      out.push({ id: 'gift:unmatched', severity: 'critical', product: 'gift_cards', title: `${d.unmatchedPayments} payment(s) matched no gift card`, detail: 'A payment callback arrived but no card was issued for it.', href: HREF.gift_cards })
+      out.push({ id: 'gift:unmatched', severity: 'critical', product: 'gift_cards', title: `${d.unmatchedPayments} payment(s) matched no gift card`, detail: 'A payment callback arrived but no card was issued for it. If the amounts match website shop orders, Grow’s all-transactions webhook is sending shop payments to the gift card app.', href: HREF.gift_cards })
     if (g.data.stats.expiringSoon)
       out.push({ id: 'gift:expiring', severity: 'info', product: 'gift_cards', title: `${g.data.stats.expiringSoon} gift card(s) expire within 30 days`, detail: 'Still holding a balance.', href: HREF.gift_cards })
   }
