@@ -39,6 +39,15 @@ export async function getWebsiteSnapshot(range: DateRange): Promise<SourceResult
   })
 }
 
+const WRITE_CAPABILITIES: [string, string][] = [
+  ['products', 'Products: add, edit every field, images, publish, delete, categories, low-stock alert'],
+  ['content', 'Site content: page texts, images, menu, footer links, team, board, committee, workshops, shop hours, partners'],
+  ['blog', 'Blog: write, edit, delete'],
+  ['reviews', 'Reviews: approve, hide, delete, reply'],
+  ['marketing', 'Marketing: discount codes, subscribers, newsletter campaigns'],
+  ['inquiries', 'Messages from the contact, volunteer and donation forms'],
+]
+
 export const websiteAdapter: IntegrationAdapter = {
   product: 'website',
   name: 'Website & shop',
@@ -55,11 +64,12 @@ export const websiteAdapter: IntegrationAdapter = {
     { id: 'analytics', label: 'Traffic, funnel, paid orders, revenue (verified vs unverified)', kind: 'read', status: 'available' },
     { id: 'errors', label: 'JS, API and checkout errors', kind: 'read', status: 'available' },
     env().website.commandKey
-      ? { id: 'orders', label: 'Orders: search, fulfilment status (paid → delivered), notes', kind: 'write', status: 'available', note: 'Through the website’s own endpoint; payment states, cancellations and refunds stay in the website manager.' }
+      ? { id: 'orders', label: 'Orders: search, fulfilment status (paid → delivered), notes', kind: 'write', status: 'available', note: 'Payment states, cancellations and refunds are not changed from here.' }
       : { id: 'orders', label: 'Orders: search, fulfilment status, notes', kind: 'write', status: 'needs_credentials', note: 'Set WEBSITE_COMMAND_CENTER_KEY here and the same value as COMMAND_CENTER_API_KEY on the website.' },
-    env().website.commandKey
-      ? { id: 'products', label: 'Products: price, strike-through price, stock, featured', kind: 'write', status: 'available', note: 'Names, images, categories and publishing stay in the website manager.' }
-      : { id: 'products', label: 'Products: price, strike-through price, stock, featured', kind: 'write', status: 'needs_credentials', note: 'Same key as orders.' },
+    ...WRITE_CAPABILITIES.map(([id, label]) =>
+      env().website.commandKey
+        ? { id, label, kind: 'write' as const, status: 'available' as const }
+        : { id, label, kind: 'write' as const, status: 'needs_credentials' as const, note: 'Same key as orders.' }),
     { id: 'refunds', label: 'Refunds, tax, processing fees', kind: 'read', status: 'unsupported', note: 'The website does not store them.' },
     { id: 'deploys', label: 'Deployment status', kind: 'read', status: 'needs_credentials', note: 'Needs a Vercel API token.' },
   ],
