@@ -37,6 +37,8 @@ export function env() {
       /** Signs the local development session. Ignored when Supabase Auth is configured. */
       devPassword: read('CC_DEV_PASSWORD'),
       sessionSecret: read('CC_SESSION_SECRET'),
+      /** This deployment's public URL: invite links and links inside emails. */
+      appUrl: url('CC_APP_URL') ?? 'https://jas-command-center.vercel.app',
     },
     /** agentKey reads the analytics snapshot; commandKey (the website's COMMAND_CENTER_API_KEY) reads and changes orders and products. */
     website: { url: url('WEBSITE_URL'), agentKey: read('WEBSITE_AGENT_API_KEY'), commandKey: read('WEBSITE_COMMAND_CENTER_KEY') },
@@ -45,6 +47,8 @@ export function env() {
       supabaseUrl: url('FURNITURE_SUPABASE_URL'),
       supabaseKey: read('FURNITURE_SUPABASE_KEY'),
       appUrl: url('FURNITURE_APP_URL'),
+      /** The field app's COMMAND_CENTER_API_KEY: report KPIs + field actions via its /api/command-center. */
+      commandKey: read('FURNITURE_COMMAND_CENTER_KEY'),
     },
     designAgent: { url: url('DESIGN_AGENT_URL'), adminToken: read('DESIGN_AGENT_ADMIN_TOKEN') },
     map: {
@@ -56,6 +60,8 @@ export function env() {
       ga4PropertyId: read('MAP_GA4_PROPERTY_ID'),
       ga4ServiceAccount: read('GA4_SERVICE_ACCOUNT_JSON'),
     },
+    /** Alert and report emails, through SendGrid (justasecond.co.il is domain-authenticated there). Unset = nothing is sent. */
+    email: { sendgridKey: read('SENDGRID_API_KEY'), from: read('ALERT_EMAIL_FROM'), cronSecret: read('CRON_SECRET') },
     /** Production deployment status (read-only use; Vercel tokens are scoped per team). */
     vercel: { token: read('VERCEL_TOKEN'), teamId: read('VERCEL_TEAM_ID') },
     /** The read-only AI assistant. Off (and saying so) until the key is set. */

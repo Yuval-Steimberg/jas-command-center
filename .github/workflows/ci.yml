@@ -19,3 +19,18 @@ jobs:
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: '1'
+  smoke:
+    # Every page renders, signed in, with no source connected (tests/smoke/smoke.mjs).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - run: npm run smoke
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'

@@ -128,3 +128,24 @@ Deployments (`lib/integrations/vercel/`): read-only `GET /v6/deployments?target=
 `deploy:` warning alert (the console's own project maps to no product and never alerts).
 
 AI activity: `/assistant` lists the audit rows with via=assistant (own rows; everyone's with `audit:read`).
+
+Furniture field actions + impact (`lib/integrations/furniture/field.ts`, project page):
+- KPIs and the four field writes (collect / finish apartment / reopen / handover) go through the field app's own
+  `api/command-center.js` (Furniture-Collect `src/server/`), which builds them from the same modules its screens use.
+  The command center never computes a mass, rate or completion rule. `FURNITURE_COMMAND_CENTER_KEY`.
+- Field writes need `furniture:operate`; never retried (a 409 is an answer); finish names outstanding items first
+  (a second press sends `confirmOutstanding`).
+
+Staff (`/settings/staff`, `lib/staff/`): invite (Supabase `inviteUserByEmail` → `/login/set-password`), change role,
+deactivate. `rules.ts` is pure and tested: nobody changes themselves, only an owner makes/unmakes owners, the last
+active owner cannot be removed.
+
+Notification settings + email (`lib/notifications/prefs.ts`, `deliver.ts`, migration `0002_notification_prefs.sql`):
+- Per person: muted products, severity floor, alert email, report email. Critical alerts are never muted.
+- Assigning an alert needs `<product>:operate` and is audited; reading/settings are personal and not audited.
+- `/api/cron/sweep` (hourly via `.github/workflows/sweep.yml`) persists alerts and emails newly opened ones once
+  (`emailed_at`); `/api/cron/reports` (Vercel cron 18:00 UTC) sends daily / Sunday weekly / 1st monthly, once per
+  Israeli day (`cc_sync_state` `report:<kind>`). Both locked by `CRON_SECRET`; SendGrid via `SENDGRID_API_KEY`.
+
+Smoke test: `npm run smoke` (CI job `smoke`) signs in on `next dev` with no source configured and checks 22 pages:
+no 5xx, no error overlay, a heading, no sideways scroll at 390px. A new page goes in `PAGES` in `tests/smoke/smoke.mjs`.

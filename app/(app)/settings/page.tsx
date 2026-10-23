@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { getSession, requireUser, userCan } from '@/lib/auth/session'
 import { can, PRODUCTS, ACTIONS, ROLES, ROLE_LABELS, type Permission } from '@/lib/auth/rbac'
@@ -22,9 +23,13 @@ export default async function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" description={`Signed in as ${user.email} · ${ROLE_LABELS[user.role]}`} />
+      <p className="mb-4 flex flex-wrap gap-x-4 text-sm">
+        {(await userCan('users:manage')) ? <Link href="/settings/staff" className="font-medium underline-offset-2 hover:underline">Staff: invite, change role, deactivate</Link> : null}
+        <Link href="/settings/notifications" className="underline-offset-2 hover:underline">My notification settings</Link>
+      </p>
       <div className="flex flex-col gap-4">
         <Card>
-          <CardHeader title="Roles and permissions" meta="Defaults; per-deployment overrides live in cc_role_permissions. Staff are managed in Supabase until the in-app staff page exists." />
+          <CardHeader title="Roles and permissions" meta="Defaults; per-deployment overrides live in cc_role_permissions." />
           <CardBody className="overflow-x-auto">
             <table className="w-full min-w-[720px] text-xs">
               <thead className="text-muted">

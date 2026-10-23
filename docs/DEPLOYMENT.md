@@ -24,12 +24,16 @@ New Vercel project from this repo (framework: Next.js). Production branch:
 | `GIFT_CARDS_INTEGRATION_KEY` | Generate 40 random chars; set the same value as `INTEGRATION_API_KEY` on the gift card Vercel project (after its PR is merged), then redeploy it |
 | `FURNITURE_SUPABASE_URL`, `FURNITURE_SUPABASE_KEY` | Furniture Supabase (`fdxqfwmtrqbaeqejynmu`) → Settings → API. See §3 |
 | `FURNITURE_APP_URL` | The field app's production URL |
+| `FURNITURE_COMMAND_CENTER_KEY` | Impact KPIs and field actions (mark collected, finish/reopen an apartment, handover). Generate 40 random chars; set the same value as `COMMAND_CENTER_API_KEY` on the Furniture-Collect Vercel project, plus `SUPABASE_SERVICE_ROLE_KEY` there (server only, never `VITE_`), then redeploy it |
 | `DESIGN_AGENT_URL`, `DESIGN_AGENT_ADMIN_TOKEN` | Railway → service → Networking (domain) and Variables (`ADMIN_TOKEN`) |
 | `GITHUB_TOKEN` | To propose map place changes (fine-grained, `Interactive-map` only, Contents + Pull requests: read and write). Reads work without it on a public repo |
 | `MAP_GA4_PROPERTY_ID` | Map visitors: the numeric GA4 property id (not the `G-` measurement id) |
 | `GA4_SERVICE_ACCOUNT_JSON` | Map visitors: a Google service-account key file, its email added as Viewer on that property |
 | `VERCEL_TOKEN` | Production deployment status of every Vercel project (Integrations page + a warning when a product's newest deploy failed). Vercel has no read-only token: create it scoped to the JAS team only; the console only ever GETs `/v6/deployments` |
 | `VERCEL_TEAM_ID` | The team the projects live in (`team_…`); omit for a personal account |
+| `SENDGRID_API_KEY`, `ALERT_EMAIL_FROM` | Alert and report emails. A SendGrid key with Mail Send only; From on `justasecond.co.il` (already domain-authenticated in SendGrid), e.g. `JAS Command Center <alerts@justasecond.co.il>`. Unset = nothing is emailed; each person opts in under Settings → My notifications |
+| `CRON_SECRET` | 32+ random chars. Locks `/api/cron/*` (Vercel Cron sends it automatically). For the hourly alert sweep, also set GitHub repo secrets `CRON_SECRET` (same value) and `SWEEP_URL` = `https://<host>/api/cron/sweep` |
+| `CC_APP_URL` | Optional; default `https://jas-command-center.vercel.app`. Used in invite links and email links. Add `<CC_APP_URL>/login/set-password` to Supabase → Authentication → URL Configuration → Redirect URLs |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys. Set a monthly spend limit (Settings → Limits). Optional `ASSISTANT_MODEL` (default `claude-opus-5-5`) |
 
 Env changes need a redeploy. Generate secrets with `openssl rand -base64 32`.

@@ -68,14 +68,14 @@ describe('which tools the model is offered', () => {
   it('follows the role: a project manager sees furniture and map only, never money', async () => {
     const h = harness('project_manager', [msg([text('ok')], 'end_turn')])
     await ask('hi', [], h.deps)
-    expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name)).toEqual(['list_furniture_projects', 'get_map_places', 'propose_furniture_archive'])
+    expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name)).toEqual(['list_furniture_projects', 'get_furniture_impact', 'get_map_places', 'propose_furniture_archive'])
   })
 
   it('an owner gets every tool, with strict schemas', async () => {
     const h = harness('owner', [msg([text('ok')], 'end_turn')])
     await ask('hi', [], h.deps)
     const tools = h.calls[0]!.tools as Anthropic.Beta.BetaTool[]
-    expect(tools).toHaveLength(16)
+    expect(tools).toHaveLength(17)
     expect(tools.every((t) => t.strict === true && (t.input_schema as { additionalProperties?: boolean }).additionalProperties === false)).toBe(true)
   })
 

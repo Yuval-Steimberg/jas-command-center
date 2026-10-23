@@ -9,7 +9,7 @@ const audit = (over: Partial<AuditEntry>): AuditEntry => ({
 describe('activity feed', () => {
   it('merges every source newest first, with opened and resolved alerts as two events', () => {
     const items = buildActivity({
-      notifications: [{ id: 'n1', alertKey: 'agent:dead', product: 'design_agent', severity: 'warning', title: '7 jobs failed', detail: '', firstSeenAt: '2026-10-22T08:00:00Z', lastSeenAt: '2026-10-22T09:00:00Z', resolvedAt: '2026-10-22T11:00:00Z' }],
+      notifications: [{ id: 'n1', alertKey: 'agent:dead', product: 'design_agent', severity: 'warning', title: '7 jobs failed', detail: '', firstSeenAt: '2026-10-22T08:00:00Z', lastSeenAt: '2026-10-22T09:00:00Z', resolvedAt: '2026-10-22T11:00:00Z', assignedTo: null }],
       audit: [audit({})],
       furniture: [{ id: 'p1', name: 'בניין א', city: 'חולון', developer_name: null, start_date: null, archived: false, created_at: '2026-10-21T00:00:00Z', apartments: 0, apartmentsCompleted: 0, items: 0, itemsToCollect: 0, itemsCollected: 0 }],
       agent: { jobs: [], dead: [{ id: 3, type: 'os_automation_run', attempts: 5, err: 'channel not configured for WhatsApp', updated_at: Date.parse('2026-10-22T07:00:00Z') }], projects: [], outbound_failed: [] },
