@@ -83,7 +83,7 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
         description="Live state of every connected Just A Second system. Each card reads its own source; a source that is not connected says so instead of showing zero."
       />
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="min-w-0 lg:col-span-2">
           <Suspense fallback={<CardSkeleton rows={2} />}>
             <Attention />
           </Suspense>

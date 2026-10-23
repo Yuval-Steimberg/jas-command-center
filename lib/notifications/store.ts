@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import type { Alert, Severity } from '@/lib/alerts'
 import type { Product } from '@/lib/auth/rbac'
 import { planSync, type Observed, type OpenNotification } from './plan'
+import { DEFAULT_PREFS, fromRow, type NotificationPrefs } from './prefs'
 
 export interface NotificationRow {
   id: string
@@ -15,6 +16,8 @@ export interface NotificationRow {
   firstSeenAt: string
   lastSeenAt: string
   resolvedAt: string | null
+  /** cc_profiles.id of the person who owns this alert, or null. */
+  assignedTo: string | null
 }
 
 /**
@@ -31,16 +34,24 @@ interface Store {
   history(limit: number): Promise<NotificationRow[]>
   readIds(profileId: string, ids: string[]): Promise<Set<string>>
   markRead(profileId: string, ids: string[], now: string): Promise<void>
+  assign(id: string, profileId: string | null): Promise<boolean>
+  getPrefs(profileId: string): Promise<{ prefs: NotificationPrefs; available: boolean }>
+  savePrefs(profileId: string, prefs: NotificationPrefs): Promise<void>
+  /** Open alerts not yet emailed; null when the database cannot track it (0002 not run). */
+  unemailed(): Promise<NotificationRow[] | null>
+  markEmailed(ids: string[], now: string): Promise<void>
+  /** Every saved settings row; [] when the table is missing. */
+  allPrefs(): Promise<Map<string, NotificationPrefs>>
 }
 
-const g = globalThis as unknown as { __ccDevNotifications?: { rows: NotificationRow[]; reads: Set<string> }; __ccNotificationSyncAt?: number }
+const g = globalThis as unknown as { __ccDevNotifications?: { rows: NotificationRow[]; reads: Set<string>; prefs: Map<string, NotificationPrefs>; emailed: Set<string> }; __ccNotificationSyncAt?: number }
 
 const memory: Store = {
   async listOpen() {
     return mem().rows.filter((r) => !r.resolvedAt)
   },
   async raise(a, now) {
-    mem().rows.unshift({ id: crypto.randomUUID(), alertKey: a.id, product: a.product, severity: a.severity, title: a.title, detail: a.detail, firstSeenAt: now, lastSeenAt: now, resolvedAt: null })
+    mem().rows.unshift({ id: crypto.randomUUID(), alertKey: a.id, product: a.product, severity: a.severity, title: a.title, detail: a.detail, firstSeenAt: now, lastSeenAt: now, resolvedAt: null, assignedTo: null })
   },
   async touch(id, a, now) {
     const r = mem().rows.find((x) => x.id === id)
@@ -58,8 +69,32 @@ const memory: Store = {
   async markRead(profileId, ids) {
     for (const id of ids) mem().reads.add(`${profileId}:${id}`)
   },
+  async assign(id, profileId) {
+    const r = mem().rows.find((x) => x.id === id && !x.resolvedAt)
+    if (r) r.assignedTo = profileId
+    return Boolean(r)
+  },
+  async getPrefs(profileId) {
+    return { prefs: mem().prefs.get(profileId) ?? DEFAULT_PREFS, available: true }
+  },
+  async savePrefs(profileId, prefs) {
+    mem().prefs.set(profileId, prefs)
+  },
+  async unemailed() {
+    return mem().rows.filter((r) => !r.resolvedAt && !mem().emailed.has(r.id))
+  },
+  async markEmailed(ids) {
+    for (const id of ids) mem().emailed.add(id)
+  },
+  async allPrefs() {
+    return new Map(mem().prefs)
+  },
 }
-const mem = () => (g.__ccDevNotifications ??= { rows: [], reads: new Set() })
+type Mem = NonNullable<typeof g.__ccDevNotifications>
+const mem = (): Mem => (g.__ccDevNotifications ??= { rows: [], reads: new Set(), prefs: new Map(), emailed: new Set() })
+
+/** 0002_notification_prefs.sql not run yet: the table is missing (42P01 / PGRST205). */
+const missingTable = (e: { code?: string; message?: string }) => e.code === '42P01' || e.code === 'PGRST205' || /does not exist|could not find the table/i.test(e.message ?? '')
 
 const fromDb = (r: Record<string, unknown>): NotificationRow & OpenNotification => ({
   id: r.id as string,
@@ -71,6 +106,7 @@ const fromDb = (r: Record<string, unknown>): NotificationRow & OpenNotification 
   firstSeenAt: r.first_seen_at as string,
   lastSeenAt: r.last_seen_at as string,
   resolvedAt: (r.resolved_at as string | null) ?? null,
+  assignedTo: (r.assigned_to as string | null) ?? null,
 })
 
 const db: Store = {
@@ -112,6 +148,46 @@ const db: Store = {
       .from('cc_notification_reads')
       .upsert(ids.map((id) => ({ notification_id: id, profile_id: profileId, read_at: now })), { onConflict: 'notification_id,profile_id', ignoreDuplicates: true })
     if (error) throw new Error(`notifications: ${error.message}`)
+  },
+  async assign(id, profileId) {
+    const { data, error } = await supabaseAdmin().from('cc_notifications').update({ assigned_to: profileId }).eq('id', id).is('resolved_at', null).select('id')
+    if (error) throw new Error(`notifications: ${error.message}`)
+    return Boolean(data?.length)
+  },
+  async getPrefs(profileId) {
+    const { data, error } = await supabaseAdmin().from('cc_notification_prefs').select('*').eq('profile_id', profileId).maybeSingle()
+    if (error) {
+      if (missingTable(error)) return { prefs: DEFAULT_PREFS, available: false }
+      throw new Error(`notification settings: ${error.message}`)
+    }
+    return { prefs: fromRow(data), available: true }
+  },
+  async savePrefs(profileId, p) {
+    const { error } = await supabaseAdmin()
+      .from('cc_notification_prefs')
+      .upsert({ profile_id: profileId, muted_products: p.mutedProducts, min_severity: p.minSeverity, email_alerts: p.emailAlerts, email_report: p.emailReport, updated_at: new Date().toISOString() })
+    if (error) throw new Error(missingTable(error) ? 'Notification settings need the 0002_notification_prefs.sql migration (Supabase → SQL Editor).' : `notification settings: ${error.message}`)
+  },
+  async unemailed() {
+    const { data, error } = await supabaseAdmin().from('cc_notifications').select('*').is('resolved_at', null).is('emailed_at', null)
+    if (error) {
+      if (missingTable(error) || /emailed_at/.test(error.message)) return null
+      throw new Error(`notifications: ${error.message}`)
+    }
+    return (data ?? []).map(fromDb)
+  },
+  async markEmailed(ids, now) {
+    if (!ids.length) return
+    const { error } = await supabaseAdmin().from('cc_notifications').update({ emailed_at: now }).in('id', ids)
+    if (error) throw new Error(`notifications: ${error.message}`)
+  },
+  async allPrefs() {
+    const { data, error } = await supabaseAdmin().from('cc_notification_prefs').select('*')
+    if (error) {
+      if (missingTable(error)) return new Map()
+      throw new Error(`notification settings: ${error.message}`)
+    }
+    return new Map((data ?? []).map((r) => [r.profile_id as string, fromRow(r)]))
   },
 }
 

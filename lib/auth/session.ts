@@ -20,7 +20,7 @@ export interface CurrentUser {
   dev: boolean
 }
 
-async function loadOverrides(): Promise<PermissionOverrides> {
+export async function loadOverrides(): Promise<PermissionOverrides> {
   const { data, error } = await supabaseAdmin().from('cc_role_permissions').select('role, permission, allowed')
   if (error) throw diagnoseSetupError(error)
   const out: PermissionOverrides = {}

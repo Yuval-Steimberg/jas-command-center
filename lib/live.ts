@@ -8,6 +8,7 @@ import { deriveAlerts, type Alert } from '@/lib/alerts'
 import { getDeployments } from '@/lib/integrations/vercel/deployments'
 import { rangeFor } from '@/lib/time'
 import { getSession } from '@/lib/auth/session'
+import { shownTo } from '@/lib/notifications/prefs'
 import { can } from '@/lib/auth/rbac'
 import { family } from '@/lib/notifications/plan'
 import { notificationStore, syncNotifications, type NotificationRow } from '@/lib/notifications/store'
@@ -54,7 +55,9 @@ export const notificationState = cache(async (): Promise<NotificationState> => {
   try {
     await syncNotifications(alerts, observed)
     const store = notificationStore()
-    const open = (await store.listOpen()).filter((n) => can(s.user.role, `${n.product}:read`, s.overrides))
+    const { prefs } = await store.getPrefs(s.user.id)
+    // Muted products and the severity floor are this person's own view; critical always shows (prefs.ts).
+    const open = (await store.listOpen()).filter((n) => can(s.user.role, `${n.product}:read`, s.overrides) && shownTo(prefs, n))
     const read = await store.readIds(s.user.id, open.map((n) => n.id))
     const rank = { critical: 0, warning: 1, info: 2 }
     return {
@@ -67,3 +70,10 @@ export const notificationState = cache(async (): Promise<NotificationState> => {
     return { open: [], error: e instanceof Error ? e.message : String(e), live }
   }
 })
+
+/** For the cron sweep: read every source and persist alert history, with nobody signed in. */
+export async function runSweep(): Promise<{ alerts: number }> {
+  const { alerts, observed } = await liveSweep()
+  await syncNotifications(alerts, observed)
+  return { alerts: alerts.length }
+}

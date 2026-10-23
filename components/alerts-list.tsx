@@ -21,8 +21,8 @@ export function AlertsList({ alerts, limit }: { alerts: Alert[]; limit?: number 
           <li key={a.id}>
             <Link href={a.href} className="-mx-2 flex gap-3 rounded-md px-2 py-2.5 hover:bg-sunken/60">
               <s.Icon aria-label={s.label} className={cn('mt-0.5 h-4 w-4 shrink-0', s.cls)} strokeWidth={2} />
-              <div className="min-w-0">
-                <div className="text-sm font-medium text-ink">{a.title}</div>
+              <div className="min-w-0 flex-1">
+                <div className="break-words text-sm font-medium text-ink">{a.title}</div>
                 {a.detail ? <div className="truncate text-xs text-muted">{a.detail}</div> : null}
               </div>
             </Link>

@@ -47,6 +47,6 @@ async function refreshSupabaseSession(req: NextRequest, url: string, anon: strin
 }
 
 export const config = {
-  // Everything except static assets and the public liveness probe.
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health).*)'],
+  // Everything except static assets, the public liveness probe and the cron routes (Bearer CRON_SECRET).
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health|api/cron).*)'],
 }
