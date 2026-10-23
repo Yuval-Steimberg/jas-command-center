@@ -4,14 +4,14 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard, Store, MessageCircle, Sofa, MapPinned, Gift, ChartLine, Sparkles, Bell, Cable, Settings, Menu, X,
+  LayoutDashboard, Store, MessageCircle, Sofa, MapPinned, Gift, ChartLine, FileText, Sparkles, Bell, Cable, Settings, Menu, X,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { NavItem } from './nav'
 
 const ICONS = {
   overview: LayoutDashboard, website: Store, agent: MessageCircle, furniture: Sofa, map: MapPinned, gift: Gift,
-  analytics: ChartLine, assistant: Sparkles, bell: Bell, plug: Cable, settings: Settings,
+  analytics: ChartLine, report: FileText, assistant: Sparkles, bell: Bell, plug: Cable, settings: Settings,
 } as const
 
 function Links({ groups, onNavigate }: { groups: { section: string; items: NavItem[] }[]; onNavigate?: () => void }) {

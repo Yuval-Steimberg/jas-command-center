@@ -56,6 +56,8 @@ export function env() {
       ga4PropertyId: read('MAP_GA4_PROPERTY_ID'),
       ga4ServiceAccount: read('GA4_SERVICE_ACCOUNT_JSON'),
     },
+    /** Production deployment status (read-only use; Vercel tokens are scoped per team). */
+    vercel: { token: read('VERCEL_TOKEN'), teamId: read('VERCEL_TEAM_ID') },
     /** The read-only AI assistant. Off (and saying so) until the key is set. */
     assistant: { apiKey: read('ANTHROPIC_API_KEY'), model: read('ASSISTANT_MODEL') ?? 'claude-opus-5-5' },
   }

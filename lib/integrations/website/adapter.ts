@@ -71,7 +71,7 @@ export const websiteAdapter: IntegrationAdapter = {
         ? { id, label, kind: 'write' as const, status: 'available' as const }
         : { id, label, kind: 'write' as const, status: 'needs_credentials' as const, note: 'Same key as orders.' }),
     { id: 'refunds', label: 'Refunds, tax, processing fees', kind: 'read', status: 'unsupported', note: 'The website does not store them.' },
-    { id: 'deploys', label: 'Deployment status', kind: 'read', status: 'needs_credentials', note: 'Needs a Vercel API token.' },
+    { id: 'deploys', label: 'Deployment status', kind: 'read', status: env().vercel.token ? 'available' : 'needs_credentials', note: 'Every Vercel project, under Integrations → Production deployments. Needs VERCEL_TOKEN (and VERCEL_TEAM_ID for a team).' },
   ],
   async health() {
     const e = env().website

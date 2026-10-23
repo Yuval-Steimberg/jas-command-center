@@ -3,7 +3,7 @@ import type { Permission } from '@/lib/auth/rbac'
 export interface NavItem {
   href: string
   label: string
-  icon: 'overview' | 'website' | 'agent' | 'furniture' | 'map' | 'gift' | 'analytics' | 'assistant' | 'bell' | 'plug' | 'settings'
+  icon: 'overview' | 'website' | 'agent' | 'furniture' | 'map' | 'gift' | 'analytics' | 'report' | 'assistant' | 'bell' | 'plug' | 'settings'
   permission?: Permission
 }
 
@@ -23,6 +23,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
     section: 'Intelligence',
     items: [
       { href: '/analytics', label: 'Analytics', icon: 'analytics' },
+      { href: '/reports', label: 'Reports', icon: 'report' },
       { href: '/assistant', label: 'AI assistant', icon: 'assistant', permission: 'assistant:use' },
       { href: '/notifications', label: 'Notifications', icon: 'bell' },
     ],

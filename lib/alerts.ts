@@ -3,6 +3,7 @@ import type { ProductHealth, SourceResult } from '@/lib/integrations/types'
 import type { GiftCardSummary } from '@/lib/integrations/gift-cards/contract'
 import type { DesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import type { MetricsSnapshot } from '@/lib/integrations/website/contract'
+import { productForProject, type ProjectDeployments } from '@/lib/integrations/vercel/summarise'
 
 export type Severity = 'critical' | 'warning' | 'info'
 export interface Alert {
@@ -19,6 +20,7 @@ export interface AlertInputs {
   giftSummary?: SourceResult<GiftCardSummary>
   agentStatus?: SourceResult<DesignAgentStatus>
   website?: SourceResult<MetricsSnapshot>
+  deployments?: SourceResult<ProjectDeployments[]>
 }
 
 const HREF: Record<Product, string> = {
@@ -74,6 +76,22 @@ export function deriveAlerts(i: AlertInputs): Alert[] {
       out.push({ id: 'web:pending-stale', severity: 'warning', product: 'website', title: `${w.data.sales.pendingStale} order(s) stuck in pending`, detail: 'Checkout started a payment that never confirmed. Verify in Grow.', href: HREF.website })
     if (w.data.sales.unverifiedRevenue > 0)
       out.push({ id: 'web:unverified', severity: 'info', product: 'website', title: 'Some revenue is not webhook-verified', detail: 'Orders marked paid without a verified Grow callback.', href: HREF.website })
+  }
+
+  const dep = i.deployments
+  if (dep?.state === 'ok') {
+    for (const d of dep.data) {
+      const product = productForProject(d.project)
+      if (!product || !d.latestFailed) continue
+      out.push({
+        id: `deploy:${d.project}`,
+        severity: 'warning',
+        product,
+        title: `Latest deploy of ${d.project} failed`,
+        detail: `${d.live ? `Production still serves the deploy from ${d.live.createdAt.slice(0, 16).replace('T', ' ')} UTC.` : 'No successful production deploy in the recent list.'}${d.latest.commit ? ` Failed commit: ${d.latest.commit}` : ''}`,
+        href: '/integrations#deployments',
+      })
+    }
   }
 
   const rank: Record<Severity, number> = { critical: 0, warning: 1, info: 2 }
