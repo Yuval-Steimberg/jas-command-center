@@ -7,6 +7,7 @@ import { can } from '@/lib/auth/rbac'
 import { allowAttempt } from '@/lib/auth/rate-limit'
 import { audit } from '@/lib/audit/audit'
 import { env } from '@/lib/env'
+import { PRODUCT_HREF } from '@/lib/products'
 import { israelDate } from '@/lib/time'
 import { ask, historySchema, type AskResult } from '@/lib/assistant/run'
 import { EXEC_PARAMS, proposalDef } from '@/lib/assistant/proposals'
@@ -51,7 +52,7 @@ export async function askAction(raw: { question: string; history: unknown }): Pr
   }
 }
 
-const PATHS: Record<string, string> = { gift_cards: '/gift-cards', website: '/website', furniture: '/furniture', design_agent: '/design-agent', map: '/map' }
+const PATHS: Record<string, string> = PRODUCT_HREF
 
 /**
  * Runs an action the assistant proposed — only from the person's own click on

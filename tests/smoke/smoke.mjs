@@ -15,6 +15,7 @@ const PAGES = [
   '/', '/notifications', '/search?q=test', '/analytics', '/reports', '/assistant', '/integrations',
   '/website', '/website/orders', '/website/products', '/website/content', '/website/reviews', '/website/blog', '/website/marketing', '/website/inquiries',
   '/gift-cards', '/furniture', '/design-agent', '/map',
+  '/crm', '/crm/new', '/crm/pipeline', '/inventory', '/inventory/new', '/inventory/intake', '/inventory/locations', '/inventory/scan', '/inventory/labels', '/sales', '/deliveries', '/tasks',
   '/settings', '/settings/staff', '/settings/notifications',
 ]
 

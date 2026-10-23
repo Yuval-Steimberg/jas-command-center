@@ -2,13 +2,14 @@ import Link from 'next/link'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { requireUser } from '@/lib/auth/session'
 import { PRODUCTS } from '@/lib/auth/rbac'
+import { PRODUCT_LABEL } from '@/lib/products'
 import { env } from '@/lib/env'
 import { notificationStore } from '@/lib/notifications/store'
 import { PrefsForm } from '../../notifications/forms'
 
 export const dynamic = 'force-dynamic'
 
-const PRODUCT_LABELS = { website: 'Website & shop', gift_cards: 'Gift cards', furniture: 'Furniture', design_agent: 'Design agent', map: 'Map' } as const
+const PRODUCT_LABELS = PRODUCT_LABEL
 
 export default async function NotificationSettingsPage() {
   const user = await requireUser()

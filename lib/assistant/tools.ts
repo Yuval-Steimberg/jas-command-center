@@ -15,6 +15,8 @@ import type { SourceResult } from '@/lib/integrations/types'
 import { searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
 import { listWebsiteOrders, listWebsiteProducts, ORDER_STATUSES } from '@/lib/integrations/website/manage'
 import { PROPOSALS, PROPOSAL_TOOL_PREFIX, type ProposalDef } from './proposals'
+import { OPS_TOOLS } from './ops-tools'
+import { getOpsSnapshot } from '@/lib/ops/snapshot'
 
 /**
  * The assistant's whole reach: typed READ-ONLY functions over the same
@@ -76,18 +78,19 @@ export const TOOLS: readonly AssistantTool[] = [
     name: 'get_alerts',
     label: 'Alerts',
     description:
-      'The current attention list: problems a person should look at (a product down, paid gift cards not delivered, failed design-agent jobs, website payment failures). Only alerts for products the signed-in user may read are returned.',
+      'The current attention list: problems a person should look at (a product down, paid gift cards not delivered, failed design-agent jobs, website payment failures, possible double sales, leads waiting, overdue tasks, stock aging unlisted). Only alerts for products the signed-in user may read are returned.',
     permission: 'integrations:read',
     input: noInput,
     schema: NO_INPUT_SCHEMA,
     run: async (_input, ctx) => {
-      const [health, giftSummary, agentStatus, website] = await Promise.all([
+      const [health, giftSummary, agentStatus, website, ops] = await Promise.all([
         allHealth(),
         ctx.can('gift_cards:read') ? getGiftCardSummary() : undefined,
         ctx.can('design_agent:read') ? getDesignAgentStatus() : undefined,
         ctx.can('website:read') ? getWebsiteSnapshot(rangeFor('7d')) : undefined,
+        ctx.can('inventory:read') || ctx.can('crm:read') ? getOpsSnapshot() : undefined,
       ])
-      const alerts = deriveAlerts({ health, giftSummary, agentStatus, website }).filter((a) => ctx.can(`${a.product}:read`))
+      const alerts = deriveAlerts({ health, giftSummary, agentStatus, website, ops }).filter((a) => ctx.can(`${a.product}:read`))
       return { status: 'ok', checkedAt: new Date().toISOString(), data: alerts.map(({ severity, product, title, detail }) => ({ severity, product, title, detail })) }
     },
   },
@@ -297,6 +300,7 @@ export const TOOLS: readonly AssistantTool[] = [
         products: products.slice(0, 30).map((p) => ({ id: p.id, slug: p.slug, name: p.name_he, nameEn: p.name_en, price: p.price, originalPrice: p.original_price, quantity: p.quantity, inStock: p.in_stock, featured: p.featured, published: p.published ?? null })),
       })),
   },
+  ...OPS_TOOLS,
   ...PROPOSALS.map(
     (d): AssistantTool => ({
       name: `${PROPOSAL_TOOL_PREFIX}${d.kind}`,

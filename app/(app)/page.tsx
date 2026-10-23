@@ -9,6 +9,7 @@ import { GiftCardsSummary } from '@/components/summaries/gift-cards'
 import { FurnitureSummary } from '@/components/summaries/furniture'
 import { DesignAgentSummary } from '@/components/summaries/design-agent'
 import { MapSummary } from '@/components/summaries/map'
+import { CrmSummary, InventorySummary } from '@/components/summaries/ops'
 import { visibleAlerts, liveHealth } from '@/lib/live'
 import { ADAPTERS } from '@/lib/integrations/registry'
 import { presetFrom, resolveRange } from '@/lib/range'
@@ -115,6 +116,16 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
 
       <h2 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Operations</h2>
       <div className="grid gap-4 xl:grid-cols-3">
+        {sees('inventory') ? (
+          <Suspense fallback={<CardSkeleton rows={2} />}>
+            <InventorySummary />
+          </Suspense>
+        ) : null}
+        {sees('crm') ? (
+          <Suspense fallback={<CardSkeleton rows={2} />}>
+            <CrmSummary />
+          </Suspense>
+        ) : null}
         {sees('furniture') ? (
           <Suspense fallback={<CardSkeleton rows={2} />}>
             <FurnitureSummary />

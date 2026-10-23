@@ -158,3 +158,17 @@ Production check (`lib/selfcheck/`, `/api/cron/selfcheck`, `.github/workflows/pr
 
 Design agent business OS (`getDesignAgentOs`, whatssup-bot `GET /admin/os`): pending manager approvals, automations,
 this month's AI cost. Read-only: approvals are decided in the bot's own /cc, where the hash binding lives.
+
+Customers, inventory, fulfilment (`docs/CRM_INVENTORY.md`, migration `0003_crm_inventory.sql`):
+- The command center OWNS the physical item after intake, contacts/leads/timeline, tasks, deliveries. The website owns a listed
+  item's price/publish/stock and every order; the field app the item before intake; gift cards their balances. Never copy those.
+- Item state changes only through `store.applyItem` (SQL `cc_inventory_apply`: row lock, expected status/version, one movement,
+  idempotent by movement ref). Movements are append-only (trigger). Never update `cc_inventory_items` directly.
+- Sold in one place: zero the website stock first (`setWebsiteStock`, compare-and-set), then apply; restore on failure
+  (`lib/inventory/service.ts`). A website 409 is an answer, never retried.
+- `lib/sync/run.ts` is the only bridge from website orders/forms; anything inconsistent becomes an `automation:double_sale`
+  task, never a second sale. Runs in `/api/cron/sweep` and "Sync now".
+- Writes: server actions call `runAct` (`lib/ops/act.ts`). Contact names/phones/emails need `crm:read_pii`, and are never
+  returned to the assistant (contacts are ids + roles).
+- In-store sales value is the only money kept here; never add it to website revenue or gift card figures.
+- `getOpsStore()` = Supabase in production, memory for dev/tests (same semantics). Tests: `tests/integration/ops.test.ts`.

@@ -7,6 +7,7 @@ import { getWebsiteSnapshot } from '@/lib/integrations/website/adapter'
 import { deriveAlerts, type Alert } from '@/lib/alerts'
 import { getDeployments } from '@/lib/integrations/vercel/deployments'
 import { rangeFor } from '@/lib/time'
+import { getOpsSnapshot } from '@/lib/ops/snapshot'
 import { getSession } from '@/lib/auth/session'
 import { shownTo } from '@/lib/notifications/prefs'
 import { can } from '@/lib/auth/rbac'
@@ -17,17 +18,18 @@ import { notificationStore, syncNotifications, type NotificationRow } from '@/li
 export const liveHealth = cache(() => allHealth())
 
 const liveSweep = cache(async () => {
-  const [health, giftSummary, agentStatus, website, deployments] = await Promise.all([
+  const [health, giftSummary, agentStatus, website, deployments, ops] = await Promise.all([
     liveHealth(),
     getGiftCardSummary(),
     getDesignAgentStatus(),
     // Alerts always look at the last 7 days, independent of the page's selected range.
     getWebsiteSnapshot(rangeFor('7d')),
     getDeployments(),
+    getOpsSnapshot(),
   ])
-  const alerts = deriveAlerts({ health, giftSummary, agentStatus, website, deployments })
+  const alerts = deriveAlerts({ health, giftSummary, agentStatus, website, deployments, ops })
   // Which alert families this sweep could actually see (see planSync).
-  const seen = new Set(['health', ...(giftSummary.state === 'ok' ? ['gift'] : []), ...(agentStatus.state === 'ok' ? ['agent'] : []), ...(website.state === 'ok' ? ['web'] : []), ...(deployments.state === 'ok' ? ['deploy'] : [])])
+  const seen = new Set(['health', ...(giftSummary.state === 'ok' ? ['gift'] : []), ...(agentStatus.state === 'ok' ? ['agent'] : []), ...(website.state === 'ok' ? ['web'] : []), ...(deployments.state === 'ok' ? ['deploy'] : []), ...(ops.state === 'ok' ? ['ops'] : [])])
   return { alerts, observed: (key: string) => seen.has(family(key)) }
 })
 

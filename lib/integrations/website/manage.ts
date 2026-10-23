@@ -527,3 +527,39 @@ export async function listWebsiteInquiries(status: InquiryFilter): Promise<Sourc
 
 export const setWebsiteInquiryHandled = (id: number, handled: boolean, by: string) =>
   write('inquiry-set-handled', { id, handled, by }, (d) => z.object({ inquiry: z.object({ id: z.number() }).passthrough() }).parse(d).inquiry)
+
+/**
+ * Stock for the command center's inventory module (website `stock-set`,
+ * PR #37 there): a compare-and-set on quantity. `expectQuantity` is what was
+ * read; anything else is a 409. Lowering stock is refused while another
+ * shopper's payment hold needs the unit. Used to zero a listed item's stock
+ * BEFORE it is reserved or sold in the shop, so the website cannot sell it too.
+ */
+export const setWebsiteStock = (id: number, expectQuantity: number, quantity: number) =>
+  write('stock-set', { id, expectQuantity, quantity }, (d) => z.object({ product: z.object({ id: z.number(), quantity: z.number().int().nullable(), in_stock: z.boolean().nullable(), updated_at: z.string() }).passthrough() }).parse(d).product)
+
+/** Exactly these products (the listings inventory created). An older website ignores `ids`, so the result is filtered here too. */
+export async function listWebsiteProductsByIds(ids: number[]): Promise<SourceResult<WebsiteProduct[]>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  const want = [...new Set(ids)].sort((a, b) => a - b).slice(0, 200)
+  if (!want.length) return { state: 'ok', data: [], checkedAt: new Date().toISOString(), latencyMs: 0, source: SOURCE }
+  return readOnce(`website:products:ids:${want.join(',')}`, SOURCE, async () => {
+    const { data, latencyMs } = await call('products-list', { ids: want, limit: 200 }, true)
+    return { data: productsResponse.parse(data).products.filter((p) => want.includes(p.id)), latencyMs }
+  })
+}
+
+/**
+ * Orders changed at or after `since`, oldest change first (website PR #37). A
+ * website without `since` returns its newest 100 instead; the sync is
+ * idempotent per order and line, so that only means re-reading.
+ */
+export async function listWebsiteOrdersSince(since: string): Promise<SourceResult<WebsiteOrder[]>> {
+  const m = missing()
+  if (m.length) return notConfigured(m, NOTE)
+  return readOnce(`website:orders:since:${since}`, SOURCE, async () => {
+    const { data, latencyMs } = await call('orders-list', { since, limit: 100 }, true)
+    return { data: ordersResponse.parse(data).orders, latencyMs }
+  })
+}

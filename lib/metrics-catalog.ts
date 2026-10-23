@@ -26,6 +26,8 @@ const GIFT_R = 'On view, cached 60 s'
 const FURN = 'Furniture-Collect Supabase: projects + project_summary_counts'
 const AGENT = 'Design agent GET /admin/activity'
 const AGENT_H = 'Design agent GET /healthz'
+const OPS = 'Command center Supabase: cc_inventory_* and cc_contacts / cc_deals (migration 0003)'
+const OPS_R = 'On view'
 
 export const METRICS: MetricDef[] = [
   { id: 'web.revenue', product: 'website', label: 'Website revenue', basis: 'period', formula: 'Amount charged on orders paid/processing/shipped/delivered, after discounts, by payment date (Israel day). Not profit. Includes gift cards sold as cart lines.', source: WEB, refresh: WEB_R },
@@ -76,6 +78,24 @@ export const METRICS: MetricDef[] = [
   { id: 'agent.messagesFailed', product: 'design_agent', label: 'Sends failed', basis: 'period', formula: 'Outbound messages in the period whose status is failed.', source: AGENT, refresh: GIFT_R },
   { id: 'agent.queued', product: 'design_agent', label: 'Jobs queued now', basis: 'now', formula: 'Jobs with status queued.', source: AGENT_H, refresh: 'On view, cached 30 s' },
   { id: 'agent.stuck', product: 'design_agent', label: 'Stuck jobs', basis: 'now', formula: 'Queued and due for over 10 minutes.', source: AGENT_H, refresh: 'On view, cached 30 s' },
+
+  { id: 'inv.intake', product: 'inventory', label: 'Items taken in', basis: 'period', formula: 'Intake movements (from collections or added by hand) in the period, Israel day.', source: OPS, refresh: OPS_R },
+  { id: 'inv.inStoreSales', product: 'inventory', label: 'Sold in the shop', basis: 'period', formula: 'Sell movements with channel in_store.', source: OPS, refresh: OPS_R },
+  { id: 'inv.inStoreValue', product: 'inventory', label: 'In-store sales value', basis: 'period', formula: 'Σ price recorded on those sell movements. Never added to website revenue.', source: OPS, refresh: OPS_R },
+  { id: 'inv.soldOnline', product: 'inventory', label: 'Inventory items sold online', basis: 'period', formula: 'Sell movements written by the website order sync. Counted, never valued: the money is in website revenue.', source: OPS, refresh: OPS_R },
+  { id: 'inv.diverted', product: 'inventory', label: 'Donated or recycled', basis: 'period', formula: 'Donate + recycle movements.', source: OPS, refresh: OPS_R },
+  { id: 'inv.daysToSell', product: 'inventory', label: 'Days from intake to sale', basis: 'period', formula: 'Mean of (sold at − taken in) for items whose sale is in the period and was not returned.', source: OPS, refresh: OPS_R },
+  { id: 'inv.available', product: 'inventory', label: 'Available now', basis: 'now', formula: 'Items in storage or listed.', source: OPS, refresh: OPS_R },
+  { id: 'inv.unlisted', product: 'inventory', label: 'In storage, not listed', basis: 'now', formula: 'Items with status in_storage.', source: OPS, refresh: OPS_R },
+  { id: 'inv.aging', product: 'inventory', label: 'Unlisted 60+ days', basis: 'now', formula: 'In storage and taken in 60 or more days ago.', source: OPS, refresh: OPS_R },
+  { id: 'inv.awaitingDelivery', product: 'inventory', label: 'Sold, not delivered', basis: 'now', formula: 'Items with status sold.', source: OPS, refresh: OPS_R },
+
+  { id: 'crm.newContacts', product: 'crm', label: 'New contacts', basis: 'period', formula: 'Contacts created in the period (by hand or by the website sync).', source: OPS, refresh: OPS_R },
+  { id: 'crm.newLeads', product: 'crm', label: 'New leads', basis: 'period', formula: 'Leads created in the period.', source: OPS, refresh: OPS_R },
+  { id: 'crm.won', product: 'crm', label: 'Leads won', basis: 'period', formula: 'Leads moved to won, by the day they closed.', source: OPS, refresh: OPS_R },
+  { id: 'crm.openLeads', product: 'crm', label: 'Open leads', basis: 'now', formula: 'Leads in new, contacted, qualified or proposal.', source: OPS, refresh: OPS_R },
+  { id: 'crm.staleLeads', product: 'crm', label: 'New leads waiting 3+ days', basis: 'now', formula: 'Leads still new whose last contact (or creation) is 3 or more days ago.', source: OPS, refresh: OPS_R },
+  { id: 'crm.customers', product: 'crm', label: 'Customers', basis: 'now', formula: 'Contacts with the customer role.', source: OPS, refresh: OPS_R },
 
   { id: 'map.places', product: 'map', label: 'Map places', basis: 'now', formula: 'Entries in LOCS in places-data.js on the published branch.', source: 'GitHub Interactive-map', refresh: 'On view, cached 5 min' },
 ]

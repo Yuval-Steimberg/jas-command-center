@@ -18,7 +18,13 @@ export const ROLE_LABELS: Record<Role, string> = {
 /** Most privileged first: a user with several roles acts with the first one listed here. */
 const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'viewer']
 
-export const PRODUCTS = ['website', 'gift_cards', 'furniture', 'design_agent', 'map'] as const
+/**
+ * The five source systems, plus the two modules whose data the command center
+ * itself owns (migration 0003): `crm` (contacts, leads, interactions, tasks)
+ * and `inventory` (physical items after intake, locations, in-store sales,
+ * deliveries).
+ */
+export const PRODUCTS = ['website', 'gift_cards', 'furniture', 'design_agent', 'map', 'crm', 'inventory'] as const
 export type Product = (typeof PRODUCTS)[number]
 
 /**
@@ -56,6 +62,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   admin: new Set<Permission>([
     ...all(['read', 'read_pii', 'operate', 'write']),
     'website:financial',
+    'inventory:financial',
     'integrations:read',
     'audit:read',
     'assistant:use',
@@ -65,6 +72,9 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'gift_cards:read_pii',
     'furniture:read_pii',
     'furniture:write',
+    'crm:read_pii',
+    'crm:write',
+    'inventory:write',
     'integrations:read',
     'assistant:use',
   ]),
@@ -74,6 +84,9 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'furniture:operate',
     'furniture:write',
     'map:read',
+    // Intake of collected items into the warehouse is the end of a project manager's flow.
+    'inventory:read',
+    'inventory:operate',
     'assistant:use',
   ]),
   viewer: new Set<Permission>([...all(['read']), 'integrations:read']),
