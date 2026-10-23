@@ -13,6 +13,15 @@ import { formatCount, formatPct } from '@/lib/format'
 export const dynamic = 'force-dynamic'
 
 const ils = (v: number) => formatAgorot(shekelsToAgorot(v), { whole: true })
+const MANAGE: [string, string, string][] = [
+  ['/website/content', 'Content & shop hours', 'Every page text and image, menu, footer links, team, board, committee, workshops, shop hours, partners'],
+  ['/website/products', 'Products', 'Add, edit, publish, delete, categories, low-stock alert'],
+  ['/website/orders', 'Orders', 'Search, fulfilment status, notes'],
+  ['/website/blog', 'Blog', 'Write, edit and delete guides'],
+  ['/website/reviews', 'Reviews', 'Approve, hide, delete, reply'],
+  ['/website/marketing', 'Marketing', 'Discount codes, subscribers, newsletter campaigns'],
+  ['/website/inquiries', 'Messages', 'Contact, volunteer and donation forms'],
+]
 const FUNNEL: Record<string, string> = { sessions: 'Sessions', shop: 'Reached shop', product_view: 'Viewed a product', add_to_cart: 'Added to cart', begin_checkout: 'Started checkout', purchase: 'Paid order' }
 
 export default async function WebsitePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
@@ -25,7 +34,17 @@ export default async function WebsitePage({ searchParams }: { searchParams?: Rec
         title="Website & shop"
         description="Read from the website's own analytics engine. Revenue comes only from orders in a paid status; checkout and cart events are never counted as sales."
       />
-      <p className="mb-4 text-sm"><Link href="/website/orders" className="underline-offset-2 hover:underline">Orders</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link> · <Link href="/website/content" className="underline-offset-2 hover:underline">Content &amp; shop hours</Link> · <Link href="/website/reviews" className="underline-offset-2 hover:underline">Reviews</Link> · <Link href="/website/blog" className="underline-offset-2 hover:underline">Blog</Link> · <Link href="/website/marketing" className="underline-offset-2 hover:underline">Marketing</Link> · <Link href="/website/inquiries" className="underline-offset-2 hover:underline">Messages</Link></p>
+      <Card className="mb-4">
+        <CardHeader title="Manage the website" meta="Everything the website's own admin did, edited here." />
+        <CardBody className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {MANAGE.map(([href, label, desc]) => (
+            <Link key={href} href={href} className="rounded-md border border-line px-3 py-2 hover:bg-line/30">
+              <span className="block text-sm font-medium text-ink">{label}</span>
+              <span className="block text-xs text-muted">{desc}</span>
+            </Link>
+          ))}
+        </CardBody>
+      </Card>
       {r.state !== 'ok' ? (
         <SourceProblem result={r} what="Website analytics" />
       ) : (
