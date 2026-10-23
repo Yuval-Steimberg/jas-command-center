@@ -6,6 +6,7 @@ import { allHealth } from '@/lib/integrations/registry'
 import { getWebsiteSnapshot } from '@/lib/integrations/website/adapter'
 import { getGiftCardSummary } from '@/lib/integrations/gift-cards/adapter'
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
+import { getFurnitureKpis } from '@/lib/integrations/furniture/field'
 import { getDesignAgentHealthz, getDesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import { getMapData } from '@/lib/integrations/map/adapter'
 import { deriveAlerts } from '@/lib/alerts'
@@ -154,7 +155,7 @@ export const TOOLS: readonly AssistantTool[] = [
     name: 'list_furniture_projects',
     label: 'Furniture projects',
     description:
-      'Furniture-collection projects (buildings cleared before demolition): name, city, developer, start date, archived flag, apartments and how many are completed, items documented, items marked for collection and items collected. Mass, diversion and CO₂ figures are NOT available here — they are defined only in the field app\'s own reports.',
+      'Furniture-collection projects (buildings cleared before demolition): name, city, developer, start date, archived flag, apartments and how many are completed, items documented, items marked for collection and items collected. Mass, diversion and CO₂ are NOT here: use get_furniture_impact with a project id.',
     permission: 'furniture:read',
     input: noInput,
     schema: NO_INPUT_SCHEMA,
@@ -174,6 +175,30 @@ export const TOOLS: readonly AssistantTool[] = [
           itemsToCollect: p.itemsToCollect,
           itemsCollected: p.itemsCollected,
         })),
+      })),
+  },
+  {
+    name: 'get_furniture_impact',
+    label: 'Furniture impact (mass, diversion, CO₂)',
+    description:
+      'One furniture project\'s impact figures, computed by the field app itself (its projectKpis): documented mass, mass diverted to recovery on two bases — "confirmed" (collected by our crew or handed over to a recycler) and "planned" (destination assigned during mapping) — the diversion rate of each as a share of documented mass, and avoided CO₂e on each basis. Never add planned and confirmed together, and never call either "diverted from landfill": there is no landfill figure. estimatedShare > 0 means the figure rests partly on estimated weights; say "about". A confirmed total with incomplete destinations is a lower bound. Get the project id from list_furniture_projects.',
+    permission: 'furniture:read',
+    input: z.object({ projectId: z.string().uuid() }).strict(),
+    schema: {
+      type: 'object',
+      properties: { projectId: { type: 'string', description: 'Project id from list_furniture_projects' } },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    run: async (input) =>
+      shape(await getFurnitureKpis(String(input.projectId)), (k) => ({
+        items: k.itemCount,
+        documentedKg: k.kpis.documented.kg,
+        documentedEstimatedShare: k.kpis.documented.estimatedShare,
+        confirmed: { kg: k.kpis.confirmed.total.kg, estimatedShare: k.kpis.confirmed.total.estimatedShare, rateOfDocumented: k.diversionRate.confirmed, lowerBound: k.kpis.confirmed.incomplete.length > 0, co2eKg: k.kpis.confirmedCarbon.co2e_kg },
+        planned: { kg: k.kpis.planned.total.kg, estimatedShare: k.kpis.planned.total.estimatedShare, rateOfDocumented: k.diversionRate.planned, co2eKg: k.kpis.plannedCarbon.co2e_kg },
+        reportLeadsWith: k.headline.basis,
+        handoverRecordable: k.handoverAvailable,
       })),
   },
   {

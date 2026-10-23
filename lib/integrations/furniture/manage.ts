@@ -50,6 +50,10 @@ const item = z.object({
   status: z.string().nullable(),
   item_type: z.string().nullable(),
   updated_at: z.string(),
+  // Photo (a public storage URL) and the third-party handover: optional, so an older database still answers.
+  image_url: z.string().nullable().optional(),
+  handover_confirmed_at: z.string().nullable().optional(),
+  handover_recipient: z.string().nullable().optional(),
 })
 const project = z.object({
   id: z.string(),
@@ -74,6 +78,7 @@ export interface FurnitureProjectDetail {
 
 const ITEM_CAP = 2000
 const ITEM_COLS = 'id,apartment_id,description,quantity,gallery_type,intended_for_collection,collected,collected_by,status,item_type,updated_at'
+const ITEM_COLS_FULL = `${ITEM_COLS},image_url,handover_confirmed_at,handover_recipient`
 
 function conn() {
   const { supabaseUrl, supabaseKey } = env().furniture
@@ -82,6 +87,17 @@ function conn() {
 }
 
 const uuid = z.string().uuid()
+
+/** Items with photo + handover columns; a database without them (PostgREST 400, 42703) is read without. */
+async function fetchItems(base: string, h: Record<string, string>, id: string) {
+  const q = (cols: string) => fetchJson(`${base}/items?select=${cols}&project_id=eq.${id}&order=created_at.asc&limit=${ITEM_CAP}`, { headers: h })
+  try {
+    return await q(ITEM_COLS_FULL)
+  } catch (e) {
+    if (e instanceof SourceError && e.status === 400 && /column|42703/i.test(e.message)) return q(ITEM_COLS)
+    throw e
+  }
+}
 
 export async function getFurnitureProject(id: string): Promise<SourceResult<FurnitureProjectDetail> | null> {
   if (!uuid.safeParse(id).success) return null
@@ -95,7 +111,7 @@ export async function getFurnitureProject(id: string): Promise<SourceResult<Furn
       fetchJson(`${base}/projects?select=*&id=eq.${id}`, { headers: h }),
       // select=* so a database with or without the entrance column both answer (PostgREST fails a query naming a missing column).
       fetchJson(`${base}/apartments?select=*&project_id=eq.${id}&order=building_number.asc,apartment_number.asc&limit=1000`, { headers: h }),
-      fetchJson(`${base}/items?select=${ITEM_COLS}&project_id=eq.${id}&order=created_at.asc&limit=${ITEM_CAP}`, { headers: h }),
+      fetchItems(base, h, id),
     ]).catch((e) => withHint(e, furnitureHint))
     const rows = z.array(project).parse(p.data)
     if (!rows.length) throw new SourceError('project not found', 404, null)
@@ -146,5 +162,27 @@ export function setItemDestination(id: string, destination: Destination, expectU
   return patch('items', `id=eq.${id}&updated_at=eq.${encodeURIComponent(expectUpdatedAt)}`, { gallery_type: destination }, (d) => {
     const rows = z.array(item).parse(d)
     return rows[0] ?? null
+  })
+}
+
+const itemHit = z.object({ id: z.string(), project_id: z.string(), apartment_id: z.string().nullable(), description: z.string(), gallery_type: z.string().nullable(), status: z.string().nullable() })
+export type FurnitureItemHit = z.infer<typeof itemHit>
+
+/**
+ * Items across every project whose description contains the query's longest
+ * word (PostgREST ilike). The caller still matches every word, Hebrew-aware.
+ * Characters PostgREST treats as syntax are stripped, never escaped by hand.
+ */
+export async function searchFurnitureItems(query: string): Promise<SourceResult<FurnitureItemHit[]>> {
+  const { supabaseUrl, supabaseKey, missing } = conn()
+  if (missing.length) return notConfigured(missing)
+  const word = query.split(/\s+/).map((w) => w.replace(/[*%,.()":\\]/g, '')).sort((a, b) => b.length - a.length)[0] ?? ''
+  if (word.length < 2) return { state: 'ok', data: [], checkedAt: new Date().toISOString(), source: 'Furniture-Collect Supabase: items', latencyMs: 0 }
+  return readOnce(`furniture:items:search:${word}`, 'Furniture-Collect Supabase: items', async () => {
+    const { data, latencyMs } = await fetchJson(
+      `${supabaseUrl}/rest/v1/items?select=id,project_id,apartment_id,description,gallery_type,status&description=ilike.${encodeURIComponent(`*${word}*`)}&order=created_at.desc&limit=200`,
+      { headers: headers(supabaseKey!) },
+    ).catch((e) => withHint(e, furnitureHint))
+    return { data: z.array(itemHit).parse(data), latencyMs }
   })
 }

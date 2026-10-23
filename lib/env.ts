@@ -45,6 +45,8 @@ export function env() {
       supabaseUrl: url('FURNITURE_SUPABASE_URL'),
       supabaseKey: read('FURNITURE_SUPABASE_KEY'),
       appUrl: url('FURNITURE_APP_URL'),
+      /** The field app's COMMAND_CENTER_API_KEY: report KPIs + field actions via its /api/command-center. */
+      commandKey: read('FURNITURE_COMMAND_CENTER_KEY'),
     },
     designAgent: { url: url('DESIGN_AGENT_URL'), adminToken: read('DESIGN_AGENT_ADMIN_TOKEN') },
     map: {

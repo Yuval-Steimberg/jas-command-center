@@ -2,6 +2,9 @@ import 'server-only'
 import type { Permission, Product } from '@/lib/auth/rbac'
 import { NAV } from '@/components/shell/nav'
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
+import { DESTINATIONS, searchFurnitureItems } from '@/lib/integrations/furniture/manage'
+import { searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
+import { listWebsiteOrders, listWebsiteProducts } from '@/lib/integrations/website/manage'
 import { getMapData } from '@/lib/integrations/map/adapter'
 import { getDesignAgentStatus } from '@/lib/integrations/design-agent/adapter'
 import type { SourceResult } from '@/lib/integrations/types'
@@ -36,8 +39,15 @@ export async function searchEverything(query: string, can: (p: Permission) => bo
     return { key, label, product, state: 'ok', results: matchDocs(toDocs(r.data), query) }
   }
 
-  const unsupported = (key: string, label: string, product: Product, note: string): SearchGroup | null =>
-    can(`${product}:read`) ? { key, label, product, state: 'unsupported', note, results: [] } : null
+  // A source that searches server-side. Its own filter decides the hits; matching again here could drop
+  // a hit the source found by a field we do not show (an email, an order number).
+  const fromQuery = async <T>(key: string, label: string, product: Product, need: Permission, read: () => Promise<SourceResult<T>>, toDocs: (d: T) => SearchDoc[]): Promise<SearchGroup | null> => {
+    if (!can(need)) return null
+    const r = await read()
+    if (r.state === 'not_configured') return { key, label, product, state: 'not_configured', note: `Not connected (${r.missing.join(', ')})`, results: [] }
+    if (r.state === 'error') return { key, label, product, state: 'error', note: r.error, results: [] }
+    return { key, label, product, state: 'ok', results: toDocs(r.data).slice(0, 10) }
+  }
 
   const groups = await Promise.all([
     { key: 'pages', label: 'Pages', product: null, state: 'ok' as const, results: matchDocs(pages, query) },
@@ -55,8 +65,33 @@ export async function searchEverything(query: string, can: (p: Permission) => bo
     fromSource('design', 'Design projects', 'design_agent', getDesignAgentStatus, (s) =>
       s.projects.map((p) => ({ title: p.title || `Project #${p.id}`, subtitle: [p.kind, p.status, p.current_version ? `v${p.current_version}` : null].filter(Boolean).join(' · '), href: '/design-agent' })),
     ),
-    unsupported('gift', 'Gift cards', 'gift_cards', 'Card lookup needs a search endpoint on the gift card system (masked codes only); not built yet.'),
-    unsupported('website', 'Website orders & products', 'website', 'The website exposes aggregates only; searching orders or products needs a narrow endpoint there.'),
+    (async (): Promise<SearchGroup | null> => {
+      if (!can('furniture:read')) return null
+      // The database matched one word; every word must match, Hebrew-aware, like the other groups.
+      const [hits, projects] = await Promise.all([searchFurnitureItems(query), getFurnitureProjects()])
+      const names = new Map(projects.state === 'ok' ? projects.data.map((p) => [p.id, p.name]) : [])
+      const g = await fromQuery('furniture-items', 'Furniture items', 'furniture', 'furniture:read', async () => hits, (hs) =>
+        matchDocs(
+          hs.filter((h) => h.status !== 'discarded').map((h) => ({
+            title: h.description,
+            subtitle: [names.get(h.project_id), DESTINATIONS.find((d) => d.id === h.gallery_type)?.label].filter(Boolean).join(' · ') || null,
+            href: `/furniture/${h.project_id}`,
+          })),
+          query,
+        ),
+      )
+      return g
+    })(),
+    // Searching cards finds them by buyer / recipient name or email, so it needs PII access. Masked codes only.
+    fromQuery('gift', 'Gift cards', 'gift_cards', 'gift_cards:read_pii', () => searchGiftCards(query), (s) =>
+      s.items.map((c) => ({ title: c.maskedCode, subtitle: [c.status, c.recipientName].filter(Boolean).join(' · '), href: `/gift-cards/${c.id}` })),
+    ),
+    fromQuery('website-orders', 'Website orders', 'website', 'website:read_pii', () => listWebsiteOrders(query), (os) =>
+      os.map((o) => ({ title: `#${o.order_number}`, subtitle: [o.customer_name, o.status, `₪${o.total}`].filter(Boolean).join(' · '), href: `/website/orders?q=${encodeURIComponent(o.order_number)}` })),
+    ),
+    fromQuery('website-products', 'Website products', 'website', 'website:read', () => listWebsiteProducts(query), (ps) =>
+      ps.map((p) => ({ title: p.name_he, subtitle: [p.name_en, p.price != null ? `₪${p.price}` : null, p.quantity != null ? `${p.quantity} in stock` : null].filter(Boolean).join(' · '), href: `/website/products/${p.id}` })),
+    ),
   ])
   return groups.filter((g): g is SearchGroup => g !== null)
 }
