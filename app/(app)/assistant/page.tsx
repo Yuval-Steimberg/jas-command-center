@@ -1,5 +1,6 @@
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { requirePageAccess, userCan } from '@/lib/auth/session'
+import { AssistantHistory } from './history'
 import { env } from '@/lib/env'
 import { TOOLS } from '@/lib/assistant/tools'
 import { AssistantChat } from './chat'
@@ -9,7 +10,8 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 export default async function AssistantPage() {
-  await requirePageAccess('assistant:use')
+  const user = await requirePageAccess('assistant:use')
+  const everyone = await userCan('audit:read')
   const configured = Boolean(env().assistant.apiKey)
   const allowed = await Promise.all(TOOLS.map(async (t) => ((await userCan(t.permission)) ? t : null)))
   const tools = allowed.filter((t): t is (typeof TOOLS)[number] => t !== null)
@@ -49,6 +51,7 @@ export default async function AssistantPage() {
           </CardBody>
         </Card>
       </div>
+      <AssistantHistory userId={user.id} everyone={everyone} />
     </>
   )
 }

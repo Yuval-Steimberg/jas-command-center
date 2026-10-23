@@ -28,6 +28,8 @@ New Vercel project from this repo (framework: Next.js). Production branch:
 | `GITHUB_TOKEN` | To propose map place changes (fine-grained, `Interactive-map` only, Contents + Pull requests: read and write). Reads work without it on a public repo |
 | `MAP_GA4_PROPERTY_ID` | Map visitors: the numeric GA4 property id (not the `G-` measurement id) |
 | `GA4_SERVICE_ACCOUNT_JSON` | Map visitors: a Google service-account key file, its email added as Viewer on that property |
+| `VERCEL_TOKEN` | Production deployment status of every Vercel project (Integrations page + a warning when a product's newest deploy failed). Vercel has no read-only token: create it scoped to the JAS team only; the console only ever GETs `/v6/deployments` |
+| `VERCEL_TEAM_ID` | The team the projects live in (`team_…`); omit for a personal account |
 | `ANTHROPIC_API_KEY` | console.anthropic.com → API Keys. Set a monthly spend limit (Settings → Limits). Optional `ASSISTANT_MODEL` (default `claude-opus-5-5`) |
 
 Env changes need a redeploy. Generate secrets with `openssl rand -base64 32`.

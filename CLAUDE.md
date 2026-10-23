@@ -116,3 +116,15 @@ Analytics (`/analytics`, `lib/analytics/`):
 - Custom range `?from=&to=` (validated in `range.ts`, ≤366 days, not future) overrides the preset; the
   top-bar preset select clears it. `/analytics/export?kind=metrics|daily|tables` is audited as `analytics.export`.
 
+
+Reports (`/reports`, `lib/reports/`):
+- `business.ts` is pure: daily/weekly/monthly summary built ONLY from the analytics report, the visible alerts and live
+  health. Improved/declined = ≥10% (≥2 pp for rates) on complete data; actions = open non-info alerts + unreadable
+  sources. No forecasts or invented opportunities. Markdown export `/reports/export?kind=` is audited as `report.export`.
+  Scheduled email delivery is not built: the console has no email provider.
+
+Deployments (`lib/integrations/vercel/`): read-only `GET /v6/deployments?target=production` with `VERCEL_TOKEN`.
+`summarise.ts` (pure) splits "live" (newest READY) from "newest attempt"; a product's failed newest deploy is a
+`deploy:` warning alert (the console's own project maps to no product and never alerts).
+
+AI activity: `/assistant` lists the audit rows with via=assistant (own rows; everyone's with `audit:read`).
