@@ -3,12 +3,12 @@ import { getOpsStore, ConflictError } from '@/lib/ops'
 import type { Condition, Item, ItemPatch, MovementType } from '@/lib/ops/types'
 import { getFieldItems, intakeBlocker } from '@/lib/integrations/furniture/intake'
 import {
-  deleteWebsiteProduct, getWebsiteProduct, listWebsiteProductsByIds, saveWebsiteProduct, setWebsiteStock,
+  deleteWebsiteProduct, getWebsiteProduct, getWebsiteProductMeta, listWebsiteProductsByIds, saveWebsiteProduct, setWebsiteStock,
   type WebsiteProduct, type WebsiteProductFull, type WebsiteProductInput, PRODUCT_CONDITIONS,
 } from '@/lib/integrations/website/manage'
 import { shekelsToAgorot } from '@/lib/money'
 import { websiteQty } from '@/lib/sync/products'
-import { FIELD_CONDITION, OPS, draftProduct } from './model'
+import { FIELD_CONDITION, OPS, draftProduct, websiteCategoryFor } from './model'
 import { touchContact } from '@/lib/crm/service'
 import { runRule } from '@/lib/tasks/automations'
 
@@ -258,7 +258,7 @@ export function productInput(p: WebsiteProductFull): WebsiteProductInput {
  * that was listed before (returned since) gets its existing product's stock
  * back instead of a second product.
  */
-export async function listOnWebsite(id: string, version: number, opts: { categoryId?: number | null }, actor: Actor): Promise<OpResult> {
+export async function listOnWebsite(id: string, version: number, opts: { categoryId?: number | null; publish?: boolean }, actor: Actor): Promise<OpResult> {
   const store = getOpsStore()
   const item = await store.getItem(id)
   if (!item) return { ok: false, message: 'Item not found.' }
@@ -282,19 +282,86 @@ export async function listOnWebsite(id: string, version: number, opts: { categor
     }
   }
 
-  const draft = draftProduct(item, opts)
+  const draft = draftProduct(item, { categoryId: opts.categoryId, published: opts.publish })
   if (!draft.ok) return { ok: false, message: draft.reason }
   const saved = await saveWebsiteProduct(draft.product)
   if (!saved.ok) return { ok: false, message: `The website refused the draft: ${saved.message}` }
   try {
     const updated = await store.applyItem(id, { version, from: OPS.list }, { status: 'listed', websiteProductId: saved.value.id }, { type: 'list', refKind: 'website_product', refId: String(saved.value.id), actorEmail: actor.email })
-    return { ok: true, item: updated, message: `Draft listing created on the website (product #${saved.value.id}, not published yet). Check it and publish.` }
+    return { ok: true, item: updated, message: opts.publish ? `On the website shop now (product #${saved.value.id}).` : `Draft listing created on the website (product #${saved.value.id}, not published yet). Check it and publish.` }
   } catch (e) {
     // Undo: the draft must not stay on the website unlinked.
     const del = await deleteWebsiteProduct(saved.value.id, saved.value.updated_at).catch((x: unknown) => ({ ok: false as const, conflict: false, message: x instanceof Error ? x.message : String(x) }))
     const r = fail(e)
     return !r.ok && !del.ok ? { ok: false, message: `${r.message} The draft product #${saved.value.id} could not be removed (${del.message}); delete it on the website.` } : r
   }
+}
+
+/** Runs `fn` over `xs` with at most `n` at a time, keeping the input order in the result. */
+async function pool<T, R>(xs: readonly T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(xs.length)
+  let next = 0
+  await Promise.all(Array.from({ length: Math.min(n, xs.length) }, async () => {
+    while (next < xs.length) {
+      const i = next++
+      out[i] = await fn(xs[i]!)
+    }
+  }))
+  return out
+}
+
+/**
+ * Put several items in storage on the website shop at once, published, each
+ * in the website category of the same name. Every item goes through
+ * `listOnWebsite`, so each one is linked and stays sellable in one place only;
+ * one refusal never stops the others.
+ */
+export async function listManyOnWebsite(ids: string[], actor: Actor): Promise<{ listed: Item[]; refused: string[]; message: string }> {
+  const store = getOpsStore()
+  const meta = await getWebsiteProductMeta()
+  if (meta.state !== 'ok') return { listed: [], refused: [], message: `The website could not be read (${meta.state === 'error' ? meta.error : 'not connected'}); nothing was listed.` }
+  const items = await store.listItems({ ids, limit: ids.length })
+  const results = await pool(ids, 5, async (id): Promise<{ ok: true; item: Item } | { ok: false; why: string }> => {
+    const item = items.find((i) => i.id === id)
+    if (!item) return { ok: false, why: `${id.slice(0, 8)}: not found` }
+    try {
+      const r = await listOnWebsite(id, item.version, { categoryId: websiteCategoryFor(item.category, meta.data.categories), publish: true }, actor)
+      return r.ok ? { ok: true, item: r.item } : { ok: false, why: `${item.sku}: ${r.message}` }
+    } catch (e) {
+      return { ok: false, why: `${item.sku}: ${e instanceof Error ? e.message : String(e)}` }
+    }
+  })
+  const listed = results.flatMap((r) => (r.ok ? [r.item] : []))
+  const refused = results.flatMap((r) => (r.ok ? [] : [r.why]))
+  const message = `${listed.length ? `${listed.length} item(s) are on the website shop now.` : 'Nothing was listed.'}${refused.length ? ` Not listed (${refused.length}): ${refused.join('; ')}.` : ''}`
+  return { listed, refused, message }
+}
+
+/**
+ * Take website products off the shop by unpublishing them. Nothing is deleted:
+ * past orders still point at them, and publishing brings one back. A product
+ * linked to an inventory item goes through `setListingPublished` so the item's
+ * history records it.
+ */
+export async function hideWebsiteProducts(productIds: number[], actor: Actor): Promise<{ hidden: number; refused: string[]; message: string }> {
+  const linked = await getOpsStore().listItems({ websiteProductIds: productIds, limit: productIds.length })
+  const results = await pool(productIds, 5, async (pid): Promise<string | null> => {
+    const item = linked.find((i) => i.websiteProductId === pid)
+    if (item) {
+      const r = await setListingPublished(item.id, false, actor)
+      return r.ok ? null : `#${pid}: ${r.message}`
+    }
+    const p = await getWebsiteProduct(pid)
+    if (p.state !== 'ok') return `#${pid}: ${p.state === 'error' ? p.error : 'the website is not connected'}`
+    if (!p.data) return `#${pid}: no longer on the website`
+    if (p.data.published === undefined) return `#${pid}: this website has no published column`
+    if (p.data.published === false) return null
+    const saved = await saveWebsiteProduct({ ...productInput(p.data), published: false }, pid, p.data.updated_at)
+    return saved.ok ? null : `"${p.data.name_he.slice(0, 60)}": ${saved.message}`
+  })
+  const refused = results.filter((r): r is string => r != null)
+  const hidden = productIds.length - refused.length
+  return { hidden, refused, message: `${hidden ? `${hidden} product(s) hidden from the website shop (kept, not deleted).` : 'Nothing was hidden.'}${refused.length ? ` Not hidden (${refused.length}): ${refused.join('; ')}.` : ''}` }
 }
 
 async function restoreZero(productId: number, qty: number): Promise<string | undefined> {

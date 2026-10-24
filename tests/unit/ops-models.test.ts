@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { can, draftProduct, formatSku, skuCandidates, reservationExpired, skuSlug, WEBSITE_CONDITION } from '@/lib/inventory/model'
+import { can, draftProduct, formatSku, skuCandidates, reservationExpired, skuSlug, websiteCategoryFor, WEBSITE_CONDITION } from '@/lib/inventory/model'
+import { CC_SLUG } from '@/lib/sync/products'
 import { mergeContact, normalizeEmail, normalizePhone, whatsappLink, daysWithoutContact } from '@/lib/crm/model'
 import { planOrderSync } from '@/lib/sync/plan'
 import { summarise } from '@/lib/ops/summary'
@@ -52,6 +53,23 @@ describe('inventory model', () => {
     const d = draftProduct(item())
     expect(d.ok && d.product).toMatchObject({ slug: 'jas-000001', price: 450, published: false, quantity: 1 })
     expect(WEBSITE_CONDITION.needs_repair).toBe('fair')
+    const live = draftProduct(item(), { published: true })
+    expect(live.ok && live.product.published).toBe(true)
+  })
+
+  it('puts an item in the website category of the same Hebrew name, or none', () => {
+    const cats = [{ id: 3, name_he: 'שולחן סלון' }, { id: 7, name_he: ' כיסא ' }]
+    expect(websiteCategoryFor('שולחן סלון', cats)).toBe(3)
+    expect(websiteCategoryFor('כיסא', cats)).toBe(7)
+    expect(websiteCategoryFor('שולחן', cats)).toBeNull()
+    expect(websiteCategoryFor(null, cats)).toBeNull()
+  })
+
+  it('never adopts a listing the command center made, including the kept jas-inventory serials', () => {
+    expect(CC_SLUG.test(skuSlug('JAS-000001'))).toBe(true)
+    expect(CC_SLUG.test(skuSlug('JAS-0042'))).toBe(true)
+    expect(CC_SLUG.test('jas-12345')).toBe(false)
+    expect(CC_SLUG.test('oak-table')).toBe(false)
   })
 
   it('a reservation expires at its date, not before', () => {

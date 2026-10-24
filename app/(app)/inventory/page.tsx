@@ -47,6 +47,7 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
           <div className="flex flex-wrap gap-2">
             {may('inventory:operate') ? <Link href="/inventory/intake" className={btn}>Intake from collections</Link> : null}
             {may('inventory:operate') ? <Link href="/inventory/website" className={btn}>From the website</Link> : null}
+            {may('website:write') ? <Link href="/inventory/online" className={btn}>Website shop</Link> : null}
             {may('inventory:write') ? <Link href="/inventory/new" className={btn}>Add an item</Link> : null}
             <Link href="/inventory/scan" className={btn}>Scan</Link>
             <Link href="/inventory/locations" className={btn}>Locations</Link>

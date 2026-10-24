@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fakeServer, resetSourceCache } from './fake-server'
 import { getOpsStore, ConflictError } from '@/lib/ops'
 import { emptyData, memoryStore } from '@/lib/ops/memory'
-import { adoptWebsiteProducts, listOnWebsite, reserveItem, sellInStore, releaseItem } from '@/lib/inventory/service'
+import { adoptWebsiteProducts, hideWebsiteProducts, listManyOnWebsite, listOnWebsite, reserveItem, sellInStore, releaseItem } from '@/lib/inventory/service'
 import { planProductAdoption } from '@/lib/sync/products'
 import { runOpsSync } from '@/lib/sync/run'
 import { proposalDef } from '@/lib/assistant/proposals'
@@ -16,11 +16,11 @@ import { proposalDef } from '@/lib/assistant/proposals'
 const actor = { email: 'owner@jas.test', name: 'Owner' }
 const g = globalThis as unknown as { __ccOpsData?: ReturnType<typeof emptyData> }
 
-type Product = { id: number; slug: string; name_he: string; price: number | null; quantity: number; in_stock: boolean; published: boolean; updated_at: string }
+type Product = { id: number; slug: string; name_he: string; price: number | null; quantity: number; in_stock: boolean; published: boolean; updated_at: string; category_id?: number | null; image_url?: string | null }
 function website(opts: { orders?: unknown[]; inquiries?: unknown[]; failStockSet?: boolean } = {}) {
   const products = new Map<number, Product>()
   let next = 500
-  const full = (p: Product) => ({ ...p, name_en: null, description_he: null, description_en: null, story_he: null, story_en: null, original_price: null, category_id: null, condition: null, style: null, dimensions: null, material: null, origin: null, image_url: null, images: [], featured: false, tags: [], created_at: p.updated_at, categories: null })
+  const full = (p: Product) => ({ name_en: null, description_he: null, description_en: null, story_he: null, story_en: null, original_price: null, category_id: null, condition: null, style: null, dimensions: null, material: null, origin: null, image_url: null, images: [], featured: false, tags: [], created_at: p.updated_at, categories: null, ...p })
   return {
     products,
     handler: (r: { body: string }) => {
@@ -40,10 +40,25 @@ function website(opts: { orders?: unknown[]; inquiries?: unknown[]; failStockSet
         }
         case 'product-save': {
           const input = b.product as Record<string, unknown>
-          const p: Product = { id: ++next, slug: String(input.slug), name_he: String(input.name_he), price: input.price as number, quantity: input.quantity as number, in_stock: true, published: false, updated_at: new Date().toISOString() }
+          if (b.id != null) {
+            const old = products.get(b.id as number)
+            if (!old) return { status: 404, body: { error: 'no product' } }
+            if (old.updated_at !== b.expectUpdatedAt) return { status: 409, body: { error: 'changed' } }
+            const p: Product = { ...old, published: input.published as boolean, updated_at: new Date(Date.parse(old.updated_at) + 1000).toISOString() }
+            products.set(p.id, p)
+            return { status: 200, body: { product: full(p) } }
+          }
+          if ([...products.values()].some((x) => x.slug === input.slug)) return { status: 409, body: { error: `Another product already uses the address /product/${String(input.slug)}` } }
+          const p: Product = { id: ++next, slug: String(input.slug), name_he: String(input.name_he), price: input.price as number, quantity: input.quantity as number, in_stock: true, published: (input.published as boolean | undefined) ?? true, category_id: input.category_id as number | null, updated_at: new Date().toISOString() }
           products.set(p.id, p)
           return { status: 200, body: { product: full(p) } }
         }
+        case 'product-get': {
+          const p = products.get(b.id as number)
+          return p ? { status: 200, body: { product: full(p) } } : { status: 404, body: { error: 'no product' } }
+        }
+        case 'product-meta':
+          return { status: 200, body: { categories: [{ id: 3, name_he: 'שולחן אוכל', name_en: null, slug: 'dining' }], lowStockThreshold: 2 } }
         case 'product-delete':
           products.delete(b.id as number)
           return { status: 200, body: { deleted: { id: b.id, slug: 'x' } } }
@@ -113,6 +128,32 @@ describe('inventory ↔ website: sellable in exactly one place', () => {
     const p = [...w.products.values()][0]!
     expect(p).toMatchObject({ slug: i.sku.toLowerCase(), price: 450, published: false, quantity: 1 })
     expect((await getOpsStore().getItem(i.id))).toMatchObject({ status: 'listed', websiteProductId: p.id })
+  })
+
+  it('listing many publishes each in its category; a slug already taken is refused and the rest still go', async () => {
+    const w = website()
+    await connect(w)
+    const a = await newItem({ sku: 'JAS-0001', category: 'שולחן אוכל' })
+    const b = await newItem({ sku: 'JAS-0002', category: 'כיסא' })
+    const c = await newItem({ sku: 'JAS-0003' })
+    w.products.set(9, { id: 9, slug: 'jas-0003', name_he: 'old', price: 100, quantity: 1, in_stock: true, published: true, updated_at: '2026-10-01T00:00:00.000Z' })
+    const r = await listManyOnWebsite([a.id, b.id, c.id], actor)
+    expect(r.listed.map((i) => i.sku).sort()).toEqual(['JAS-0001', 'JAS-0002'])
+    expect(r.refused).toHaveLength(1)
+    expect(r.refused[0]).toContain('JAS-0003')
+    const bySlug = new Map([...w.products.values()].map((p) => [p.slug, p]))
+    expect(bySlug.get('jas-0001')).toMatchObject({ published: true, category_id: 3 })
+    expect(bySlug.get('jas-0002')).toMatchObject({ published: true, category_id: null })
+    expect((await getOpsStore().getItem(c.id))!.status).toBe('in_storage')
+  })
+
+  it('hiding unpublishes a website product and keeps it', async () => {
+    const w = website()
+    await connect(w)
+    w.products.set(9, { id: 9, slug: 'old-chair', name_he: 'כיסא ישן', price: 100, quantity: 1, in_stock: true, published: true, updated_at: '2026-10-01T00:00:00.000Z', image_url: 'https://img/x.jpg' })
+    const r = await hideWebsiteProducts([9], actor)
+    expect(r).toMatchObject({ hidden: 1, refused: [] })
+    expect(w.products.get(9)).toMatchObject({ published: false, quantity: 1 })
   })
 
   it('reserving a listed item takes it off sale online; releasing puts it back', async () => {
