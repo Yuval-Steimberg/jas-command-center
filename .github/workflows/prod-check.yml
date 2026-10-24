@@ -33,7 +33,15 @@ jobs:
           test "$code" = "200" || { cat /tmp/out.json; exit 1; }
           jq -r '.health[] | "\(.status | ascii_upcase)  \(.product)", (.checks[] | "    \(.status)  \(.name): \(.detail)")' /tmp/out.json
           echo
-          jq -r '.probes[] | "\(.state | ascii_upcase)  \(.section) · \(.name): \(.detail)"' /tmp/out.json
+          jq -r '.probes[] | "\(.state | ascii_upcase)  \(.section) · \(.name): \(.detail)\(if .latencyMs then "  (\(.latencyMs) ms)" else "" end)"' /tmp/out.json
           echo
           jq -c '.summary' /tmp/out.json
+          echo
+          echo "Timings (each read alone, in sequence; first run may include a cold start):"
+          tcode=$(curl -sS -o /tmp/timing.json -w '%{http_code}' --max-time 90 -H "Authorization: Bearer $CRON_SECRET" "$url?timing=1") || true
+          if [ "$tcode" = "200" ]; then
+            jq -r '"  function region: \(.region // "unknown"), auth signing keys: \(.authSigningKeys // "none")", (.timings[] | "  \(.medianMs // "-") ms median  [\(.runsMs | map(tostring) | join(", "))]  \(.name)\(if .error then "  (\(.error))" else "" end)")' /tmp/timing.json
+          else
+            echo "  timing request answered HTTP $tcode"
+          fi
           test "$(jq -r '.summary.ok' /tmp/out.json)" = "true"
