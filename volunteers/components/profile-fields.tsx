@@ -46,11 +46,15 @@ export function PreferenceFields({ v }: { v?: Pick<Volunteer, 'areas' | 'availab
   )
 }
 
-export function Toggle({ name, label, hint, defaultChecked, required }: { name: string; label: React.ReactNode; hint?: string; defaultChecked?: boolean; required?: boolean }) {
+export function Toggle({ name, label, hint, defaultChecked, required, error, onChange }: { name: string; label: React.ReactNode; hint?: string; defaultChecked?: boolean; required?: boolean; error?: string; onChange?: () => void }) {
+  const errId = error ? `${name}-error` : undefined
   return (
-    <label className="flex cursor-pointer gap-3 rounded-lg border border-line bg-paper p-4">
-      <input type="checkbox" name={name} defaultChecked={defaultChecked} required={required} className="mt-0.5 h-5 w-5 shrink-0 accent-[rgb(51,61,54)]" />
-      <span><span className="block text-base text-ink">{label}</span>{hint ? <span className="mt-0.5 block text-sm text-slate">{hint}</span> : null}</span>
-    </label>
+    <div>
+      <label className={`flex cursor-pointer gap-3 rounded-lg border bg-paper p-4 ${error ? 'border-bad ring-2 ring-bad/20' : 'border-line'}`}>
+        <input id={name} type="checkbox" name={name} defaultChecked={defaultChecked} required={required} aria-invalid={error ? true : undefined} aria-describedby={errId} onChange={onChange} className="mt-0.5 h-5 w-5 shrink-0 accent-[rgb(51,61,54)]" />
+        <span><span className="block text-base text-ink">{label}</span>{hint ? <span className="mt-0.5 block text-sm text-slate">{hint}</span> : null}</span>
+      </label>
+      {error ? <p id={errId} className="mt-1.5 text-sm font-medium text-bad">{error}</p> : null}
+    </div>
   )
 }
