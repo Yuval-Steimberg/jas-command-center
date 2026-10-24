@@ -7,10 +7,11 @@ import { getOpsStore } from '@/lib/ops'
 import { loadOps } from '@/lib/ops/guard'
 import { listWebsiteProducts } from '@/lib/integrations/website/manage'
 import { websiteQty } from '@/lib/sync/products'
-import { draftProduct } from '@/lib/inventory/model'
+import { AVAILABLE, draftProduct } from '@/lib/inventory/model'
+import { driveFileId } from '@/lib/inventory/drive'
 import { formatAgorot, shekelsToAgorot } from '@/lib/money'
 import { ActionForm, SelectAll } from '../forms'
-import { hideWebsiteAction, listManyAction } from '../actions'
+import { copyDrivePhotosAction, hideWebsiteAction, listManyAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -27,11 +28,12 @@ export default async function WebsiteShopPage() {
   const r = await listWebsiteProducts('')
   const ops = await loadOps(async () => {
     const store = getOpsStore()
-    const [items, linked] = await Promise.all([
+    const [items, onDrive, linked] = await Promise.all([
       store.listItems({ statuses: ['in_storage'], limit: 1000 }),
+      store.listItems({ statuses: [...AVAILABLE, 'reserved'], limit: 1000 }),
       r.state === 'ok' && r.data.length ? store.listItems({ websiteProductIds: r.data.map((p) => p.id), limit: 1000 }) : Promise.resolve([]),
     ])
-    return { items, linked: new Map(linked.map((i) => [i.websiteProductId!, i])) }
+    return { items, drive: onDrive.filter((i) => [i.photoUrl, ...(i.extraPhotos ?? [])].some((l) => driveFileId(l))), linked: new Map(linked.map((i) => [i.websiteProductId!, i])) }
   })
 
   const onSale = r.state === 'ok' ? r.data.filter((p) => p.published !== false && websiteQty(p) > 0) : []
@@ -59,6 +61,17 @@ export default async function WebsiteShopPage() {
           )}
         </CardBody>
       </Card>
+      {ops.ok && ops.data.drive.length ? (
+        <Card>
+          <CardHeader title={`Photos still on Google Drive (${ops.data.drive.length})`} />
+          <CardBody>
+            <ActionForm action={copyDrivePhotosAction} hidden={{}} label="Copy the photos here" busy="Copying…" tone="plain" className="flex flex-col gap-3">
+              <p className="text-sm text-muted">Phones and the website cannot always show a Google Drive link, so these items show a broken photo. This copies each photo into the command center&apos;s own photo store and points the item at the copy (the folder must be shared &quot;anyone with the link&quot;). 30 items per press; putting an item on sale below copies its photo first anyway.</p>
+              {ops.data.drive.map((i) => <input key={i.id} type="hidden" name="itemId" value={i.id} />)}
+            </ActionForm>
+          </CardBody>
+        </Card>
+      ) : null}
       <Card>
         <CardHeader title={`In storage, not on the website${ops.ok ? ` (${ready.length})` : ''}`} />
         <CardBody>
