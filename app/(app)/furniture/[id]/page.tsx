@@ -9,6 +9,7 @@ import { DESTINATIONS, getFurnitureProject, type FurnitureItem } from '@/lib/int
 import { getFurnitureKpis } from '@/lib/integrations/furniture/field'
 import { ArchiveForm, CollectForm, DestinationForm, FinishApartmentForm, HandoverForm, ReopenApartmentForm } from '../forms'
 import { KpiCard } from '../kpis'
+import { ProjectVolunteers } from '../../volunteers/project-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -69,6 +70,7 @@ export default async function FurnitureProjectPage({ params }: { params: { id: s
         </CardBody>
       </Card>
       <KpiCard result={kpis} />
+      {can(s.user.role, 'volunteers:read', s.overrides) ? <ProjectVolunteers projectId={project.id} canCreate={can(s.user.role, 'volunteers:write', s.overrides)} /> : null}
       <Card>
         <CardHeader title="Apartments and items" meta={write || operate ? 'Every change here is the same change the field app makes, with its rules (collector name, completion, handover)' : 'Your role can view items but not change them'} />
         <CardBody>

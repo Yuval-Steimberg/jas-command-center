@@ -1,0 +1,17 @@
+{
+  "name": "JAS Volunteers · מתנדבים",
+  "short_name": "JAS מתנדבים",
+  "description": "ההתנדבות של Just A Second: פעילויות, משמרות והשעות שלך.",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFCF5",
+  "theme_color": "#333D36",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

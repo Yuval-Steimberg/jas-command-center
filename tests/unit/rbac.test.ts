@@ -25,6 +25,17 @@ describe('rbac', () => {
     expect(can('project_manager', 'website:read')).toBe(false)
   })
 
+  it('volunteer coordinator runs volunteers and sees nothing about money or customers', () => {
+    for (const a of ['read', 'read_pii', 'operate', 'write'] as const) expect(can('volunteer_coordinator', `volunteers:${a}`)).toBe(true)
+    expect(can('volunteer_coordinator', 'furniture:read')).toBe(true)
+    expect(can('volunteer_coordinator', 'furniture:write')).toBe(false)
+    for (const p of ['website', 'gift_cards', 'crm', 'inventory', 'design_agent'] as const) expect(can('volunteer_coordinator', `${p}:read`)).toBe(false)
+    expect(can('volunteer_coordinator', 'audit:read')).toBe(false)
+    expect(can('volunteer_coordinator', 'users:manage')).toBe(false)
+    expect(primaryRole(['viewer', 'volunteer_coordinator'])).toBe('volunteer_coordinator')
+    expect(primaryRole(['volunteer_coordinator', 'project_manager'])).toBe('project_manager')
+  })
+
   it('no role and unknown roles get nothing', () => {
     expect(can(null, 'website:read')).toBe(false)
     expect(primaryRole(['superuser'])).toBeNull()

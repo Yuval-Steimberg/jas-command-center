@@ -17,7 +17,7 @@ export const errText = (e: unknown) => (e instanceof Error ? e.message : String(
  * show the record. A failed audit write aborts before anything changes.
  */
 export async function runAct(
-  product: 'inventory' | 'crm' | 'website',
+  product: 'inventory' | 'crm' | 'website' | 'volunteers',
   perms: Permission[],
   action: string,
   target: string,

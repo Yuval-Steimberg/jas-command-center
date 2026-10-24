@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* JAS palette, space-separated RGB so Tailwind can apply alpha. */
+:root {
+  --ground: 255 252 245;        /* jas-cream: the page, never pure white */
+  --paper: 255 255 255;         /* small cards only */
+  --cream-2: 246 241 228;
+  --cream-3: 236 229 209;
+  --line: 221 214 196;
+  --ink: 51 61 54;              /* jas-forest */
+  --slate: 98 107 101;          /* jas-slate: body text and icons */
+  --brand: 232 130 37;          /* jas-orange: one primary action per screen, fill only */
+  --brand-pressed: 201 106 23;
+  --brand-ink: 168 87 18;       /* orange as text on a light ground (5.36:1) */
+  --sage: 181 201 173;
+  --sage-soft: 214 225 207;
+  --sage-deep: 143 166 136;
+  --forest: 51 61 54;
+  --ok: 62 110 74;
+  --warn: 168 87 18;
+  --bad: 181 69 44;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html, body { background: rgb(var(--ground)); color: rgb(var(--ink)); }
+body { -webkit-font-smoothing: antialiased; -webkit-tap-highlight-color: transparent; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 3px solid rgb(var(--forest)); outline-offset: 2px; border-radius: 6px; }
+.pb-nav { padding-bottom: calc(5.5rem + var(--safe-bottom)); }
+.pb-safe { padding-bottom: var(--safe-bottom); }
+/* Phone numbers, emails and times embedded in Hebrew text. */
+.ltr { direction: ltr; unicode-bidi: isolate; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

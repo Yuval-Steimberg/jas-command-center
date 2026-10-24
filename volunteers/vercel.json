@@ -1,0 +1,4 @@
+{
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../lib/volunteers ../lib/crm/model.ts ../lib/ops/store.ts ../lib/ops/types.ts",
+  "crons": [{ "path": "/api/cron", "schedule": "0 7 * * *" }]
+}

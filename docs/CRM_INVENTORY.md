@@ -10,6 +10,7 @@ https://claude.ai/artifact/Fb4yBjgibHstr2oM8z6SZX
 | Record | Owner | Here |
 | --- | --- | --- |
 | Physical item after intake (SKU, location, condition, reservation, in-store sale, donation, recycling) | **Command center** `cc_inventory_items` | read + write |
+| Volunteers, their shifts and attendance (migration `0005_volunteers.sql`, `docs/VOLUNTEERS.md`) | **Command center** `cc_volunteers`, `cc_vol_*`; the CRM contact carries the `volunteer` role and a link, never the volunteer's preferences or notes | read + write (both the Command Center and the volunteer app) |
 | Item movements (every change, append-only, idempotent by ref) | **Command center** `cc_inventory_movements` | append only |
 | Contacts, roles, leads, timeline, tasks, deliveries, automation switches | **Command center** `cc_contacts`, `cc_deals`, `cc_interactions`, `cc_tasks`, `cc_deliveries`, `cc_automation_rules` | read + write |
 | Listed item's price, publish state, stock; every website order and its payment | **Website** | read live; stock via the guarded `stock-set` (website PR #37) |

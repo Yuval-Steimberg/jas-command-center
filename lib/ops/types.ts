@@ -103,7 +103,7 @@ export interface MovementInput {
 
 export const CONTACT_ROLES = ['customer', 'lead', 'supplier', 'partner', 'donor', 'volunteer'] as const
 export type ContactRole = (typeof CONTACT_ROLES)[number]
-export const CONTACT_SOURCES = ['manual', 'website_order', 'website_form', 'gift_card', 'whatsapp', 'in_store'] as const
+export const CONTACT_SOURCES = ['manual', 'website_order', 'website_form', 'gift_card', 'whatsapp', 'in_store', 'volunteer_app'] as const
 
 export interface Contact {
   id: string
