@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { emptyVolData, memoryVolunteerStore, type MemoryVolData, type NewOutbox, type VolunteerStore } from '@/lib/volunteers/store'
 import { supabaseVolunteerStore } from '@/lib/volunteers/supabase'
 import { deliverOutbox, sendgridSender, type NotifyContext, type Sender } from '@/lib/volunteers/notify'
+import { buildShiftViews } from '@/lib/volunteers/views'
 
 // One per process, on globalThis: route handlers, actions and pages are separate bundles in Next.js.
 const g = globalThis as unknown as { __ccVolData?: MemoryVolData }
@@ -44,4 +45,19 @@ export async function notifyVolunteers(rows: (NewOutbox | null)[]): Promise<{ qu
     console.error('volunteer notification failed (left in the outbox):', e instanceof Error ? e.message : e)
     return { queued: 0, warning: 'The volunteer emails could not be queued. Nobody was notified of this change.' }
   }
+}
+
+/**
+ * Everything the overview, calendar, reports, analytics and the assistant need
+ * for a window of time: shifts that overlap it, their activities and sign-ups,
+ * and every volunteer. One query per table (paged by the store).
+ */
+export async function loadVolunteerWindow(fromIso: string, toIso: string, now = Date.now()) {
+  const store = getVolunteerStore()
+  const [shifts, volunteers] = await Promise.all([store.listShifts({ from: fromIso, to: toIso, limit: 20_000 }), store.listVolunteers({ limit: 20_000 })])
+  const [activities, signups] = await Promise.all([
+    shifts.length ? store.listActivities({ ids: [...new Set(shifts.map((s) => s.activityId))] }) : Promise.resolve([]),
+    shifts.length ? store.listSignups({ shiftIds: shifts.map((s) => s.id), limit: 100_000 }) : Promise.resolve([]),
+  ])
+  return { shifts, volunteers, activities, signups, views: buildShiftViews(activities, shifts, signups, now) }
 }

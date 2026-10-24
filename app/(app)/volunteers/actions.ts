@@ -37,6 +37,10 @@ async function activityFields(f: FormData): Promise<ActivityInput | string> {
   const rawMap = str(f, 'mapUrl', 500)
   const mapUrl = httpsUrl(rawMap)
   if (rawMap && !mapUrl) return 'The map link must be an https:// address.'
+  const photoLines = String(f.get('photoUrls') ?? '').split(/\s+/).filter(Boolean)
+  const photoUrls = photoLines.map(httpsUrl)
+  if (photoUrls.some((u) => !u)) return 'Each photo link must be a full https:// address (one per line).'
+  if (photoUrls.length > 6) return 'Up to 6 photos per activity.'
   const closes = Number(f.get('signupClosesHours') ?? 0)
   if (!Number.isInteger(closes) || closes < 0 || closes > 168) return 'Sign-up closes between 0 and 168 hours before the shift.'
   const project = await projectOf(f)
@@ -62,6 +66,7 @@ async function activityFields(f: FormData): Promise<ActivityInput | string> {
     requiredSkills: pickSkills(f.getAll('requiredSkills')),
     coordinatorName: str(f, 'coordinatorName', 80),
     contactPhone,
+    photoUrls: photoUrls as string[],
     signupClosesHours: closes,
   }
 }

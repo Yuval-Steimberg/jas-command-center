@@ -6,6 +6,8 @@ import { getDesignAgentActivity, getDesignAgentHealthz } from '@/lib/integration
 import { previousPeriod, type DateRange } from '@/lib/time'
 import { crmSection, inventorySection, type OpsRead } from './ops'
 import { getOpsStore, OpsSetupError } from '@/lib/ops'
+import { volunteersSection, type VolunteerRead } from './volunteers'
+import { loadVolunteerWindow } from '@/lib/volunteer-store'
 import { designAgentSection, furnitureSection, giftCardsSection, websiteSection, type AnalyticsReport, type Section } from './model'
 
 /**
@@ -25,6 +27,7 @@ export async function loadAnalytics(range: DateRange, canRead: (p: Section['prod
     if (canRead('inventory')) jobs.push(ops.then((r) => inventorySection(r, range, previous)))
     if (canRead('crm')) jobs.push(ops.then((r) => crmSection(r, range, previous)))
   }
+  if (canRead('volunteers')) jobs.push(readVolunteers().then((r) => volunteersSection(r, range, previous)))
   return { range, previous, generatedAt: new Date().toISOString(), sections: await Promise.all(jobs) }
 }
 
@@ -44,5 +47,16 @@ export async function readOps(since: string): Promise<OpsRead> {
     return { state: 'ok', data: { items, movements, deals, contacts, truncated }, checkedAt: new Date().toISOString() }
   } catch (e) {
     return e instanceof OpsSetupError ? { state: 'not_configured', detail: 'run migration 0003_crm_inventory.sql' } : { state: 'error', detail: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+/** All volunteer history: "first-time" and "active in 90 days" need more than the selected window. */
+export async function readVolunteers(): Promise<VolunteerRead> {
+  try {
+    const d = await loadVolunteerWindow('2000-01-01T00:00:00Z', new Date(Date.now() + 400 * 86_400_000).toISOString())
+    return { state: 'ok', data: { volunteers: d.volunteers, activities: d.activities, shifts: d.shifts, signups: d.signups }, checkedAt: new Date().toISOString() }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e)
+    return /0005_volunteers/.test(msg) ? { state: 'not_configured', detail: 'run migration 0005_volunteers.sql' } : { state: 'error', detail: msg }
   }
 }

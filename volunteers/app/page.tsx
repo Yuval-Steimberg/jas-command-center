@@ -24,10 +24,12 @@ export default async function Home({ searchParams }: { searchParams: { deleted?:
     return (
       <>
         <section className="relative isolate overflow-hidden">
-          <Image src="/hero.jpg" alt="" fill priority sizes="100vw" className="-z-10 object-cover" />
+          {/* Art-directed: the team at work on a phone (portrait), the JAS space on a wide screen. */}
+          <Image src="/hero.jpg" alt="" fill priority sizes="(min-width: 768px) 1px, 100vw" className="-z-10 object-cover object-[50%_28%] md:hidden" />
+          <Image src="/hero-wide.jpg" alt="" fill priority sizes="(min-width: 768px) 100vw, 1px" className="-z-10 hidden object-cover object-[45%_55%] md:block" />
           <div className="absolute inset-0 -z-10 bg-[linear-gradient(180deg,rgba(51,61,54,0.15)_0%,rgba(51,61,54,0.78)_100%)]" />
           <div className="mx-auto flex min-h-[30rem] max-w-xl flex-col justify-end px-5 pb-8 pt-16 text-ground">
-            <Image src="/logo.png" alt="Just A Second" width={180} height={34} className="mb-auto h-auto w-40 brightness-0 invert" />
+            <Image src="/logo.png" alt="Just A Second" width={180} height={34} className="mb-auto h-auto w-40 self-end brightness-0 invert md:self-auto" />
             <p className="text-sm font-semibold tracking-[0.14em]">JAS VOLUNTEERS</p>
             <h1 className="mt-2 font-display text-[2.4rem] leading-[1.08]">מתנדבים איתנו, נותנים לדברים חיים שניים</h1>
             <p className="mt-3 max-w-md text-lg leading-relaxed text-ground/90">איסוף רהיטים מבניינים לפני פינוי, מיון, הכנה לשימוש חוזר ואירועים קהילתיים. בוחרים משמרת שמתאימה לכם, ונרשמים בלחיצה.</p>

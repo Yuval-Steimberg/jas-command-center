@@ -82,6 +82,20 @@ The Command Center's `vercel.json` skips its own build when only `volunteers/`
 changed; the volunteer app's `vercel.json` skips its build unless `volunteers/`
 or the shared library changed.
 
+## Assistant, analytics, production check
+
+- **Assistant** (`lib/assistant/volunteer-tools.ts`, `volunteer-proposals.ts`): `get_volunteer_overview`
+  and `suggest_volunteers_for_shift` (volunteers:read) return counts and references (`V-1a2b3c`) — never a
+  name, phone or email, since tool results go to the model provider. `propose_volunteer_invite` and
+  `propose_volunteer_message_shift` (volunteers:operate) only describe the action; the person's Confirm runs
+  the same store calls and emails as the shift page. A message carries a request id from the proposal, so
+  confirming twice sends once.
+- **Analytics** (`lib/analytics/volunteers.ts`): a Volunteers section built on `volunteerStats` — the same
+  function as Volunteers → Reports — with signed up (expected), attended (actual) and registered as separate
+  metrics (`vol.*` in `lib/metrics-catalog.ts`). It also flows into the business reports.
+- **Production check** (`lib/selfcheck/volunteers.ts`): the 0005 tables read through the Command Center
+  (and failed volunteer emails in 7 days), and the volunteer app's own `/api/health`.
+
 ## Deliberately not built (and why)
 
 - **Phone (SMS) login and WhatsApp/SMS notifications.** There is no SMS or
@@ -90,8 +104,6 @@ or the shared library changed.
   means choosing a provider (cost per message) and is one adapter in `mail.ts`.
 - **Interactive Map link.** The map is a static 21-place route with no notion of
   volunteers or activities; an activity carries its own place and arrival notes.
-- **Assistant tools, the /analytics section and production-check probes** come
-  in the next pull request.
 
 ## Known risks
 

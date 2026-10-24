@@ -28,6 +28,7 @@ const AGENT = 'Design agent GET /admin/activity'
 const AGENT_H = 'Design agent GET /healthz'
 const OPS = 'Command center Supabase: cc_inventory_* and cc_contacts / cc_deals (migration 0003)'
 const OPS_R = 'On view'
+const VOL = 'Command center Supabase: cc_volunteers, cc_vol_shifts, cc_vol_signups (migration 0005), via volunteerStats'
 
 export const METRICS: MetricDef[] = [
   { id: 'web.revenue', product: 'website', label: 'Website revenue', basis: 'period', formula: 'Amount charged on orders paid/processing/shipped/delivered, after discounts, by payment date (Israel day). Not profit. Includes gift cards sold as cart lines.', source: WEB, refresh: WEB_R },
@@ -96,6 +97,18 @@ export const METRICS: MetricDef[] = [
   { id: 'crm.openLeads', product: 'crm', label: 'Open leads', basis: 'now', formula: 'Leads in new, contacted, qualified or proposal.', source: OPS, refresh: OPS_R },
   { id: 'crm.staleLeads', product: 'crm', label: 'New leads waiting 3+ days', basis: 'now', formula: 'Leads still new whose last contact (or creation) is 3 or more days ago.', source: OPS, refresh: OPS_R },
   { id: 'crm.customers', product: 'crm', label: 'Customers', basis: 'now', formula: 'Contacts with the customer role.', source: OPS, refresh: OPS_R },
+
+  { id: 'vol.signedUp', product: 'volunteers', label: 'Signed up (expected)', basis: 'period', formula: 'Confirmed sign-ups on live shifts that start in the period (Israel day). Expected participants, never counted as attended.', source: VOL, refresh: OPS_R },
+  { id: 'vol.attended', product: 'volunteers', label: 'Attended (actual)', basis: 'period', formula: 'Confirmed sign-ups with attendance recorded as present.', source: VOL, refresh: OPS_R },
+  { id: 'vol.hours', product: 'volunteers', label: 'Volunteer hours', basis: 'period', formula: 'Σ recorded minutes of present attendance ÷ 60. Registering or being confirmed adds no hours.', source: VOL, refresh: OPS_R },
+  { id: 'vol.attendees', product: 'volunteers', label: 'Volunteers who came', basis: 'period', formula: 'Distinct volunteers with at least one present attendance.', source: VOL, refresh: OPS_R },
+  { id: 'vol.firstTime', product: 'volunteers', label: 'First-time volunteers', basis: 'period', formula: 'Attendees whose first-ever present attendance falls in the period.', source: VOL, refresh: OPS_R },
+  { id: 'vol.attendanceRate', product: 'volunteers', label: 'Showed up', basis: 'period', formula: 'Attended ÷ (attended + absent). Excused and not recorded are excluded.', source: VOL, refresh: OPS_R },
+  { id: 'vol.cancellations', product: 'volunteers', label: 'Cancellations', basis: 'period', formula: 'Sign-ups cancelled on shifts in the period.', source: VOL, refresh: OPS_R },
+  { id: 'vol.newRegistrations', product: 'volunteers', label: 'New registrations', basis: 'period', formula: 'Volunteers registered in the period (not deleted).', source: VOL, refresh: OPS_R },
+  { id: 'vol.unrecorded', product: 'volunteers', label: 'Attendance not recorded', basis: 'period', formula: 'Confirmed on a shift that has ended with no attendance recorded.', source: VOL, refresh: OPS_R },
+  { id: 'vol.registered', product: 'volunteers', label: 'Registered volunteers', basis: 'now', formula: 'Volunteers not deleted (any status).', source: VOL, refresh: OPS_R },
+  { id: 'vol.active90', product: 'volunteers', label: 'Active in the last 90 days', basis: 'now', formula: 'Distinct volunteers with a present attendance in the last 90 days.', source: VOL, refresh: OPS_R },
 
   { id: 'map.places', product: 'map', label: 'Map places', basis: 'now', formula: 'Entries in LOCS in places-data.js on the published branch.', source: 'GitHub Interactive-map', refresh: 'On view, cached 5 min' },
 ]

@@ -8,6 +8,7 @@ import { getFurnitureProject, setProjectArchived } from '@/lib/integrations/furn
 import { getDesignAgentStatus, retryDeadJob } from '@/lib/integrations/design-agent/adapter'
 import { formatAgorot, shekelsToAgorot } from '@/lib/money'
 import { OPS_EXEC_PARAMS, OPS_PROPOSALS } from './ops-proposals'
+import { VOLUNTEER_EXEC_PARAMS, VOLUNTEER_PROPOSALS } from './volunteer-proposals'
 
 /**
  * Actions the assistant may PROPOSE. Proposing does nothing: the tool looks the
@@ -234,6 +235,7 @@ export const PROPOSALS: readonly ProposalDef[] = [
     },
   },
   ...OPS_PROPOSALS,
+  ...VOLUNTEER_PROPOSALS,
 ]
 
 /** The exec-time schema for each kind: what prepare() added (from, expectUpdatedAt) is required on confirm. */
@@ -245,6 +247,7 @@ export const EXEC_PARAMS: Record<string, z.ZodType<Record<string, unknown>>> = {
   furniture_archive: furnitureArchive,
   design_agent_retry: designRetry,
   ...OPS_EXEC_PARAMS,
+  ...VOLUNTEER_EXEC_PARAMS,
 }
 
 export const proposalDef = (kind: string) => PROPOSALS.find((p) => p.kind === kind)
