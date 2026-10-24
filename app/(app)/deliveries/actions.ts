@@ -54,5 +54,5 @@ export async function moveDeliveryAction(_p: ActionState, f: FormData): Promise<
     const d = await getOpsStore().getDelivery(id.data)
     if (!d) return { ok: false, message: 'That delivery no longer exists.' }
     return moveDelivery(d, to, str(f, 'note', 500), actorOf(u), await userCan('website:operate'))
-  }, ['/deliveries', '/sales', '/inventory'])
+  }, ['/deliveries', '/sales', '/inventory', '/shop'])
 }

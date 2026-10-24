@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { can, draftProduct, formatSku, reservationExpired, skuSlug, WEBSITE_CONDITION } from '@/lib/inventory/model'
+import { can, draftProduct, formatSku, skuCandidates, reservationExpired, skuSlug, WEBSITE_CONDITION } from '@/lib/inventory/model'
 import { mergeContact, normalizeEmail, normalizePhone, whatsappLink, daysWithoutContact } from '@/lib/crm/model'
 import { planOrderSync } from '@/lib/sync/plan'
 import { summarise } from '@/lib/ops/summary'
@@ -36,6 +36,14 @@ describe('inventory model', () => {
     expect(formatSku('123')).toBe('JAS-000123')
     expect(formatSku('jas-42')).toBe('JAS-000042')
     expect(skuSlug('JAS-000123')).toBe('jas-000123')
+  })
+
+  it('also tries the 4-digit serials imported from jas-inventory, typed or inside a scanned link', () => {
+    expect(skuCandidates('JAS-0042')).toEqual(['JAS-0042', 'JAS-000042'])
+    expect(skuCandidates('42')).toEqual(['42', 'JAS-000042', 'JAS-0042'])
+    expect(skuCandidates('https://jas-inventory.vercel.app/item/JAS-0042')).toContain('JAS-0042')
+    expect(skuCandidates('JAS-000123')).toEqual(['JAS-000123'])
+    expect(skuCandidates('')).toEqual([])
   })
 
   it('drafts an unpublished product only with a price and an https photo', () => {

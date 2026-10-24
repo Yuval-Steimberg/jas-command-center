@@ -121,6 +121,15 @@ export const formatSku = (raw: string) => {
   return m ? `JAS-${m[1]!.padStart(6, '0')}` : raw.trim().toUpperCase()
 }
 
+/** Codes to try for what was typed or scanned: as written, the command center's 6-digit form, and the 4-digit serial jas-inventory printed. */
+export function skuCandidates(raw: string): string[] {
+  const m = /^\s*(?:jas-?)?(\d{1,6})\s*$/i.exec(raw)
+  const legacy = m && m[1]!.length <= 4 ? `JAS-${m[1]!.padStart(4, '0')}` : null
+  // A label that encodes a link (…/items/JAS-0042) still names its serial.
+  const inLink = /\bJAS-\d{4,6}\b/i.exec(raw)?.[0].toUpperCase() ?? null
+  return [...new Set([raw.trim().toUpperCase(), formatSku(raw), legacy, inLink].filter((x): x is string => !!x))]
+}
+
 export const REFURB_STATUS_LABEL = { needed: 'Needs refurbishing', in_progress: 'Being refurbished', done: 'Refurbished' } as const
 export const REFURB_LEVEL_LABEL = { light: 'Light (clean, touch-up)', medium: 'Medium (repair, refinish)', full: 'Full (rebuild, reupholster)' } as const
 

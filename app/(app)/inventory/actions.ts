@@ -14,7 +14,7 @@ import {
   adoptWebsiteProducts, createManualItem, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
   type Actor, type OpResult,
 } from '@/lib/inventory/service'
-import { formatSku } from '@/lib/inventory/model'
+import { formatSku, skuCandidates } from '@/lib/inventory/model'
 import { upsertContact } from '@/lib/crm/service'
 
 export type { ActionState } from '@/lib/ops/act'
@@ -287,18 +287,23 @@ export async function saveLocationAction(_p: ActionState, f: FormData): Promise<
 
 /** Scanner / typed SKU → the item page. A scanned label carries the item's URL, a typed code its SKU. */
 export async function findBySkuAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const he = f.get('base') === '/shop'
   try {
     await requirePermission('inventory:read')
   } catch {
-    return { ok: false, message: 'Your role cannot read inventory.' }
+    return { ok: false, message: he ? 'אין לך הרשאה לראות את המלאי.' : 'Your role cannot read inventory.' }
   }
   const raw = String(f.get('code') ?? '').trim().slice(0, 300)
   let target = /\/(?:inventory|shop\/items)\/([0-9a-f-]{36})/i.exec(raw)?.[1] ?? null
   try {
-    if (!target) target = (await getOpsStore().getItemBySku(formatSku(raw)))?.id ?? null
+    // Items imported from jas-inventory keep their 4-digit serials (JAS-0042), so printed labels still scan.
+    for (const sku of skuCandidates(raw)) {
+      if (target) break
+      target = (await getOpsStore().getItemBySku(sku))?.id ?? null
+    }
   } catch (e) {
     return { ok: false, message: e instanceof OpsSetupError ? e.message : errText(e) }
   }
-  if (!target) return { ok: false, message: `No item with code ${formatSku(raw) || '(empty)'}.` }
+  if (!target) return { ok: false, message: he ? `לא נמצא פריט עם הקוד ${raw || '(ריק)'}.` : `No item with code ${formatSku(raw) || '(empty)'}.` }
   redirect(f.get('base') === '/shop' ? `/shop/items/${target}` : `/inventory/${target}`)
 }

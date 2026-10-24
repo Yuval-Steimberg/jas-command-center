@@ -215,3 +215,12 @@ Shop sales + shop mode (`docs/CRM_INVENTORY.md`, migration `0006_shop_sales.sql`
 - Shop look: `data-shop` on the layout scopes `globals.css` rules (16px fields so iOS does not zoom, 44px fields/buttons, RTL
   disclosure chevrons, themed selection/caret). One orange per screen: the active tab is sage, a handover is forest (`tone="strong"`).
   Checkout's sticky total sits ABOVE the fixed tab bar in shop mode; never `bottom-0` there. Shared pieces: `components/shop/bits.tsx`.
+- Shop tabs: ראשי / מלאי / מכירות / מסירות (`tabOf` in `components/shop/shop-nav.tsx`). Handover = ONE list, `buildHandovers`
+  (`lib/sales/handovers.ts`, pure, tested) via `handoverQueue()`: open shop lines + deliveries planned on /deliveries (a line's own
+  delivery is listed with its line). The home counts, /shop/deliveries and the console's "Shop pickups waiting" all read it; the
+  buttons are `HandoverControls` (shared with the sale page). Sales lists (console + shop) = `recentSales()`. "In stock" = `AVAILABLE`
+  everywhere (snapshot, items filter). Home "sold this month" + category bars = `inventorySection` (same as /analytics). Dates DD/MM/YYYY
+  (`formatDay`/`formatDayTime`).
+- Labels: QR (item link) + Code 128-B of the SKU (`lib/inventory/barcode.ts`, decoded by zxing when written), `/shop/labels?ids=`.
+- jas-inventory data: imported once by SQL (project file `jas-inventory-import/import-jas-inventory.sql`), keeping its 4-digit
+  serials (JAS-0042). `skuCandidates()` makes scan/lookup try the typed code, the 6-digit CC form and the legacy one.

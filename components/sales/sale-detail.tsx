@@ -1,10 +1,11 @@
 import Link from 'next/link'
 import { randomUUID } from 'node:crypto'
 import { ActionForm, Field, LocationSelect } from '@/app/(app)/inventory/forms'
-import { handOverAction, lineFulfilmentAction, paymentAction, returnLineAction } from '@/app/(app)/sales/actions'
+import { paymentAction, returnLineAction } from '@/app/(app)/sales/actions'
+import { HandoverControls } from './handover-controls'
 import { input } from '@/app/(app)/website/forms'
 import { formatAgorot } from '@/lib/money'
-import { formatDateTime } from '@/lib/format'
+import { formatDateTime, formatDay, formatDayTime } from '@/lib/format'
 import { METHOD_LABEL, PAYMENT_METHODS, PAYMENT_STATE_LABEL, keptQty, lineValue, saleMoney, type SaleLine } from '@/lib/sales/model'
 import type { SaleView } from '@/lib/sales/views'
 import { METHOD_LABEL_HE, PAYMENT_STATE_HE, SALE_COPY, type Lang } from './copy'
@@ -24,6 +25,7 @@ export function SaleDetail({ v, lang, base, may, locations }: {
   locations: { id: string; label: string }[]
 }) {
   const t = SALE_COPY[lang]
+  const when = (iso: string) => (lang === 'he' ? formatDayTime(iso) : formatDateTime(iso))
   const methodLabel = lang === 'he' ? METHOD_LABEL_HE : METHOD_LABEL
   const m = saleMoney(v.sale, v.lines, v.payments)
   const stateLabel = (lang === 'he' ? PAYMENT_STATE_HE : PAYMENT_STATE_LABEL)[m.state]
@@ -54,30 +56,12 @@ export function SaleDetail({ v, lang, base, may, locations }: {
                     </p>
                     <p className={l.status === 'open' ? 'text-warn' : 'text-muted'}>
                       {lineState(l)}
-                      {l.fulfilment === 'delivery' && l.status === 'open' ? <> · <span dir="auto">{l.address}</span> · {l.scheduledFor ? `${t.scheduled}${l.scheduledFor}${l.timeWindow ? ` ${l.timeWindow}` : ''}` : t.noDate}{d ? <> · {base === '/shop' ? <span>{DELIVERY_HE[d.status] ?? d.status}</span> : <Link href="/deliveries" className="underline-offset-2 hover:underline">{d.status}</Link>}</> : null}</> : null}
-                      {l.doneAt && l.status === 'done' ? ` · ${formatDateTime(l.doneAt, lang)}` : ''}
+                      {l.fulfilment === 'delivery' && l.status === 'open' ? <> · <span dir="auto">{l.address}</span> · {l.scheduledFor ? `${t.scheduled}${lang === 'he' ? formatDay(l.scheduledFor) : l.scheduledFor}${l.timeWindow ? ` ${l.timeWindow}` : ''}` : t.noDate}{d ? <> · {base === '/shop' ? <span>{DELIVERY_HE[d.status] ?? d.status}</span> : <Link href="/deliveries" className="underline-offset-2 hover:underline">{d.status}</Link>}</> : null}</> : null}
+                      {l.doneAt && l.status === 'done' ? ` · ${when(l.doneAt)}` : ''}
                     </p>
                   </div>
                 </div>
-                {l.status === 'open' && may.operate ? (
-                  <div className="flex flex-col gap-2">
-                    <ActionForm action={handOverAction} hidden={{ lineId: l.id }} label={t.handOver} busy={t.saving} tone={base === '/shop' ? 'strong' : 'primary'} confirm={t.handOverConfirm} className="flex flex-col gap-2 [&_button]:h-12 [&_button]:w-full [&_button]:text-base" />
-                    <details className="text-sm">
-                      <summary className="cursor-pointer py-2 text-muted">{t.change}</summary>
-                      <ActionForm action={lineFulfilmentAction} hidden={{ lineId: l.id }} label={t.saveChange} busy={t.saving} className="mt-2 grid gap-2 sm:grid-cols-2">
-                        <Field label={t.delivery}>
-                          <select name="to" defaultValue={l.fulfilment} className={input}>
-                            <option value="pickup">{lang === 'he' ? 'איסוף' : 'Pickup'}</option>
-                            <option value="delivery">{lang === 'he' ? 'משלוח' : 'Delivery'}</option>
-                          </select>
-                        </Field>
-                        <Field label={lang === 'he' ? 'כתובת' : 'Address'}><input name="address" dir="auto" maxLength={300} defaultValue={l.address ?? ''} className={input} /></Field>
-                        <Field label={lang === 'he' ? 'תאריך' : 'Date'}><input name="date" type="date" defaultValue={l.scheduledFor ?? ''} className={input} /></Field>
-                        <Field label={lang === 'he' ? 'חלון זמן' : 'Time window'}><input name="window" dir="auto" maxLength={60} defaultValue={l.timeWindow ?? ''} className={input} /></Field>
-                      </ActionForm>
-                    </details>
-                  </div>
-                ) : null}
+                {l.status === 'open' && may.operate ? <HandoverControls line={l} delivery={d ?? null} lang={lang} strong={base === '/shop'} /> : null}
                 {kept > 0 && may.money ? (
                   <details className="text-sm">
                     <summary className="cursor-pointer py-2 text-muted">{t.returnIt}</summary>
@@ -109,7 +93,7 @@ export function SaleDetail({ v, lang, base, may, locations }: {
           <ul className="flex flex-col gap-1 text-sm">
             {v.payments.map((p) => (
               <li key={p.id} className="flex flex-wrap justify-between gap-x-3">
-                <span>{methodLabel[p.method]} · <span className="text-muted">{formatDateTime(p.at, lang)}</span>{p.note ? <span dir="auto" className="text-muted"> · {p.note}</span> : null}</span>
+                <span>{methodLabel[p.method]} · <span className="text-muted">{when(p.at)}</span>{p.note ? <span dir="auto" className="text-muted"> · {p.note}</span> : null}</span>
                 <span className={`num ${p.amountMinor < 0 ? 'text-bad' : ''}`}>{p.amountMinor < 0 ? '−' : ''}{formatAgorot(Math.abs(p.amountMinor))}</span>
               </li>
             ))}

@@ -207,6 +207,16 @@ const saleEn = {
   noDate: 'no date yet',
   newSale: 'New sale',
   open: 'Open',
+  pickedUp: 'Picked up',
+  delivered: 'Delivered',
+  deliveredConfirm: 'Mark delivered? This also marks the item (and a website order) delivered.',
+  arrangeDelivery: 'Arrange a delivery',
+  reschedule: 'Change the date',
+  toPickup: 'Switch to pickup',
+  toPickupConfirm: 'Switch to pickup? The planned delivery is cancelled.',
+  address: 'Address',
+  date: 'Date',
+  window: 'Time window',
 }
 export type SaleCopy = typeof saleEn
 const saleHe: SaleCopy = {
@@ -251,6 +261,16 @@ const saleHe: SaleCopy = {
   noDate: 'עוד בלי תאריך',
   newSale: 'מכירה חדשה',
   open: 'פתיחה',
+  pickedUp: 'נאסף',
+  delivered: 'נמסר',
+  deliveredConfirm: 'לסמן שנמסר? גם הפריט (והזמנה מהאתר) יסומנו כנמסרו.',
+  arrangeDelivery: 'תיאום משלוח',
+  reschedule: 'שינוי מועד',
+  toPickup: 'מעבר לאיסוף עצמי',
+  toPickupConfirm: 'לעבור לאיסוף עצמי? המשלוח המתוכנן יבוטל.',
+  address: 'כתובת',
+  date: 'תאריך',
+  window: 'חלון זמן',
 }
 export const SALE_COPY: Record<Lang, SaleCopy> = { en: saleEn, he: saleHe }
 export const PAYMENT_STATE_HE = { unpaid: 'לא שולם', deposit: 'שולמה מקדמה', paid: 'שולם', overpaid: 'מגיע החזר', nothing_due: 'אין חוב' } as const
