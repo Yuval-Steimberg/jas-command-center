@@ -30,6 +30,9 @@ import { getOpsSnapshot } from '@/lib/ops/snapshot'
 import { syncStatus } from '@/lib/sync/run'
 import { listIntakeCandidates } from '@/lib/integrations/furniture/intake'
 import { listWebsiteOrdersSince } from '@/lib/integrations/website/manage'
+import { getSupplierStore } from '@/lib/suppliers/store'
+import { OpsSetupError } from '@/lib/ops/store'
+import { OPEN_PO, isOverdue } from '@/lib/suppliers/model'
 import { fromCall, fromSource, summarise, type Probe } from './probe'
 
 /**
@@ -101,6 +104,16 @@ export async function runSelfCheck(now = new Date()) {
     ),
     listWebsiteOrdersSince(new Date(now.getTime() - 86_400_000).toISOString()).then((r) => fromSource('ops', 'Website orders changed in 24h (orders-list since)', r, (d) => `${d.length} orders`)),
     listIntakeCandidates().then((r) => fromSource('ops', 'Collected items ready for intake', r, (d) => `${d.length} candidates`)),
+    // Purchasing (migration 0004): not set up until it runs, which is reported, never failed.
+    getSupplierStore()
+      .listOrders({ statuses: OPEN_PO, limit: 2000 })
+      .then(
+        (orders): Probe => ({ section: 'ops', name: 'Purchase orders (migration 0004)', state: 'ok', latencyMs: null, detail: `${orders.length} open, ${orders.filter((o) => isOverdue(o)).length} late` }),
+        (e): Probe =>
+          e instanceof OpsSetupError
+            ? { section: 'ops', name: 'Purchase orders (migration 0004)', state: 'not_configured', latencyMs: null, detail: 'run 0004_suppliers.sql' }
+            : { section: 'ops', name: 'Purchase orders (migration 0004)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) },
+      ),
     // Platform
     getDeployments().then((r) => fromSource('platform', 'Vercel deployments', r, (d) => `${d.length} projects`)),
     fromCall('platform', 'Staff', async () => {

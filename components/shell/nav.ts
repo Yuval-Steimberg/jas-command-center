@@ -3,7 +3,7 @@ import type { Permission } from '@/lib/auth/rbac'
 export interface NavItem {
   href: string
   label: string
-  icon: 'overview' | 'crm' | 'inventory' | 'sales' | 'truck' | 'tasks' | 'website' | 'agent' | 'furniture' | 'map' | 'gift' | 'analytics' | 'report' | 'assistant' | 'bell' | 'plug' | 'settings'
+  icon: 'overview' | 'crm' | 'inventory' | 'sales' | 'truck' | 'tasks' | 'supplier' | 'website' | 'agent' | 'furniture' | 'map' | 'gift' | 'analytics' | 'report' | 'assistant' | 'bell' | 'plug' | 'settings'
   permission?: Permission
 }
 
@@ -16,6 +16,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/inventory', label: 'Inventory', icon: 'inventory', permission: 'inventory:read' },
       { href: '/sales', label: 'Sales & fulfilment', icon: 'sales', permission: 'inventory:read' },
       { href: '/deliveries', label: 'Deliveries', icon: 'truck', permission: 'inventory:read' },
+      { href: '/suppliers', label: 'Suppliers', icon: 'supplier', permission: 'inventory:read' },
       { href: '/tasks', label: 'Tasks', icon: 'tasks', permission: 'inventory:read' },
     ],
   },

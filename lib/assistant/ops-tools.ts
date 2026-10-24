@@ -8,6 +8,8 @@ import { daysWithoutContact, OPEN_STAGES } from '@/lib/crm/model'
 import { readOps } from '@/lib/analytics/load'
 import { crmSection, inventorySection } from '@/lib/analytics/ops'
 import { PRESETS, previousPeriod, rangeFor, type Preset } from '@/lib/time'
+import { getSupplierStore } from '@/lib/suppliers/store'
+import { OPEN_PO, PO_STATUSES, isOverdue, poTotals, type PoStatus } from '@/lib/suppliers/model'
 import type { AssistantTool } from './tools'
 
 /**
@@ -23,7 +25,7 @@ async function ops<T>(run: () => Promise<T>) {
   try {
     return { status: 'ok', checkedAt: new Date().toISOString(), data: await run() }
   } catch (e) {
-    if (e instanceof OpsSetupError) return { status: 'not_configured', missingSettings: ['migration 0003_crm_inventory.sql'], note: 'Customers and inventory are not set up yet.' }
+    if (e instanceof OpsSetupError) return { status: 'not_configured', missingSettings: [`migration ${e.migration}`], note: e.message }
     return { status: 'error', error: cut(e instanceof Error ? e.message : String(e), 300) }
   }
 }
@@ -183,5 +185,32 @@ export const OPS_TOOLS: AssistantTool[] = [
       }
     },
   },
+  {
+    name: 'get_purchase_orders',
+    label: 'Purchase orders',
+    description:
+      'Purchase orders to suppliers: number, status (draft, ordered, partial = partly received, received, cancelled), expected date, whether it is late, units ordered and received, and each line (description, quantity, received). The supplier is an id (names are not shared). Order value in ₪ only for roles that manage purchasing. Null status = open orders (draft, ordered, partial).',
+    permission: 'inventory:read',
+    input: z.object({ status: z.enum(PO_STATUSES).nullable() }).strict(),
+    schema: { type: 'object', properties: { status: { ...nullableEnum(PO_STATUSES), description: 'Optional status filter; null = open orders' } }, required: ['status'], additionalProperties: false },
+    run: (input, ctx) =>
+      ops(async () => {
+        const status = input.status as PoStatus | null
+        const orders = await getSupplierStore().listOrders({ statuses: status ? [status] : OPEN_PO, limit: 200 })
+        const money = ctx.can('inventory:write') || ctx.can('inventory:financial')
+        return {
+          currency: 'ILS',
+          total: orders.length,
+          late: orders.filter((o) => isOverdue(o)).length,
+          orders: orders.slice(0, 30).map((o) => {
+            const t = poTotals(o)
+            return {
+              id: o.id, number: o.number, supplierId: o.supplierId, status: o.status, expectedAt: o.expectedAt, late: isOverdue(o), units: t.units, unitsReceived: t.unitsReceived,
+              ...(money ? { valueOrdered: ils(t.orderedMinor), valueReceived: ils(t.receivedMinor), linesWithoutCost: t.uncosted } : {}),
+              lines: o.lines.map((l) => ({ description: cut(l.description, 80), quantity: l.quantity, received: l.receivedQty })),
+            }
+          }),
+        }
+      }),
+  },
 ]
-

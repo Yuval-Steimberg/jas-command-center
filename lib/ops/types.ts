@@ -43,7 +43,7 @@ export interface Item {
   dimensions: string | null
   material: string | null
   weightKg: number | null
-  source: 'furniture' | 'manual'
+  source: 'furniture' | 'manual' | 'purchase'
   furnitureItemId: string | null
   furnitureProjectId: string | null
   furnitureProjectName: string | null
@@ -60,6 +60,10 @@ export interface Item {
   websiteOrderId: number | null
   websiteOrderNumber: string | null
   dispositionNote: string | null
+  /** Bought from a supplier (migration 0004); never changed after intake. */
+  purchaseOrderId?: string | null
+  supplierId?: string | null
+  unitCostMinor?: number | null
   version: number
   createdBy: string
   createdAt: string
@@ -67,8 +71,8 @@ export interface Item {
 }
 
 /** Fields a write may set (never id, sku, version, source, furniture link or timestamps). */
-export type ItemPatch = Partial<Omit<Item, 'id' | 'sku' | 'version' | 'source' | 'furnitureItemId' | 'createdAt' | 'updatedAt' | 'createdBy'>>
-export type NewItem = ItemPatch & Pick<Item, 'title'> & Partial<Pick<Item, 'source' | 'furnitureItemId' | 'createdBy'>>
+export type ItemPatch = Partial<Omit<Item, 'id' | 'sku' | 'version' | 'source' | 'furnitureItemId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'purchaseOrderId' | 'supplierId' | 'unitCostMinor'>>
+export type NewItem = ItemPatch & Pick<Item, 'title'> & Partial<Pick<Item, 'source' | 'furnitureItemId' | 'createdBy' | 'purchaseOrderId' | 'supplierId' | 'unitCostMinor'>>
 
 export interface Movement {
   id: string

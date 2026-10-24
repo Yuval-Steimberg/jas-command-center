@@ -11,24 +11,24 @@ import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Ta
  * refused write as a ConflictError, anything else is thrown.
  */
 
-type Row = Record<string, unknown>
+export type Row = Record<string, unknown>
 const snake = (k: string) => k.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
 const camel = (k: string) => k.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase())
-function toRow(o: object): Row {
+export function toRow(o: object): Row {
   const r: Row = {}
   for (const [k, v] of Object.entries(o)) if (v !== undefined) r[snake(k)] = v
   return r
 }
-function fromRow<T>(r: Row): T {
+export function fromRow<T>(r: Row): T {
   const o: Row = {}
   for (const [k, v] of Object.entries(r)) o[camel(k)] = k === 'weight_kg' && v != null ? Number(v) : v
   return o as T
 }
 
-type PgError = { code?: string; message?: string } | null
-function fail(error: PgError): never {
+export type PgError = { code?: string; message?: string } | null
+export function fail(error: PgError, setup: () => Error = () => new OpsSetupError()): never {
   const msg = error?.message ?? 'Unknown database error'
-  if (error?.code === '42P01' || error?.code === 'PGRST205' || error?.code === 'PGRST202' || /relation .* does not exist|Could not find the (table|function)/i.test(msg)) throw new OpsSetupError()
+  if (error?.code === '42P01' || error?.code === 'PGRST205' || error?.code === 'PGRST202' || /relation .* does not exist|Could not find the (table|function)|column .* does not exist/i.test(msg)) throw setup()
   const m = /cc_conflict:\s*(.*)/.exec(msg)
   if (m) throw new ConflictError(m[1]!)
   if (error?.code === '23505') throw new ConflictError('That already exists (email, phone or link must be unique).')

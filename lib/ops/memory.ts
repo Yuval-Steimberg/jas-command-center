@@ -1,5 +1,6 @@
 import { ConflictError, type OpsStore } from './store'
 import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Task } from './types'
+import type { PurchaseOrder, Receipt } from '@/lib/suppliers/model'
 
 /**
  * In-memory OpsStore for local development and tests. Same rules as the SQL
@@ -18,9 +19,13 @@ export interface MemoryData {
   rules: Map<string, boolean>
   cursors: Map<string, { cursor: string | null; lastSuccessAt: string | null; lastError: string | null }>
   sku: number
+  /** Suppliers (migration 0004). */
+  purchaseOrders: PurchaseOrder[]
+  receipts: Receipt[]
+  poSeq: number
 }
 
-export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0 })
+export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0, purchaseOrders: [], receipts: [], poSeq: 0 })
 
 const now = () => new Date().toISOString()
 const id = () => crypto.randomUUID()
@@ -84,7 +89,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
         status: 'in_storage', locationId: null, priceMinor: null, photoUrl: null, dimensions: null, material: null, weightKg: null, source: 'manual',
         furnitureItemId: null, furnitureProjectId: null, furnitureProjectName: null, furnitureApartment: null, websiteProductId: null,
         reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, soldChannel: null, soldAt: null, soldPriceMinor: null,
-        buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, createdBy: 'system',
+        buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, purchaseOrderId: null, supplierId: null, unitCostMinor: null, createdBy: 'system',
         ...input, version: 1, createdAt: t, updatedAt: t,
       } as Item
       d.items.push(item)
@@ -100,7 +105,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
       if (set.websiteProductId != null && d.items.some((i) => i.id !== itemId && i.websiteProductId === set.websiteProductId)) throw new ConflictError('that website product is already linked to another item')
       const before = { ...item }
       const safe = { ...set } as Record<string, unknown>
-      for (const k of ['id', 'sku', 'version', 'createdAt', 'createdBy', 'source', 'furnitureItemId']) delete safe[k]
+      for (const k of ['id', 'sku', 'version', 'createdAt', 'createdBy', 'source', 'furnitureItemId', 'purchaseOrderId', 'supplierId', 'unitCostMinor']) delete safe[k]
       Object.assign(item, safe, { version: item.version + 1, updatedAt: now() })
       d.movements.push({
         id: id(), itemId, at: item.updatedAt, type: mv.type, fromStatus: before.status, toStatus: item.status, fromLocation: before.locationId, toLocation: item.locationId,
