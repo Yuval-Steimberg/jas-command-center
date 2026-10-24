@@ -74,6 +74,18 @@ try {
     console.log(`${problems.length ? 'FAIL' : 'ok  '} ${path}${problems.length ? ` — ${problems.join(', ')}` : ''}`)
     if (problems.length) failures.push(`${path}: ${problems.join(', ')}`)
   }
+
+  // The phone menu must cover the screen: a blurred header once trapped it at 56px tall with no links visible.
+  await page.goto(`${BASE}/`, { waitUntil: 'networkidle', timeout: 90_000 })
+  await page.click('button[aria-label="Open navigation"]')
+  const menu = await page.evaluate(() => {
+    const panel = document.querySelector('[role="dialog"][aria-label="Navigation"] > div')
+    const r = panel?.getBoundingClientRect()
+    return { height: Math.round(r?.height ?? 0), links: panel ? [...panel.querySelectorAll('a')].filter((a) => { const b = a.getBoundingClientRect(); return b.height > 0 && b.top >= 0 && b.bottom <= innerHeight }).length : 0 }
+  })
+  const menuOk = menu.height >= 800 && menu.links >= 5
+  console.log(`${menuOk ? 'ok  ' : 'FAIL'} phone menu — ${menu.height}px tall, ${menu.links} links on screen`)
+  if (!menuOk) failures.push(`phone menu: ${menu.height}px tall, ${menu.links} links on screen`)
 } catch (e) {
   failures.push(String(e instanceof Error ? e.stack : e))
 } finally {

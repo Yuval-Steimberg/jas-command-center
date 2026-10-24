@@ -92,6 +92,10 @@ Commands: `npm run dev | test | typecheck | lint | build`. Local login: set
 `next dev` redirects to `localhost` — drive it via `localhost`, not 127.0.0.1,
 or the dev cookie is lost.
 
+Gotcha: `backdrop-blur` (and `transform`/`filter`) on an element makes it the containing block of every `fixed` child.
+The topbar has it, so the phone menu drawer rendered 56px tall inside the header (2026-10-24). Overlays are portalled to
+`<body>` (`createPortal` in `MobileNav`); do the same for any new full-screen layer opened from a header or bar.
+
 Gotcha: `cc_user_roles` references `cc_profiles` twice (`profile_id`, `granted_by`),
 so any PostgREST embed between them needs a hint (`cc_user_roles!profile_id(...)`)
 or the whole query fails with PGRST201. See `lib/auth/profile-query.ts`.
