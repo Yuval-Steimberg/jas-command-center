@@ -41,6 +41,7 @@ export async function getDeployments(): Promise<SourceResult<ProjectDeployments[
       createdAt: new Date(d.created).toISOString(),
       state: (d.state ?? d.readyState ?? 'UNKNOWN').toUpperCase(),
       commit: typeof d.meta?.githubCommitMessage === 'string' ? d.meta.githubCommitMessage.split('\n')[0]!.slice(0, 120) : null,
+      sha: typeof d.meta?.githubCommitSha === 'string' ? d.meta.githubCommitSha.slice(0, 7) : null,
       branch: typeof d.meta?.githubCommitRef === 'string' ? d.meta.githubCommitRef : null,
     }))
     return { data: summariseDeployments(rows), latencyMs }
