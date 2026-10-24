@@ -3,7 +3,7 @@
 import { useFormState, useFormStatus } from 'react-dom'
 import { setOrderNotesAction, setOrderStatusAction, updateProductAction, type ActionState } from './actions'
 
-export function Submit({ label, busy, tone = 'plain' }: { label: string; busy: string; tone?: 'plain' | 'primary' }) {
+export function Submit({ label, busy, tone = 'plain' }: { label: string; busy: string; tone?: 'plain' | 'primary' | 'strong' }) {
   const { pending } = useFormStatus()
   return (
     <button
@@ -11,6 +11,8 @@ export function Submit({ label, busy, tone = 'plain' }: { label: string; busy: s
       className={
         tone === 'primary'
           ? 'h-10 rounded-full bg-brand px-4 text-sm font-semibold text-forest hover:bg-brand-pressed hover:text-cream disabled:opacity-60'
+          : tone === 'strong'
+          ? 'h-10 rounded-full bg-forest px-4 text-sm font-semibold text-cream hover:bg-forest/90 disabled:opacity-60'
           : 'h-10 rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken disabled:opacity-60'
       }
     >

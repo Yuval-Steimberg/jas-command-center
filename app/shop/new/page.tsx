@@ -15,9 +15,9 @@ export default async function ShopNewItemPage() {
   const res = await loadOps(() => getOpsStore().listLocations())
   return (
     <div className="flex max-w-3xl flex-col gap-3">
-      <h1 className="text-xl font-bold text-ink">הוספת פריט</h1>
-      <p className="text-sm text-muted">מצלמים, ואפשר לבקש מה-AI להציע שם, קטגוריה, צבעים, חומר ומחיר. כל הצעה ניתנת לעריכה. תמונה שדומה לפריט קיים מסומנת.</p>
-      {!res.ok ? <p dir="ltr" className="text-sm text-bad">{res.message}</p> : (
+      <h1 className="text-2xl font-bold text-ink">הוספת פריט</h1>
+      <p className="text-sm text-muted">מצלמים את הפריט, ואז ה-AI יכול למלא את הפרטים. כל שדה נשאר לעריכה.</p>
+      {!res.ok ? <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p> : (
         <ItemForm
           lang="he" base="/shop" mode="create" initial={EMPTY_ITEM}
           conditions={Object.entries(CONDITION_LABEL_HE).map(([value, label]) => ({ value, label }))}

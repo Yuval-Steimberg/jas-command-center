@@ -201,7 +201,7 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
               <span key={u} className="relative">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={u} alt="" className="h-20 w-20 rounded-md border border-line object-cover" />
-                <button type="button" aria-label={t.remove} onClick={() => set({ extraPhotos: v.extraPhotos.filter((x) => x !== u) })} className="absolute -end-2 -top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface"><X aria-hidden className="h-4 w-4" /></button>
+                <button type="button" data-compact aria-label={t.remove} onClick={() => set({ extraPhotos: v.extraPhotos.filter((x) => x !== u) })} className="absolute -end-2 -top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface"><X aria-hidden className="h-4 w-4" /></button>
               </span>
             ))}
             {v.extraPhotos.length < 12 ? (

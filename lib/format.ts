@@ -21,6 +21,6 @@ export function timeAgo(iso: string | number | null | undefined, now = Date.now(
   return `${Math.round(h / 24)}d ago`
 }
 
-export function formatDateTime(iso: string | number): string {
-  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
+export function formatDateTime(iso: string | number, lang: 'en' | 'he' = 'en'): string {
+  return new Intl.DateTimeFormat(lang === 'he' ? 'he-IL' : 'en-GB', { timeZone: 'Asia/Jerusalem', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useFormState } from 'react-dom'
+import { Camera, CameraOff } from 'lucide-react'
 import { Submit, input } from '../website/forms'
 import type { ActionState } from './actions'
 import { findBySkuAction } from './actions'
@@ -31,7 +32,7 @@ export function ActionForm({
   label: string
   busy: string
   confirm?: string
-  tone?: 'plain' | 'primary'
+  tone?: 'plain' | 'primary' | 'strong'
   className?: string
 }) {
   const [state, run] = useFormState<ActionState, FormData>(action, {})
@@ -61,10 +62,10 @@ export function Field({ label, children, hint }: { label: string; children: Reac
   )
 }
 
-export function LocationSelect({ locations, defaultValue, name = 'locationId' }: { locations: { id: string; label: string }[]; defaultValue?: string | null; name?: string }) {
+export function LocationSelect({ locations, defaultValue, name = 'locationId', emptyLabel = 'No location' }: { locations: { id: string; label: string }[]; defaultValue?: string | null; name?: string; emptyLabel?: string }) {
   return (
     <select name={name} defaultValue={defaultValue ?? ''} className={input}>
-      <option value="">No location</option>
+      <option value="">{emptyLabel}</option>
       {locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
     </select>
   )
@@ -156,19 +157,19 @@ export function ScanBox({ base = '/inventory', lang = 'en' }: { base?: '/invento
         <input type="hidden" name="base" value={base} />
         <label className="min-w-0 flex-1">
           <span className="sr-only">{t.code}</span>
-          <input ref={code} name="code" autoFocus dir="ltr" placeholder={t.placeholder} maxLength={300} className={input} />
+          <input ref={code} name="code" autoFocus dir="ltr" placeholder={t.placeholder} maxLength={300} enterKeyHint="go" autoCapitalize="characters" autoComplete="off" className={`${input} h-12 text-base`} />
         </label>
-        <Submit label={t.open} busy={t.looking} tone="primary" />
+        <div className="[&>button]:h-12 [&>button]:w-full [&>button]:px-6 [&>button]:text-base"><Submit label={t.open} busy={t.looking} tone="primary" /></div>
       </form>
       <Outcome state={state} />
       {camera === 'off' ? (
-        <button type="button" onClick={() => setCamera('on')} className="h-10 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">{t.camera}</button>
+        <button type="button" onClick={() => setCamera('on')} className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-forest px-6 text-base font-semibold text-cream hover:bg-forest/90 sm:self-start"><Camera aria-hidden className="h-5 w-5" />{t.camera}</button>
       ) : camera === 'unsupported' ? (
         <p className="text-sm text-muted">{t.unsupported}</p>
       ) : (
         <div className="flex flex-col gap-2">
-          <video ref={video} muted playsInline className="aspect-video w-full max-w-md rounded-md bg-forest object-cover" />
-          <button type="button" onClick={() => setCamera('off')} className="h-10 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">{t.stop}</button>
+          <video ref={video} muted playsInline className="aspect-[4/3] w-full max-w-md rounded-lg bg-forest object-cover" />
+          <button type="button" onClick={() => setCamera('off')} className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken sm:self-start"><CameraOff aria-hidden className="h-4 w-4" />{t.stop}</button>
         </div>
       )}
     </div>

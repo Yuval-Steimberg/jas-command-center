@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
+import { ShoppingBag } from 'lucide-react'
+import { Thumb } from '@/components/shop/bits'
 import { ItemStatusChip } from '@/components/ops/ui'
 import { ItemForm } from '@/components/inventory/item-form'
 import { valuesOf } from '@/components/inventory/item-values'
@@ -36,26 +38,39 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
     return { item, locations, contacts, lines }
   })
   if (res.ok && !res.data) notFound()
-  if (!res.ok) return <p dir="ltr" className="text-sm text-bad">{res.message}</p>
+  if (!res.ok) return <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p>
   const { item, locations, contacts, lines } = res.data!
   const labels = locationLabels(locations)
   const hidden = { id: item.id, version: item.version }
   const kept = lines.find((l) => keptQty(l) > 0)
-  const row = (k: string, v: React.ReactNode) => <><dt className="text-muted">{k}</dt><dd dir="auto">{v ?? '—'}</dd></>
+  // Empty facts are left out rather than printed as a column of dashes; location always shows, because "where is it" is the question.
+  const row = (k: string, v: React.ReactNode, always = false) => (v || always ? <><dt className="text-muted">{k}</dt><dd dir="auto" className="text-ink">{v || 'לא צוין'}</dd></> : null)
+  const sellable = allowed('sell_in_store', item.status) && item.quantity > 0 && may('inventory:financial')
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3 sm:flex-row">
+      <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-3 sm:flex-row">
         {item.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.photoUrl} alt={item.title} className="aspect-square w-full rounded-md object-cover sm:w-64" />
-        ) : <div className="grid aspect-square w-full place-items-center rounded-md border border-dashed border-line text-sm text-muted sm:w-64">אין תמונה</div>}
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <h1 className="text-xl font-bold text-ink" dir="auto">{item.title}</h1>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted"><span dir="ltr" className="font-mono">{item.sku}</span><ItemStatusChip status={item.status} lang="he" />{item.quantity > 1 ? <span>{item.quantity} יח׳</span> : null}</p>
-          <p className="num text-2xl font-semibold text-ink">{item.priceMinor != null ? formatAgorot(item.priceMinor) : 'ללא מחיר'}{item.priceApproved === false ? <span className="ms-2 text-sm font-normal text-warn">הערכת AI, לא אושר</span> : null}</p>
-          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-            {row('מיקום', item.locationId ? labels.get(item.locationId) : null)}
+          <img src={item.photoUrl} alt={item.title} className="aspect-[4/3] w-full rounded-md object-cover sm:aspect-square sm:w-64" />
+        ) : null}
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="flex items-start gap-3">
+            {item.photoUrl ? null : <Thumb size="lg" />}
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl font-bold text-ink" dir="auto">{item.title}</h1>
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted"><span dir="ltr" className="font-mono">{item.sku}</span><ItemStatusChip status={item.status} lang="he" />{item.quantity > 1 ? <span>{item.quantity} יח׳</span> : null}</p>
+            </div>
+          </div>
+          <p className="num text-3xl font-bold text-ink">{item.priceMinor != null ? formatAgorot(item.priceMinor) : <span className="text-lg font-medium text-muted">ללא מחיר</span>}{item.priceApproved === false ? <span className="ms-2 text-sm font-normal text-warn">הערכת AI, לא אושר</span> : null}</p>
+          {sellable || kept ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              {sellable ? <Link href={`/shop/sell?item=${item.id}`} className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-brand px-8 text-base font-bold text-forest transition-colors duration-150 hover:bg-brand-pressed hover:text-cream"><ShoppingBag aria-hidden className="h-5 w-5" />מכירת הפריט</Link> : null}
+              {kept ? <Link href={`/shop/sales/${kept.saleId}`} className="inline-flex h-12 items-center justify-center rounded-full border border-line px-6 text-base font-medium hover:bg-sunken">פתיחת המכירה</Link> : null}
+            </div>
+          ) : null}
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-line/70 pt-3 text-sm">
+            {row('מיקום', item.locationId ? labels.get(item.locationId) : null, true)}
             {row('מצב', item.condition ? CONDITION_LABEL_HE[item.condition] : null)}
             {row('קטגוריה', item.category)}
             {row('צבעים', item.colors)}
@@ -77,16 +92,11 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {allowed('sell_in_store', item.status) && item.quantity > 0 && may('inventory:financial') ? <Link href={`/shop/sell?item=${item.id}`} className="inline-flex h-12 items-center rounded-full bg-brand px-6 text-base font-semibold text-forest">מכירה</Link> : null}
-        {kept ? <Link href={`/shop/sales/${kept.saleId}`} className="inline-flex h-12 items-center rounded-full border border-line px-6 text-base font-medium hover:bg-sunken">פתיחת המכירה</Link> : null}
-      </div>
-
       {allowed('move', item.status) && may('inventory:operate') ? (
         <details className="rounded-lg border border-line bg-surface p-3">
-          <summary className="cursor-pointer py-1 text-sm font-semibold">העברה למיקום אחר</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-ink">העברה למיקום אחר</summary>
           <ActionForm action={moveItemAction} hidden={hidden} label="העברה" busy="מעביר…" className="mt-2 flex flex-col gap-2">
-            <LocationSelect locations={locationOptions(locations)} defaultValue={item.locationId} />
+            <LocationSelect locations={locationOptions(locations)} defaultValue={item.locationId} emptyLabel="ללא מיקום" />
             <Field label="הערה"><input name="note" dir="auto" maxLength={500} className={input} /></Field>
           </ActionForm>
         </details>
@@ -94,7 +104,7 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
 
       {OPS.refurb.includes(item.status as 'in_storage') && may('inventory:operate') ? (
         <details className="rounded-lg border border-line bg-surface p-3" open={item.refurbStatus === 'needed' || item.refurbStatus === 'in_progress'}>
-          <summary className="cursor-pointer py-1 text-sm font-semibold">שיפוץ</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-ink">שיפוץ</summary>
           <ActionForm action={refurbAction} hidden={hidden} label="שמירה" busy="שומר…" className="mt-2 grid gap-2 sm:grid-cols-2">
             <Field label="סטטוס"><select name="refurbStatus" defaultValue={item.refurbStatus ?? ''} className={input}><option value="">לא צריך</option>{REFURB_STATUSES.map((k) => <option key={k} value={k}>{REFURB_STATUS_LABEL_HE[k]}</option>)}</select></Field>
             <Field label="רמה"><select name="refurbLevel" defaultValue={item.refurbLevel ?? ''} className={input}><option value="">—</option>{REFURB_LEVELS.map((k) => <option key={k} value={k}>{REFURB_LEVEL_LABEL_HE[k]}</option>)}</select></Field>
@@ -106,7 +116,7 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
 
       {allowed('edit', item.status) && may('inventory:write') ? (
         <details className="rounded-lg border border-line bg-surface p-3">
-          <summary className="cursor-pointer py-1 text-sm font-semibold">עריכת פרטים</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-ink">עריכת פרטים</summary>
           <div className="mt-2">
             <ItemForm
               lang="he" base="/shop" mode="edit" initial={valuesOf(item)} hidden={hidden}

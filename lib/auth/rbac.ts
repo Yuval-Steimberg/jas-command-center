@@ -17,6 +17,17 @@ export const ROLE_LABELS: Record<Role, string> = {
   viewer: 'Read-only viewer',
 }
 
+/** The same roles in Hebrew, for shop mode. */
+export const ROLE_LABELS_HE: Record<Role, string> = {
+  owner: 'בעלים',
+  admin: 'מנהל/ת מערכת',
+  operations_manager: 'מנהל/ת תפעול',
+  project_manager: 'מנהל/ת פרויקטים',
+  volunteer_coordinator: 'רכז/ת מתנדבים',
+  seller: 'מוכר/ת בחנות',
+  viewer: 'צפייה בלבד',
+}
+
 /** Most privileged first: a user with several roles acts with the first one listed here. */
 const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'seller', 'viewer']
 

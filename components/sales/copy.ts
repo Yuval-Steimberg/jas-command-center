@@ -7,6 +7,12 @@ export type Lang = 'en' | 'he'
 
 const en = {
   findItems: 'Find items',
+  addMore: 'Add another item',
+  itemsWord: 'items',
+  oneItem: '1 item',
+  needPrice: 'Every item needs a price.',
+  needAddress: 'A delivery is missing its address.',
+  needAmount: 'How much was paid?',
   findHint: 'Search by code, name, category, colour or material',
   noMatch: 'Nothing available matches.',
   add: 'Add',
@@ -75,6 +81,12 @@ export type Copy = typeof en
 
 const he: Copy = {
   findItems: 'חיפוש פריטים',
+  addMore: 'הוספת פריט נוסף',
+  itemsWord: 'פריטים',
+  oneItem: 'פריט אחד',
+  needPrice: 'לכל פריט צריך מחיר.',
+  needAddress: 'חסרה כתובת למשלוח.',
+  needAmount: 'כמה שולם?',
   findHint: 'חיפוש לפי קוד, שם, קטגוריה, צבע או חומר',
   noMatch: 'אין פריט זמין שמתאים.',
   add: 'הוספה',
