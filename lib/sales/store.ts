@@ -4,6 +4,7 @@ import { authMode } from '@/lib/auth/mode'
 import { supabaseAdmin } from '@/lib/supabase'
 import { ConflictError, OpsSetupError } from '@/lib/ops/store'
 import { emptyData, memoryStore, type MemoryData } from '@/lib/ops/memory'
+import { dropsCacheOnWrite } from '@/lib/ops/fresh'
 import { fail, fromRow, toRow, type PgError, type Row } from '@/lib/ops/supabase'
 import type { ItemPatch, ItemStatus } from '@/lib/ops/types'
 import { basketProblem, keptQty, type Fulfilment, type Sale, type SaleInput, type SaleLine, type SalePayment, type PaymentMethod } from './model'
@@ -53,8 +54,8 @@ export interface SalesStore {
 const g = globalThis as unknown as { __ccOpsData?: MemoryData }
 
 export function getSalesStore(): SalesStore {
-  if (authMode().kind === 'supabase') return supabaseSalesStore(supabaseAdmin())
-  return memorySalesStore((g.__ccOpsData ??= emptyData()))
+  if (authMode().kind === 'supabase') return dropsCacheOnWrite(supabaseSalesStore(supabaseAdmin()))
+  return dropsCacheOnWrite(memorySalesStore((g.__ccOpsData ??= emptyData())))
 }
 
 const now = () => new Date().toISOString()

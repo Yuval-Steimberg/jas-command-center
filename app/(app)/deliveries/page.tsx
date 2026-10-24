@@ -32,9 +32,12 @@ export default async function DeliveriesPage({ searchParams }: { searchParams?: 
       store.listItems({ statuses: ['sold'], limit: 300 }),
     ])
     const contactIds = [...new Set([...active, ...closed].map((d) => d.contactId).filter((x): x is string => !!x))]
-    const contacts = contactIds.length && may('crm:read') ? await store.listContacts({ ids: contactIds }) : []
     const itemIds = [...new Set([...active, ...closed].map((d) => d.itemId).filter((x): x is string => !!x))]
-    const items = new Map((itemIds.length ? await store.listItems({ ids: itemIds }) : []).map((i) => [i.id, i]))
+    const [contacts, itemRows] = await Promise.all([
+      contactIds.length && may('crm:read') ? store.listContacts({ ids: contactIds, limit: contactIds.length }) : [],
+      itemIds.length ? store.listItems({ ids: itemIds, limit: itemIds.length }) : [],
+    ])
+    const items = new Map(itemRows.map((i) => [i.id, i]))
     const planned = new Set(active.map((d) => d.itemId))
     return { active, closed: closed.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), unplanned: sold.filter((i) => !planned.has(i.id)), contacts: new Map(contacts.map((c) => [c.id, c])), items }
   })

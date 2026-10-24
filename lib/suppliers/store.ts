@@ -4,6 +4,7 @@ import { authMode } from '@/lib/auth/mode'
 import { supabaseAdmin } from '@/lib/supabase'
 import { ConflictError, OpsSetupError } from '@/lib/ops/store'
 import { memoryStore, emptyData, type MemoryData } from '@/lib/ops/memory'
+import { dropsCacheOnWrite } from '@/lib/ops/fresh'
 import { fail, fromRow, toRow, type PgError, type Row } from '@/lib/ops/supabase'
 import type { Item } from '@/lib/ops/types'
 import { RECEIVABLE, editable, lineProblem, remaining, type PoInput, type PoStatus, type PurchaseOrder, type Receipt, type ReceiveLine } from './model'
@@ -33,8 +34,8 @@ export interface SupplierStore {
 const g = globalThis as unknown as { __ccOpsData?: MemoryData }
 
 export function getSupplierStore(): SupplierStore {
-  if (authMode().kind === 'supabase') return supabaseSupplierStore(supabaseAdmin())
-  return memorySupplierStore((g.__ccOpsData ??= emptyData()))
+  if (authMode().kind === 'supabase') return dropsCacheOnWrite(supabaseSupplierStore(supabaseAdmin()))
+  return dropsCacheOnWrite(memorySupplierStore((g.__ccOpsData ??= emptyData())))
 }
 
 const now = () => new Date().toISOString()

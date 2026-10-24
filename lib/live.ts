@@ -7,6 +7,7 @@ import { getWebsiteSnapshot } from '@/lib/integrations/website/adapter'
 import { deriveAlerts, type Alert } from '@/lib/alerts'
 import { getDeployments } from '@/lib/integrations/vercel/deployments'
 import { rangeFor } from '@/lib/time'
+import { cached, invalidate } from '@/lib/integrations/cache'
 import { getOpsSnapshot } from '@/lib/ops/snapshot'
 import { getSession } from '@/lib/auth/session'
 import { shownTo } from '@/lib/notifications/prefs'
@@ -17,7 +18,26 @@ import { notificationStore, syncNotifications, type NotificationRow } from '@/li
 /** Per-request memo: the top bar, the overview and the notifications page share one fan-out. */
 export const liveHealth = cache(() => allHealth())
 
-const liveSweep = cache(async () => {
+/**
+ * The sweep reads every source, so it is shared across requests for a minute:
+ * the top bar runs it on every page, and without this each click fanned out to
+ * all five systems and rewrote the notification history.
+ */
+export const SWEEP_TTL_MS = 60_000
+const SWEEP_KEY = 'live:sweep'
+
+const liveSweep = cache(() => cached(SWEEP_KEY, SWEEP_TTL_MS, sweepNow))
+
+/** Live alerts persisted to cc_notifications, at most once per sweep. */
+const syncedSweep = cache(() =>
+  cached(`${SWEEP_KEY}:synced`, SWEEP_TTL_MS, async () => {
+    const s = await liveSweep()
+    await syncNotifications(s.alerts, s.observed)
+    return s
+  }),
+)
+
+async function sweepNow() {
   const [health, giftSummary, agentStatus, website, deployments, ops] = await Promise.all([
     liveHealth(),
     getGiftCardSummary(),
@@ -31,7 +51,7 @@ const liveSweep = cache(async () => {
   // Which alert families this sweep could actually see (see planSync).
   const seen = new Set(['health', ...(giftSummary.state === 'ok' ? ['gift'] : []), ...(agentStatus.state === 'ok' ? ['agent'] : []), ...(website.state === 'ok' ? ['web'] : []), ...(deployments.state === 'ok' ? ['deploy'] : []), ...(ops.state === 'ok' ? ['ops'] : [])])
   return { alerts, observed: (key: string) => seen.has(family(key)) }
-})
+}
 
 export const liveAlerts = cache(async () => (await liveSweep()).alerts)
 
@@ -52,14 +72,14 @@ export interface NotificationState {
 
 /** Live alerts, remembered: syncs cc_notifications, then reads this user's view of it. */
 export const notificationState = cache(async (): Promise<NotificationState> => {
-  const [{ alerts, observed }, s, live] = await Promise.all([liveSweep(), getSession(), visibleAlerts()])
+  const [s, live] = await Promise.all([getSession(), visibleAlerts()])
   if (!s) return { open: [], error: null, live: [] }
   try {
-    await syncNotifications(alerts, observed)
+    await syncedSweep()
     const store = notificationStore()
-    const { prefs } = await store.getPrefs(s.user.id)
+    const [{ prefs }, all] = await Promise.all([store.getPrefs(s.user.id), store.listOpen()])
     // Muted products and the severity floor are this person's own view; critical always shows (prefs.ts).
-    const open = (await store.listOpen()).filter((n) => can(s.user.role, `${n.product}:read`, s.overrides) && shownTo(prefs, n))
+    const open = all.filter((n) => can(s.user.role, `${n.product}:read`, s.overrides) && shownTo(prefs, n))
     const read = await store.readIds(s.user.id, open.map((n) => n.id))
     const rank = { critical: 0, warning: 1, info: 2 }
     return {
@@ -75,6 +95,7 @@ export const notificationState = cache(async (): Promise<NotificationState> => {
 
 /** For the cron sweep: read every source and persist alert history, with nobody signed in. */
 export async function runSweep(): Promise<{ alerts: number }> {
+  invalidate(SWEEP_KEY)
   const { alerts, observed } = await liveSweep()
   await syncNotifications(alerts, observed)
   return { alerts: alerts.length }

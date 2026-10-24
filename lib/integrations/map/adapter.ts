@@ -1,6 +1,6 @@
 import 'server-only'
 import { env } from '@/lib/env'
-import { probe, SourceError } from '../http'
+import { probeRecent, SourceError } from '../http'
 import { readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 import { parsePlacesData, type MapData } from './parse'
@@ -63,9 +63,10 @@ export const mapAdapter: IntegrationAdapter = {
   async health() {
     const e = env().map
     const checks: HealthCheck[] = []
-    const p = await probe(e.siteUrl)
+    const data = getMapData()
+    const p = await probeRecent(e.siteUrl)
     checks.push({ name: 'Public site', status: p.ok ? 'operational' : 'down', detail: p.ok ? `HTTP ${p.status}` : (p.error ?? `HTTP ${p.status}`), checkedAt: new Date().toISOString(), latencyMs: p.latencyMs })
-    const d = await getMapData()
+    const d = await data
     if (d.state === 'ok') checks.push({ name: 'Place data', status: 'operational', detail: `${d.data.places.length} places parse cleanly`, checkedAt: d.checkedAt, latencyMs: d.latencyMs })
     else if (d.state === 'error') checks.push({ name: 'Place data', status: 'down', detail: d.error, checkedAt: d.checkedAt, latencyMs: d.latencyMs })
     return { product: 'map', status: rollup(checks), checks }

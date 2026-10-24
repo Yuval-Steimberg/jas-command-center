@@ -1,6 +1,6 @@
 import 'server-only'
 import { env } from '@/lib/env'
-import { fetchJson, probe, withHint } from '../http'
+import { fetchJson, probeRecent, withHint } from '../http'
 import { notConfigured, readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 import { metricsSnapshot, type MetricsSnapshot } from './contract'
@@ -76,16 +76,18 @@ export const websiteAdapter: IntegrationAdapter = {
   async health() {
     const e = env().website
     const checks: HealthCheck[] = []
+    // The probe and the snapshot run at once.
+    const today = israelDate()
+    const snapshot = e.url && e.agentKey ? getWebsiteSnapshot({ from: today, to: today }) : null
     if (!e.url) {
       checks.push({ name: 'Site', status: 'unknown', detail: 'WEBSITE_URL not set', checkedAt: null, latencyMs: null })
     } else {
-      const p = await probe(e.url)
+      const p = await probeRecent(e.url)
       checks.push({ name: 'Site', status: p.ok ? 'operational' : 'down', detail: p.ok ? `HTTP ${p.status}` : (p.error ?? `HTTP ${p.status}`), checkedAt: new Date().toISOString(), latencyMs: p.latencyMs })
     }
     // The analytics API is the integration itself: probe it with a one-day snapshot.
-    if (e.url && e.agentKey) {
-      const today = israelDate()
-      const r = await getWebsiteSnapshot({ from: today, to: today })
+    if (snapshot) {
+      const r = await snapshot
       checks.push(
         r.state === 'ok'
           ? { name: 'Analytics API', status: 'operational', detail: 'snapshot returned', checkedAt: r.checkedAt, latencyMs: r.latencyMs }

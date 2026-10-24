@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { memoryStore, emptyData, type MemoryData } from './memory'
 import { supabaseOpsStore } from './supabase'
 import type { OpsStore } from './store'
+import { dropsCacheOnWrite } from './fresh'
 
 export { ConflictError, OpsSetupError } from './store'
 
@@ -12,6 +13,6 @@ const g = globalThis as unknown as { __ccOpsData?: MemoryData }
 
 /** Supabase in production; memory for the local development login (same semantics). */
 export function getOpsStore(): OpsStore {
-  if (authMode().kind === 'supabase') return supabaseOpsStore(supabaseAdmin())
-  return memoryStore((g.__ccOpsData ??= emptyData()))
+  if (authMode().kind === 'supabase') return dropsCacheOnWrite(supabaseOpsStore(supabaseAdmin()))
+  return dropsCacheOnWrite(memoryStore((g.__ccOpsData ??= emptyData())))
 }

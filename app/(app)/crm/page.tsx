@@ -22,8 +22,7 @@ export default async function CustomersPage({ searchParams }: { searchParams?: {
   const q = (typeof searchParams?.q === 'string' ? searchParams.q : '').trim().slice(0, 100)
   const role = CONTACT_ROLES.find((r) => r === searchParams?.role) as ContactRole | undefined
   // Without read_pii a search would reveal names by matching them, so it is offered only with it.
-  const res = await loadOps(() => getOpsStore().listContacts({ q: pii && q ? q : undefined, role, limit: 300 }))
-  const snap = await getOpsSnapshot()
+  const [res, snap] = await Promise.all([loadOps(() => getOpsStore().listContacts({ q: pii && q ? q : undefined, role, limit: 300 })), getOpsSnapshot()])
 
   return (
     <>

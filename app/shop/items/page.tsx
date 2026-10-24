@@ -3,7 +3,7 @@ import { ItemStatusChip } from '@/components/ops/ui'
 import { getOpsStore } from '@/lib/ops'
 import { loadOps } from '@/lib/ops/guard'
 import { formatAgorot } from '@/lib/money'
-import { input } from '@/app/(app)/website/forms'
+import { ShopItemSearch } from '@/components/shop/item-search'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,11 +14,7 @@ export default async function ShopItemsPage({ searchParams }: { searchParams: { 
   return (
     <div className="flex flex-col gap-3">
       <h1 className="text-xl font-bold text-ink">חיפוש פריט</h1>
-      <form className="flex flex-col gap-2 sm:flex-row" role="search">
-        <input name="q" defaultValue={q} dir="auto" placeholder="קוד, שם, קטגוריה, צבע או חומר" aria-label="חיפוש" className={`${input} h-12 text-base`} />
-        <label className="inline-flex min-h-11 items-center gap-2 text-sm text-muted"><input type="checkbox" name="all" value="1" defaultChecked={all} className="h-5 w-5" />גם פריטים שנמכרו</label>
-        <button type="submit" className="h-12 rounded-full bg-forest px-6 text-sm font-semibold text-cream">חיפוש</button>
-      </form>
+      <ShopItemSearch q={q} all={all} />
       {!res.ok ? <p dir="ltr" className="text-sm text-bad">{res.message}</p> : res.data.length === 0 ? <p className="text-sm text-muted">לא נמצא פריט.</p> : (
         <ul className="grid gap-2 sm:grid-cols-2">
           {res.data.map((i) => (

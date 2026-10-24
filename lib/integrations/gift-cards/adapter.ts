@@ -57,7 +57,8 @@ function disabledReason(h: GiftCardHealth): string | null {
 export async function getGiftCardHealth(): Promise<SourceResult<GiftCardHealth>> {
   const { url } = env().giftCards
   if (!url) return notConfigured(['GIFT_CARDS_URL'])
-  return readSource('gift:health', 30_000, 'Gift Card System /api/health', async () => {
+  // The gift card health endpoint probes its own database and takes seconds: two minutes is plenty for a status light.
+  return readSource('gift:health', 120_000, 'Gift Card System /api/health', async () => {
     const { data, latencyMs } = await fetchJson(`${url}/api/health`, { timeoutMs: 10_000 })
     return { data: giftCardHealth.parse(data), latencyMs }
   })
@@ -152,7 +153,7 @@ export const giftCardsAdapter: IntegrationAdapter = {
   ],
   async health() {
     const checks: HealthCheck[] = []
-    const h = await getGiftCardHealth()
+    const [h, s] = await Promise.all([getGiftCardHealth(), getGiftCardSummary()])
     if (h.state === 'not_configured') checks.push({ name: 'Deployment', status: 'unknown', detail: 'GIFT_CARDS_URL not set', checkedAt: null, latencyMs: null })
     else if (h.state === 'error') checks.push({ name: 'Deployment', status: 'down', detail: h.error, checkedAt: h.checkedAt, latencyMs: h.latencyMs })
     else
@@ -163,7 +164,6 @@ export const giftCardsAdapter: IntegrationAdapter = {
         checkedAt: h.checkedAt,
         latencyMs: h.latencyMs,
       })
-    const s = await getGiftCardSummary()
     if (s.state === 'not_configured') checks.push({ name: 'Delivery & payments', status: 'unknown', detail: `needs ${s.missing.join(', ')}`, checkedAt: null, latencyMs: null })
     else if (s.state === 'error') checks.push({ name: 'Delivery & payments', status: 'down', detail: s.error, checkedAt: s.checkedAt, latencyMs: s.latencyMs })
     else {

@@ -45,20 +45,29 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
     const store = getOpsStore()
     const item = await store.getItem(params.id)
     if (!item) return null
-    // Shop sale lines need migration 0006; without it the item page still works.
-    const saleLines = await getSalesStore().linesForItems([item.id]).catch(() => [])
-    const sales = saleLines.length ? await getSalesStore().listSales({ ids: [...new Set(saleLines.map((l) => l.saleId))] }).catch(() => []) : []
-    const [movements, locations, contacts, tasks] = await Promise.all([
+    // Everything else hangs off the item and is read at once, the website product included.
+    const [{ saleLines, sales }, movements, locations, contacts, tasks, web] = await Promise.all([
+      // Shop sale lines need migration 0006; without it the item page still works.
+      (async () => {
+        const saleLines = await getSalesStore().linesForItems([item.id]).catch(() => [])
+        const sales = saleLines.length ? await getSalesStore().listSales({ ids: [...new Set(saleLines.map((l) => l.saleId))] }).catch(() => []) : []
+        return { saleLines, sales }
+      })(),
       store.movements(item.id),
       store.listLocations(),
       may('crm:read') ? store.listContacts({ limit: 500 }) : Promise.resolve([]),
       store.listTasks({ entityKind: 'item', entityId: item.id, limit: 50 }),
+      Promise.all([
+        item.websiteProductId != null && may('website:read') ? getWebsiteProduct(item.websiteProductId) : null,
+        item.status === 'in_storage' && item.websiteProductId == null && may('website:write') ? getWebsiteProductMeta() : null,
+        qrSvg(itemUrl(item.id)),
+      ]),
     ])
-    return { item, movements, locations, contacts, tasks, saleLines, sales }
+    return { item, movements, locations, contacts, tasks, saleLines, sales, web }
   })
   if (res.ok && !res.data) notFound()
   if (!res.ok) return (<><PageHeader title="Item" /><OpsUnavailable message={res.message} /></>)
-  const { item, movements, locations, contacts, tasks, saleLines, sales } = res.data!
+  const { item, movements, locations, contacts, tasks, saleLines, sales, web } = res.data!
   const saleNo = new Map(sales.map((x) => [x.id, x.number]))
   const keptLine = saleLines.find((l) => keptQty(l) > 0)
   const money = may('inventory:financial')
@@ -66,11 +75,7 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
   const locs = locationOptions(locations)
   const people = new Map(contacts.map((c) => [c.id, c]))
   const contactOpts = contacts.map((c) => ({ id: c.id, label: contactLabel(c, pii) }))
-  const [product, meta, qr] = await Promise.all([
-    item.websiteProductId != null && may('website:read') ? getWebsiteProduct(item.websiteProductId) : null,
-    item.status === 'in_storage' && item.websiteProductId == null && may('website:write') ? getWebsiteProductMeta() : null,
-    qrSvg(itemUrl(item.id)),
-  ])
+  const [product, meta, qr] = web
   const hidden = { id: item.id, version: item.version }
   const draft = draftProduct(item)
   const person = (id: string | null) => {

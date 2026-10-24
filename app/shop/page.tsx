@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
 import { PackagePlus, ScanLine, Search, ShoppingBag } from 'lucide-react'
 import { getSession } from '@/lib/auth/session'
 import { can, type Permission } from '@/lib/auth/rbac'
@@ -15,20 +16,6 @@ export const dynamic = 'force-dynamic'
 export default async function ShopHome() {
   const s = (await getSession())!
   const may = (p: Permission) => can(s.user.role, p, s.overrides)
-  const res = await loadOps(async () => {
-    const st = getSalesStore()
-    const day = israelDate()
-    const [open, recent] = await Promise.all([st.openLines(100), st.listSales({ since: new Date(Date.now() - 36 * 3_600_000).toISOString(), limit: 300 })])
-    const today = recent.filter((x) => israelDate(new Date(x.createdAt)) === day)
-    const ids = [...new Set([...open.map((l) => l.saleId), ...today.map((x) => x.id)])]
-    const [sales, lines, payments, items] = await Promise.all([
-      st.listSales({ ids }),
-      st.linesOf(today.map((x) => x.id)),
-      st.paymentsOf(today.map((x) => x.id)),
-      Promise.all([...new Set(open.map((l) => l.itemId))].map((id) => getOpsStore().getItem(id))),
-    ])
-    return { open, today, sales: new Map(sales.map((x) => [x.id, x])), lines, payments, items: new Map(items.filter((i) => !!i).map((i) => [i!.id, i!])) }
-  })
 
   const tiles = [
     may('inventory:financial') ? { href: '/shop/sell', label: 'מכירה', icon: ShoppingBag, primary: true } : null,
@@ -37,6 +24,7 @@ export default async function ShopHome() {
     { href: '/shop/items', label: 'חיפוש פריט', icon: Search },
   ].filter((x): x is NonNullable<typeof x> => !!x)
 
+  // The tiles are what a seller came for: they render at once, and today's lists stream in after.
   return (
     <div className="flex flex-col gap-5">
       <h1 className="text-xl font-bold text-ink">חנות</h1>
@@ -47,7 +35,41 @@ export default async function ShopHome() {
           </Link>
         ))}
       </nav>
+      <Suspense fallback={<ShopListsSkeleton />}>
+        <ShopToday money={may('inventory:financial')} />
+      </Suspense>
+    </div>
+  )
+}
 
+function ShopListsSkeleton() {
+  return (
+    <>
+      <div className="h-32 animate-pulse rounded-lg border border-line bg-surface" />
+      <div className="h-32 animate-pulse rounded-lg border border-line bg-surface" />
+    </>
+  )
+}
+
+async function ShopToday({ money }: { money: boolean }) {
+  const res = await loadOps(async () => {
+    const st = getSalesStore()
+    const day = israelDate()
+    const [open, recent] = await Promise.all([st.openLines(100), st.listSales({ since: new Date(Date.now() - 36 * 3_600_000).toISOString(), limit: 300 })])
+    const today = recent.filter((x) => israelDate(new Date(x.createdAt)) === day)
+    const ids = [...new Set([...open.map((l) => l.saleId), ...today.map((x) => x.id)])]
+    const itemIds = [...new Set(open.map((l) => l.itemId))]
+    const [sales, lines, payments, items] = await Promise.all([
+      st.listSales({ ids }),
+      st.linesOf(today.map((x) => x.id)),
+      st.paymentsOf(today.map((x) => x.id)),
+      itemIds.length ? getOpsStore().listItems({ ids: itemIds, limit: itemIds.length }) : [],
+    ])
+    return { open, today, sales: new Map(sales.map((x) => [x.id, x])), lines, payments, items: new Map(items.map((i) => [i.id, i])) }
+  })
+
+  return (
+    <>
       {!res.ok ? (
         <p className="rounded-lg border border-line bg-surface p-3 text-sm text-muted" dir="ltr">{res.message}</p>
       ) : (
@@ -87,7 +109,7 @@ export default async function ShopHome() {
                       <Link href={`/shop/sales/${sale.id}`} className="flex min-h-12 items-center justify-between gap-3 py-2 text-sm hover:bg-sunken">
                         <span dir="ltr">{sale.number}</span>
                         <span className={m.state === 'paid' || m.state === 'nothing_due' ? 'text-ok' : 'text-warn'}>{PAYMENT_STATE_HE[m.state]}</span>
-                        {may('inventory:financial') ? <span className="num">{formatAgorot(m.dueMinor)}</span> : null}
+                        {money ? <span className="num">{formatAgorot(m.dueMinor)}</span> : null}
                       </Link>
                     </li>
                   )
@@ -97,6 +119,6 @@ export default async function ShopHome() {
           </section>
         </>
       )}
-    </div>
+    </>
   )
 }

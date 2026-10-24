@@ -26,14 +26,16 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
   const statuses: ItemStatus[] | undefined = status ? [status] : searchParams?.view === 'all' ? undefined : ['in_storage', 'listed', 'reserved', 'sold']
   const location = typeof searchParams?.location === 'string' ? searchParams.location : ''
 
+  // The snapshot and the website's product list do not depend on the item list: start all three at once.
+  const snapP = getOpsSnapshot()
+  const allWebP = may('website:read') ? listWebsiteProducts('') : null
   const res = await loadOps(async () => {
     const store = getOpsStore()
     const [items, locations] = await Promise.all([store.listItems({ statuses, q: q || undefined, locationId: location || undefined, limit: 500 }), store.listLocations()])
     return { items, locations }
   })
-  const snap = await getOpsSnapshot()
   const linkedIds = res.ok ? res.data.items.map((i) => i.websiteProductId).filter((x): x is number => x != null) : []
-  const [web, allWeb] = await Promise.all([linkedIds.length ? listWebsiteProductsByIds(linkedIds) : null, may('website:read') ? listWebsiteProducts('') : null])
+  const [snap, web, allWeb] = await Promise.all([snapP, linkedIds.length ? listWebsiteProductsByIds(linkedIds) : null, allWebP])
   const webById = new Map(web?.state === 'ok' ? web.data.map((p) => [p.id, p]) : [])
 
   return (

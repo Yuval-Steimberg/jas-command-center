@@ -14,6 +14,7 @@ import type { Channel } from '@/lib/ops/types'
 import { CHANNEL_LABEL, ROLE_LABEL, daysWithoutContact, OPEN_STAGES, whatsappLink } from '@/lib/crm/model'
 import { listWebsiteOrders } from '@/lib/integrations/website/manage'
 import { searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
+import { getSalesStore } from '@/lib/sales/store'
 import { formatAgorot, shekelsToAgorot } from '@/lib/money'
 import { formatDateTime, timeAgo } from '@/lib/format'
 import { input } from '../../website/forms'
@@ -35,14 +36,20 @@ export default async function ContactPage({ params }: { params: { id: string } }
     const store = getOpsStore()
     const c = await store.getContact(params.id)
     if (!c) return null
-    const [deals, interactions, tasks, bought, reserved] = await Promise.all([
+    const email = c.email
+    // Live reads from the systems that own the records run alongside ours. Matched on the exact address: the source search is a substring match.
+    const [deals, interactions, tasks, bought, reserved, shopSales, orders, cards] = await Promise.all([
       store.listDeals({ contactId: c.id }),
       store.listInteractions({ contactId: c.id, limit: 100 }),
       store.listTasks({ entityKind: 'contact', entityId: c.id }),
       may('inventory:read') ? store.listItems({ buyerContactId: c.id, limit: 100 }) : Promise.resolve([]),
       may('inventory:read') ? store.listItems({ reservedFor: c.id, limit: 100 }) : Promise.resolve([]),
+      // Shop sales need migration 0006; without it the contact page still works.
+      may('inventory:read') ? getSalesStore().listSales({ contactId: c.id, limit: 50 }).catch(() => []) : Promise.resolve([]),
+      pii && email && may('website:read_pii') ? listWebsiteOrders(email) : null,
+      pii && email && may('gift_cards:read_pii') ? searchGiftCards(email) : null,
     ])
-    return { c, deals, interactions, tasks, bought, reserved }
+    return { c, deals, interactions, tasks, bought, reserved, shopSales, orders, cards }
   })
   if (res.ok && !res.data) notFound()
   if (!res.ok) {
@@ -53,13 +60,8 @@ export default async function ContactPage({ params }: { params: { id: string } }
       </>
     )
   }
-  const { c, deals, interactions, tasks, bought, reserved } = res.data!
+  const { c, deals, interactions, tasks, bought, reserved, shopSales, orders, cards } = res.data!
   const email = c.email
-  // Live reads from the systems that own the records. Matched on the exact address: the source search is a substring match.
-  const [orders, cards] = await Promise.all([
-    pii && email && may('website:read_pii') ? listWebsiteOrders(email) : null,
-    pii && email && may('gift_cards:read_pii') ? searchGiftCards(email) : null,
-  ])
   const same = (x: string | null | undefined) => !!x && x.trim().toLowerCase() === email
   const wa = pii ? whatsappLink(c.phone) : null
 
@@ -184,7 +186,18 @@ export default async function ContactPage({ params }: { params: { id: string } }
             <Card>
               <CardHeader title="Items" meta="bought or reserved here" />
               <CardBody>
-                {bought.length + reserved.length === 0 ? <p className="text-sm text-muted">None.</p> : (
+                {shopSales.length ? (
+                  <ul className="mb-3 flex flex-col gap-1 text-sm">
+                    {shopSales.map((x) => (
+                      <li key={x.id} className="flex flex-wrap items-center gap-2">
+                        <Link href={`/sales/${x.id}`} className={linkCls}>Shop sale {x.number}</Link>
+                        <span className="num text-muted">{formatAgorot(x.totalMinor)}</span>
+                        <span className="text-meta text-faint">{formatDateTime(x.createdAt)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                {bought.length + reserved.length === 0 ? (shopSales.length ? null : <p className="text-sm text-muted">None.</p>) : (
                   <ul className="flex flex-col gap-2 text-sm">
                     {[...reserved, ...bought].map((i) => (
                       <li key={i.id} className="flex flex-wrap items-center gap-2">
