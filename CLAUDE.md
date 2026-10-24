@@ -197,4 +197,7 @@ Volunteers (`docs/VOLUNTEERS.md`, migration `0005_volunteers.sql`, `lib/voluntee
   `/api/cron`. `notifyVolunteers` never throws: a failed email is a warning on the action, not a failed write.
 - Errors cross Next bundles, so test `e.conflict === true`, never `instanceof ConflictError`.
 - Every Supabase list is paged (`.range`, 1000) and long `in()` lists chunked (150): PostgREST caps at max_rows silently.
+- Assistant: `volunteer-tools.ts` (reads; volunteers are `V-xxxxxx` refs, never names) + `volunteer-proposals.ts` (invite, message;
+  message dedupes on a requestId made at proposal time). Analytics: `lib/analytics/volunteers.ts` over `volunteerStats` only.
+  Production check: `lib/selfcheck/volunteers.ts` (tables + the app's /api/health, a separate Vercel project).
 

@@ -1,21 +1,7 @@
 import 'server-only'
-import { getVolunteerStore } from '@/lib/volunteer-store'
-import { buildShiftViews } from '@/lib/volunteers/views'
 
-/**
- * Everything the overview, calendar and reports need for a window of time:
- * shifts that overlap it, their activities and sign-ups, and every volunteer.
- * One query per table.
- */
-export async function loadWindow(fromIso: string, toIso: string, now = Date.now()) {
-  const store = getVolunteerStore()
-  const [shifts, volunteers] = await Promise.all([store.listShifts({ from: fromIso, to: toIso, limit: 20_000 }), store.listVolunteers({ limit: 20_000 })])
-  const [activities, signups] = await Promise.all([
-    shifts.length ? store.listActivities({ ids: [...new Set(shifts.map((s) => s.activityId))] }) : Promise.resolve([]),
-    shifts.length ? store.listSignups({ shiftIds: shifts.map((s) => s.id), limit: 100_000 }) : Promise.resolve([]),
-  ])
-  return { shifts, volunteers, activities, signups, views: buildShiftViews(activities, shifts, signups, now) }
-}
+/** Shared with /analytics and the assistant: one definition of what a window of volunteer data is. */
+export { loadVolunteerWindow as loadWindow } from '@/lib/volunteer-store'
 
 /** Real furniture projects for the link select. When the field app cannot be read, say so instead of an empty list. */
 export async function projectOptions(): Promise<{ projects: { id: string; name: string }[]; note: string | null }> {

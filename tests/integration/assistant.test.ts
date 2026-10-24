@@ -71,7 +71,8 @@ describe('which tools the model is offered', () => {
     expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name)).toEqual([
       'list_furniture_projects', 'get_furniture_impact', 'get_map_places',
       'find_inventory_items', 'get_item_history', 'get_fulfilment_queue', 'get_open_tasks', 'get_inventory_performance', 'get_purchase_orders',
-      'propose_furniture_archive', 'propose_task_create',
+      'get_volunteer_overview', 'suggest_volunteers_for_shift',
+      'propose_furniture_archive', 'propose_task_create', 'propose_volunteer_invite', 'propose_volunteer_message_shift',
     ])
   })
 
@@ -79,7 +80,7 @@ describe('which tools the model is offered', () => {
     const h = harness('owner', [msg([text('ok')], 'end_turn')])
     await ask('hi', [], h.deps)
     const tools = h.calls[0]!.tools as Anthropic.Beta.BetaTool[]
-    expect(tools).toHaveLength(28)
+    expect(tools).toHaveLength(32)
     expect(tools.every((t) => t.strict === true && (t.input_schema as { additionalProperties?: boolean }).additionalProperties === false)).toBe(true)
   })
 

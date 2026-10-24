@@ -16,6 +16,7 @@ import { searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
 import { listWebsiteOrders, listWebsiteProducts, ORDER_STATUSES } from '@/lib/integrations/website/manage'
 import { PROPOSALS, PROPOSAL_TOOL_PREFIX, type ProposalDef } from './proposals'
 import { OPS_TOOLS } from './ops-tools'
+import { VOLUNTEER_TOOLS } from './volunteer-tools'
 import { getOpsSnapshot } from '@/lib/ops/snapshot'
 
 /**
@@ -301,6 +302,7 @@ export const TOOLS: readonly AssistantTool[] = [
       })),
   },
   ...OPS_TOOLS,
+  ...VOLUNTEER_TOOLS,
   ...PROPOSALS.map(
     (d): AssistantTool => ({
       name: `${PROPOSAL_TOOL_PREFIX}${d.kind}`,
