@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   LayoutDashboard, Store, MessageCircle, Sofa, MapPinned, Gift, ChartLine, FileText, Sparkles, Bell, Cable, Settings, Menu, X,
   Users, Package, ShoppingBag, Truck, ListChecks, Factory, HeartHandshake,
@@ -88,7 +89,9 @@ export function MobileNav({ groups }: { groups: { section: string; items: NavIte
       <button type="button" onClick={() => setOpen(true)} aria-label="Open navigation" className="grid h-10 w-10 place-items-center rounded-md text-ink hover:bg-sunken lg:hidden">
         <Menu aria-hidden className="h-5 w-5" />
       </button>
-      {open ? (
+      {/* Portalled to <body>: the topbar's backdrop-blur makes it the containing block of any
+          `fixed` child, which shrank this drawer to the 56px header on phones. */}
+      {open ? createPortal(
         <div role="dialog" aria-modal="true" aria-label="Navigation" className="fixed inset-0 z-50 lg:hidden">
           <button type="button" aria-label="Close navigation" className="absolute inset-0 bg-forest/40" onClick={() => setOpen(false)} />
           <div className="absolute inset-y-0 start-0 flex w-72 max-w-[85vw] flex-col gap-6 overflow-y-auto bg-forest px-2 py-4">
@@ -100,7 +103,8 @@ export function MobileNav({ groups }: { groups: { section: string; items: NavIte
             </div>
             <Links groups={groups} onNavigate={() => setOpen(false)} />
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </>
   )
