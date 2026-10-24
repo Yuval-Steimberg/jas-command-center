@@ -101,6 +101,8 @@ export function deriveAlerts(i: AlertInputs): Alert[] {
       out.push({ id: 'ops:stale-leads', severity: 'warning', product: 'crm', title: `${o.data.crm.staleLeads} new lead(s) not contacted for 3+ days`, detail: 'From the website forms or added here.', href: '/crm/pipeline' })
     if (on('overdue_tasks') && o.data.tasks.overdue)
       out.push({ id: 'ops:overdue-tasks', severity: 'warning', product: 'crm', title: `${o.data.tasks.overdue} task(s) past their due date`, detail: 'Open tasks whose due date has passed.', href: '/tasks' })
+    if (o.data.purchasing?.late)
+      out.push({ id: 'ops:po-late', severity: 'warning', product: 'inventory', title: `${o.data.purchasing.late} purchase order(s) past their expected date`, detail: 'Ordered from a supplier and not fully received. Chase the supplier or close the order.', href: '/suppliers' })
     if (on('aging_stock') && o.data.items.agingUnlisted)
       out.push({ id: 'ops:aging-stock', severity: 'info', product: 'inventory', title: `${o.data.items.agingUnlisted} item(s) in storage 60+ days, not listed`, detail: 'List them, donate them, or recycle them.', href: '/inventory?status=in_storage' })
     if (o.data.items.reservedExpiringSoon)

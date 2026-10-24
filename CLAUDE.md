@@ -172,3 +172,9 @@ Customers, inventory, fulfilment (`docs/CRM_INVENTORY.md`, migration `0003_crm_i
   returned to the assistant (contacts are ids + roles).
 - In-store sales value is the only money kept here; never add it to website revenue or gift card figures.
 - `getOpsStore()` = Supabase in production, memory for dev/tests (same semantics). Tests: `tests/integration/ops.test.ts`.
+- Suppliers (`/suppliers`, `lib/suppliers/`, migration `0004_suppliers.sql`): purchase orders + receiving. Receiving only through
+  `getSupplierStore().receive` (SQL `cc_po_receive`: locks, never more than ordered, creates items via `cc_inventory_create`,
+  idempotent per request id). Lines change only before anything arrived. Received items keep `supplier_id` /
+  `purchase_order_id` / `unit_cost_minor` forever (`cc_inventory_apply` never writes them). Tests: `tests/integration/suppliers.test.ts`;
+  the SQL was run against a real Postgres 16, including four concurrent receipts of the same units (one wins).
+- The customer WhatsApp inbox (360dialog, coexistence) was PARKED by the owner on 2026-10-24; not built.

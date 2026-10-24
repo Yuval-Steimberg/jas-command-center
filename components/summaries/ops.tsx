@@ -19,6 +19,11 @@ export async function InventorySummary() {
             <Kpi label="Not listed yet" value={formatCount(r.data.items.unlisted)} tone={r.data.items.agingUnlisted ? 'warn' : undefined} sub={r.data.items.agingUnlisted ? `${r.data.items.agingUnlisted} for 60+ days` : undefined} />
             <Kpi label="Sold, not delivered" value={formatCount(r.data.items.awaitingDelivery)} sub={`${r.data.deliveries.scheduled} planned`} />
             <Kpi label="Reserved" value={formatCount(r.data.items.byStatus.reserved)} sub={r.data.items.reservedExpiringSoon ? `${r.data.items.reservedExpiringSoon} end within a day` : undefined} />
+            {r.data.purchasing ? (
+              <Link href="/suppliers" className="col-span-2 text-sm text-muted hover:underline">
+                Purchasing: {formatCount(r.data.purchasing.open)} open order(s){r.data.purchasing.late ? <span className="text-warn">, {r.data.purchasing.late} late</span> : null}
+              </Link>
+            ) : null}
           </div>
         )}
       </CardBody>

@@ -5,13 +5,13 @@ import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Store, MessageCircle, Sofa, MapPinned, Gift, ChartLine, FileText, Sparkles, Bell, Cable, Settings, Menu, X,
-  Users, Package, ShoppingBag, Truck, ListChecks,
+  Users, Package, ShoppingBag, Truck, ListChecks, Factory,
 } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { NavItem } from './nav'
 
 const ICONS = {
-  overview: LayoutDashboard, crm: Users, inventory: Package, sales: ShoppingBag, truck: Truck, tasks: ListChecks, website: Store, agent: MessageCircle, furniture: Sofa, map: MapPinned, gift: Gift,
+  overview: LayoutDashboard, crm: Users, inventory: Package, sales: ShoppingBag, truck: Truck, tasks: ListChecks, supplier: Factory, website: Store, agent: MessageCircle, furniture: Sofa, map: MapPinned, gift: Gift,
   analytics: ChartLine, report: FileText, assistant: Sparkles, bell: Bell, plug: Cable, settings: Settings,
 } as const
 

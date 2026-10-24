@@ -10,8 +10,8 @@ export class ConflictError extends Error {
 
 /** Migration 0003 has not been run on the command center database. */
 export class OpsSetupError extends Error {
-  constructor() {
-    super('The customer and inventory tables do not exist yet. Run supabase/migrations/0003_crm_inventory.sql in the command center Supabase SQL editor.')
+  constructor(readonly migration = '0003_crm_inventory.sql', what = 'The customer and inventory tables') {
+    super(`${what} do not exist yet. Run supabase/migrations/${migration} in the command center Supabase SQL editor.`)
   }
 }
 

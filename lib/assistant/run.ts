@@ -88,6 +88,7 @@ const PRODUCT_OF: Record<string, string | null> = {
   get_fulfilment_queue: 'inventory',
   get_open_tasks: 'inventory',
   get_inventory_performance: 'inventory',
+  get_purchase_orders: 'inventory',
   find_leads: 'crm',
   find_contacts: 'crm',
 }

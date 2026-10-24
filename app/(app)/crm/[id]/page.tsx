@@ -79,6 +79,7 @@ export default async function ContactPage({ params }: { params: { id: string } }
           <div className="flex flex-wrap gap-2">
             {wa ? <a href={wa} target="_blank" rel="noreferrer" className={btn}>Open WhatsApp chat</a> : null}
             <Link href={`/tasks?entity=contact&id=${c.id}`} className={btn}>Add a task</Link>
+            {c.roles.includes('supplier') && may('inventory:read') ? <Link href={`/suppliers/${c.id}`} className={btn}>Orders from this supplier</Link> : null}
           </div>
         }
       />
