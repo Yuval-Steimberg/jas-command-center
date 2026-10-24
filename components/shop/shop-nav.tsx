@@ -3,24 +3,22 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowRight, Home, PackagePlus, ScanLine, Search, ShoppingBag } from 'lucide-react'
+import { ArrowRight, Home, Package, ShoppingBag, Truck } from 'lucide-react'
 
-export type ShopTabKey = 'home' | 'sell' | 'new' | 'scan' | 'items'
+export type ShopTabKey = 'home' | 'items' | 'sales' | 'deliveries'
 
 const TABS: Record<ShopTabKey, { href: string; label: string; icon: typeof Home }> = {
-  home: { href: '/shop', label: 'בית', icon: Home },
-  sell: { href: '/shop/sell', label: 'מכירה', icon: ShoppingBag },
-  new: { href: '/shop/new', label: 'הוספה', icon: PackagePlus },
-  scan: { href: '/shop/scan', label: 'סריקה', icon: ScanLine },
-  items: { href: '/shop/items', label: 'פריטים', icon: Search },
+  home: { href: '/shop', label: 'ראשי', icon: Home },
+  items: { href: '/shop/items', label: 'מלאי', icon: Package },
+  sales: { href: '/shop/sales', label: 'מכירות', icon: ShoppingBag },
+  deliveries: { href: '/shop/deliveries', label: 'מסירות', icon: Truck },
 }
 
-/** Which tab a path belongs to: an item page is under פריטים, a sale under מכירה. */
+/** Which tab a path belongs to: adding, scanning and labels are part of מלאי; checkout and a sale are part of מכירות. */
 export function tabOf(path: string): ShopTabKey {
   if (path === '/shop') return 'home'
-  if (path.startsWith('/shop/sell') || path.startsWith('/shop/sales')) return 'sell'
-  if (path.startsWith('/shop/new')) return 'new'
-  if (path.startsWith('/shop/scan')) return 'scan'
+  if (path.startsWith('/shop/sell') || path.startsWith('/shop/sales')) return 'sales'
+  if (path.startsWith('/shop/deliveries')) return 'deliveries'
   return 'items'
 }
 
@@ -41,7 +39,7 @@ export function ShopTabBar({ tabs }: { tabs: ShopTabKey[] }) {
   const { path, pending, setPending } = usePending()
   const active = tabOf(pending ?? path)
   return (
-    <nav aria-label="ניווט חנות" className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
+    <nav aria-label="ניווט חנות" className="fixed inset-x-0 bottom-0 z-20 border-t print:hidden border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur">
       <ul className="mx-auto flex max-w-5xl">
         {tabs.map((k) => {
           const t = TABS[k]
@@ -71,7 +69,7 @@ export function ShopBack() {
   const path = usePathname()
   const router = useRouter()
   if (path === '/shop') return null
-  const up = path.startsWith('/shop/items/') ? '/shop/items' : '/shop'
+  const up = path.startsWith('/shop/items/') ? '/shop/items' : path.startsWith('/shop/sales/') || path === '/shop/sell' ? '/shop/sales' : '/shop'
   return (
     <button
       type="button"

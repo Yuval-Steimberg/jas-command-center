@@ -27,11 +27,11 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
   if (!s) redirect('/login')
   if (!can(s.user.role, 'inventory:read', s.overrides)) redirect('/forbidden')
   const may = (p: Parameters<typeof can>[1]) => can(s.user.role, p, s.overrides)
-  const tabs: ShopTabKey[] = ['home', ...(may('inventory:financial') ? ['sell' as const] : []), ...(may('inventory:write') ? ['new' as const] : []), 'scan', 'items']
+  const tabs: ShopTabKey[] = ['home', 'items', ...(may('inventory:financial') ? ['sales' as const] : []), 'deliveries']
   return (
     <div dir="rtl" lang="he" data-shop className="flex min-h-dvh flex-col bg-ground">
       {/* One job per header slot: back, where you are, the way out. Who is signed in is said on the home screen. */}
-      <header className="sticky top-0 z-10 border-b border-line bg-surface/95 backdrop-blur">
+      <header className="sticky top-0 z-10 border-b print:hidden border-line bg-surface/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center gap-1 px-2 sm:px-4">
           <ShopBack />
           <Link href="/shop" className="inline-flex h-11 items-center rounded-full px-2 text-base font-bold text-ink">JAS חנות</Link>
@@ -47,7 +47,7 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
         </div>
       </header>
       {/* Bottom padding clears the tab bar (h-16) and the home indicator. */}
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-5">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-5 print:p-0">{children}</main>
       <ShopTabBar tabs={tabs} />
     </div>
   )

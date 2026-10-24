@@ -1,15 +1,18 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { ChevronLeft, PackagePlus, ScanLine, Search, ShoppingBag, Store, Truck } from 'lucide-react'
+import { AlertTriangle, ChevronLeft, PackagePlus, ScanLine, Search, ShoppingBag, Store, Truck } from 'lucide-react'
 import { getSession } from '@/lib/auth/session'
 import { can, ROLE_LABELS_HE, type Permission } from '@/lib/auth/rbac'
-import { getOpsStore } from '@/lib/ops'
 import { loadOps } from '@/lib/ops/guard'
-import { getSalesStore } from '@/lib/sales/store'
-import { saleMoney } from '@/lib/sales/model'
-import { PayChip, Thumb } from '@/components/shop/bits'
+import { getOpsSnapshot } from '@/lib/ops/snapshot'
+import { handoverQueue } from '@/lib/sales/views'
+import { handoverCounts } from '@/lib/sales/handovers'
+import { readOps } from '@/lib/analytics/load'
+import { inventorySection } from '@/lib/analytics/ops'
+import { previousPeriod, rangeFor } from '@/lib/time'
+import { Thumb } from '@/components/shop/bits'
 import { formatAgorot } from '@/lib/money'
-import { israelDate } from '@/lib/time'
+import { formatDay } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,7 +27,7 @@ export default async function ShopHome() {
     { href: '/shop/items', label: 'חיפוש פריט', icon: Search },
   ].filter((x): x is NonNullable<typeof x> => !!x)
 
-  // The tiles are what a seller came for: they render at once, and today's lists stream in after.
+  // The actions render at once; the numbers stream in after, each from the read the rest of the system uses.
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -48,108 +51,131 @@ export default async function ShopHome() {
           ))}
         </div>
       </nav>
-      <Suspense fallback={<ShopListsSkeleton />}>
-        <ShopToday money={sell} />
+      <Suspense fallback={<Skeleton h="h-48" />}>
+        <Today money={sell} crm={may('crm:read')} pii={may('crm:read_pii')} />
+      </Suspense>
+      <Suspense fallback={<Skeleton h="h-64" />}>
+        <ByCategory money={sell} />
       </Suspense>
     </div>
   )
 }
 
-function ShopListsSkeleton() {
-  return (
+const Skeleton = ({ h }: { h: string }) => <div className={`${h} animate-pulse rounded-lg border border-line bg-surface`} />
+const Problem = ({ what, message }: { what: string; message: string }) => <p role="alert" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad" dir="auto">{what} לא נטענו: {message}</p>
+
+function Stat({ label, value, sub, href, tone }: { label: string; value: string; sub?: string; href?: string; tone?: 'bad' }) {
+  const body = (
     <>
-      <div className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
-      <div className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
+      <span className="text-xs font-medium text-muted">{label}</span>
+      <span className={`num text-2xl font-bold ${tone === 'bad' ? 'text-bad' : 'text-ink'}`}>{value}</span>
+      {sub ? <span className="num text-xs text-muted">{sub}</span> : null}
     </>
   )
+  const cls = 'flex min-h-24 flex-col justify-center gap-0.5 rounded-lg border border-line bg-surface p-3'
+  return href ? <Link href={href} className={`${cls} hover:bg-sunken`}>{body}</Link> : <div className={cls}>{body}</div>
 }
 
-function SectionHead({ title, count }: { title: string; count: number }) {
-  return (
-    <h2 className="flex items-center gap-2 text-base font-bold text-ink">
-      {title}
-      <span className="num inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sunken px-2 text-xs font-semibold text-muted">{count}</span>
-    </h2>
-  )
-}
-
-const israelTime = (iso: string) => new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
-
-async function ShopToday({ money }: { money: boolean }) {
-  const res = await loadOps(async () => {
-    const st = getSalesStore()
-    const day = israelDate()
-    const [open, recent] = await Promise.all([st.openLines(100), st.listSales({ since: new Date(Date.now() - 36 * 3_600_000).toISOString(), limit: 300 })])
-    const today = recent.filter((x) => israelDate(new Date(x.createdAt)) === day)
-    const ids = [...new Set([...open.map((l) => l.saleId), ...today.map((x) => x.id)])]
-    const itemIds = [...new Set(open.map((l) => l.itemId))]
-    const [sales, lines, payments, items] = await Promise.all([
-      st.listSales({ ids }),
-      st.linesOf(today.map((x) => x.id)),
-      st.paymentsOf(today.map((x) => x.id)),
-      itemIds.length ? getOpsStore().listItems({ ids: itemIds, limit: itemIds.length }) : [],
-    ])
-    return { open, today, sales: new Map(sales.map((x) => [x.id, x])), lines, payments, items: new Map(items.map((i) => [i.id, i])) }
-  })
-
+/** The four cards and the to-do list: stock from the inventory snapshot, handovers from the deliveries tab's own list. */
+async function Today({ money, crm, pii }: { money: boolean; crm: boolean; pii: boolean }) {
+  const [snap, queue] = await Promise.all([getOpsSnapshot(), loadOps(() => handoverQueue({ crm, pii }))])
+  const n = queue.ok ? handoverCounts(queue.data.list) : null
+  const todo = queue.ok ? queue.data.list.slice(0, 5) : []
   return (
     <>
-      {!res.ok ? (
-        <p role="alert" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad" dir="auto">הרשימות של היום לא נטענו: {res.message}</p>
-      ) : (
-        <>
-          <section className="flex flex-col gap-2">
-            <SectionHead title="ממתין למסירה" count={res.data.open.length} />
-            {res.data.open.length === 0 ? <p className="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-muted">אין פריטים שממתינים לאיסוף או למשלוח.</p> : (
-              <ul className="flex flex-col divide-y divide-line/60 overflow-hidden rounded-lg border border-line bg-surface">
-                {res.data.open.map((l) => {
-                  const it = res.data.items.get(l.itemId)
-                  const sale = res.data.sales.get(l.saleId)
-                  return (
-                    <li key={l.id}>
-                      <Link href={`/shop/sales/${l.saleId}`} className="flex min-h-16 items-center gap-3 px-3 py-2 hover:bg-sunken">
-                        <Thumb src={it?.photoUrl} />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-semibold text-ink" dir="auto">{it?.title ?? 'פריט'}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
-                          <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
-                            {l.fulfilment === 'delivery' ? <Truck aria-hidden className="h-3.5 w-3.5 shrink-0" /> : <Store aria-hidden className="h-3.5 w-3.5 shrink-0" />}
-                            {l.fulfilment === 'delivery' ? `משלוח${l.scheduledFor ? ` · ${l.scheduledFor}` : ''}` : 'איסוף מהחנות'} · <span dir="ltr">{sale?.number}</span>
-                          </span>
+      {n?.overdue ? (
+        <Link href="/shop/deliveries" className="flex min-h-14 items-center gap-3 rounded-lg border border-bad/30 bg-bad/5 px-4 text-sm font-semibold text-bad">
+          <AlertTriangle aria-hidden className="h-5 w-5 shrink-0" />
+          <span className="flex-1">{n.overdue === 1 ? 'משלוח אחד באיחור' : `${n.overdue} משלוחים באיחור`}</span>
+          <ChevronLeft aria-hidden className="h-5 w-5 shrink-0" />
+        </Link>
+      ) : null}
+      <section aria-label="מצב החנות" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="במלאי" href="/shop/items" value={snap.state === 'ok' ? String(snap.data.items.available) : '—'} sub={money && snap.state === 'ok' ? formatAgorot(snap.data.items.askingValueMinor, { whole: true }) : undefined} />
+        <Stat label="ממתין לאיסוף" href="/shop/deliveries" value={n ? String(n.pickup) : '—'} />
+        <Stat label="ממתין למשלוח" href="/shop/deliveries" value={n ? String(n.delivery) : '—'} />
+        <Stat label="באיחור" href="/shop/deliveries" value={n ? String(n.overdue) : '—'} tone={n?.overdue ? 'bad' : undefined} />
+      </section>
+      {snap.state === 'error' ? <Problem what="נתוני המלאי" message={snap.error} /> : null}
+      {!queue.ok ? <Problem what="המסירות" message={queue.message} /> : (
+        <section className="flex flex-col gap-2">
+          <h2 className="flex items-center justify-between text-base font-bold text-ink">
+            מסירות לביצוע
+            {queue.data.list.length > todo.length ? <Link href="/shop/deliveries" className="text-sm font-medium text-muted underline-offset-2 hover:underline">כל {queue.data.list.length}</Link> : null}
+          </h2>
+          {todo.length === 0 ? <p className="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-muted">אין פריטים שממתינים לאיסוף או למשלוח.</p> : (
+            <ul className="flex flex-col divide-y divide-line/60 overflow-hidden rounded-lg border border-line bg-surface">
+              {todo.map((h) => {
+                const c = h.contactId ? queue.data.contacts.get(h.contactId) : undefined
+                return (
+                  <li key={h.key}>
+                    <Link href="/shop/deliveries" className="flex min-h-16 items-center gap-3 px-3 py-2 hover:bg-sunken">
+                      <Thumb src={h.item?.photoUrl} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm font-semibold text-ink" dir="auto">{h.item?.title ?? (h.ref ? `הזמנה ${h.ref}` : 'פריט')}</span>
+                        <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
+                          {h.kind === 'delivery' ? <Truck aria-hidden className="h-3.5 w-3.5 shrink-0" /> : <Store aria-hidden className="h-3.5 w-3.5 shrink-0" />}
+                          {h.kind === 'delivery' ? 'משלוח' : 'איסוף'}
+                          {h.scheduledFor ? <span className="num" dir="ltr">{formatDay(h.scheduledFor)}</span> : null}
+                          {c ? <span dir="auto" className="truncate">· {c.name}</span> : null}
                         </span>
-                        <ChevronLeft aria-hidden className="h-5 w-5 shrink-0 text-faint" />
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </section>
-
-          <section className="flex flex-col gap-2">
-            <SectionHead title="מכירות היום" count={res.data.today.length} />
-            {res.data.today.length === 0 ? <p className="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-muted">עוד לא נרשמה מכירה היום.</p> : (
-              <ul className="flex flex-col divide-y divide-line/60 overflow-hidden rounded-lg border border-line bg-surface">
-                {res.data.today.map((sale) => {
-                  const m = saleMoney(sale, res.data.lines.filter((l) => l.saleId === sale.id), res.data.payments.filter((p) => p.saleId === sale.id))
-                  return (
-                    <li key={sale.id}>
-                      <Link href={`/shop/sales/${sale.id}`} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm hover:bg-sunken">
-                        <span className="min-w-0 flex-1">
-                          <span className="block font-semibold text-ink" dir="ltr">{sale.number}</span>
-                          <span className="text-xs text-muted">{israelTime(sale.createdAt)}</span>
-                        </span>
-                        <PayChip state={m.state} />
-                        {money ? <span className="num w-20 text-end font-semibold text-ink">{formatAgorot(m.dueMinor)}</span> : null}
-                        <ChevronLeft aria-hidden className="h-5 w-5 shrink-0 text-faint" />
-                      </Link>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </section>
-        </>
+                      </span>
+                      {h.overdue ? <span className="shrink-0 rounded-full border border-bad/30 bg-bad/10 px-2 py-0.5 text-xs font-medium text-bad">באיחור</span> : null}
+                      <ChevronLeft aria-hidden className="h-5 w-5 shrink-0 text-faint" />
+                    </Link>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
       )}
     </>
+  )
+}
+
+/** This month's shop sales and the stock by category, straight from the analytics definitions (same numbers as /analytics). */
+async function ByCategory({ money }: { money: boolean }) {
+  const range = rangeFor('mtd')
+  const prev = previousPeriod(range)
+  const sec = inventorySection(await readOps(prev.from), range, prev)
+  if (sec.sources[0]?.state !== 'ok') return <Problem what="נתוני המכירות" message={sec.sources[0]?.detail ?? ''} />
+  const metric = (id: string) => sec.metrics.find((m) => m.id === id)?.value ?? null
+  const table = (id: string) => sec.tables.find((t) => t.id === id)?.rows ?? []
+  const stock = table('inv.categories').map((r) => ({ label: String(r.category), value: Number(r.available) || 0 })).filter((r) => r.value > 0).slice(0, 8)
+  const sold = table('inv.inStoreByCategory').map((r) => ({ label: String(r.category), value: Number(r.value) || 0, units: Number(r.units) || 0 })).slice(0, 8)
+  const label = (c: string) => (c === 'Uncategorised' ? 'ללא קטגוריה' : c)
+  const units = metric('inv.inStoreSales')
+  const net = metric('inv.inStoreNet')
+  return (
+    <>
+      <section className="grid grid-cols-2 gap-3">
+        <Stat label="נמכר החודש בחנות" value={units == null ? '—' : String(units)} sub={money && net != null ? `${formatAgorot(net, { whole: true })} אחרי החזרות` : undefined} href={money ? '/shop/sales' : undefined} />
+        <Stat label="נמכר באתר החודש" value={metric('inv.soldOnline') == null ? '—' : String(metric('inv.soldOnline'))} sub="הכסף נספר באתר" />
+      </section>
+      <Bars title="מלאי לפי קטגוריה" rows={stock.map((r) => ({ label: label(r.label), value: r.value, shown: String(r.value) }))} empty="אין פריטים במלאי." />
+      {money ? <Bars title="מכירות החודש לפי קטגוריה" rows={sold.map((r) => ({ label: label(r.label), value: r.value, shown: formatAgorot(r.value, { whole: true }) }))} empty="עוד לא נמכר כלום החודש." /> : null}
+    </>
+  )
+}
+
+/** Horizontal bars: one hue (sage), the value written at the end, so it reads without a legend or colour. */
+function Bars({ title, rows, empty }: { title: string; rows: { label: string; value: number; shown: string }[]; empty: string }) {
+  const max = Math.max(1, ...rows.map((r) => r.value))
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-base font-bold text-ink">{title}</h2>
+      {rows.length === 0 ? <p className="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-muted">{empty}</p> : (
+        <ul className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
+          {rows.map((r) => (
+            <li key={r.label} className="grid grid-cols-[6.5rem_1fr_auto] items-center gap-2 text-sm">
+              <span className="truncate text-ink" dir="auto">{r.label}</span>
+              <span className="h-3 overflow-hidden rounded-full bg-sunken"><span className="block h-full rounded-full bg-sage" style={{ width: `${Math.max(4, (r.value / max) * 100)}%` }} /></span>
+              <span className="num min-w-12 text-end text-muted">{r.shown}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }

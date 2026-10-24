@@ -24,3 +24,15 @@ export function timeAgo(iso: string | number | null | undefined, now = Date.now(
 export function formatDateTime(iso: string | number, lang: 'en' | 'he' = 'en'): string {
   return new Intl.DateTimeFormat(lang === 'he' ? 'he-IL' : 'en-GB', { timeZone: 'Asia/Jerusalem', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
 }
+
+/** DD/MM/YYYY, the way the shop writes a date. A bare YYYY-MM-DD is a business day already and is not shifted. */
+export function formatDay(v: string): string {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v)
+  if (d) return `${d[3]}/${d[2]}/${d[1]}`
+  return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(v))
+}
+
+/** DD/MM/YYYY HH:MM in Israel time. */
+export function formatDayTime(iso: string): string {
+  return `${formatDay(iso)} ${new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso))}`
+}

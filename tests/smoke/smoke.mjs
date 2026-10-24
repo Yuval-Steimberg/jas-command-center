@@ -18,7 +18,7 @@ const PAGES = [
   '/crm', '/crm/new', '/crm/pipeline', '/inventory', '/inventory/new', '/inventory/intake', '/inventory/website', '/inventory/locations', '/inventory/scan', '/inventory/labels', '/sales', '/sales/new', '/deliveries', '/tasks', '/suppliers', '/suppliers/orders/new',
   '/volunteers', '/volunteers/activities', '/volunteers/activities/new', '/volunteers/calendar', '/volunteers/calendar?view=month', '/volunteers/people', '/volunteers/reports',
   '/settings', '/settings/staff', '/settings/notifications',
-  '/shop', '/shop/sell', '/shop/new', '/shop/scan', '/shop/items',
+  '/shop', '/shop/sell', '/shop/new', '/shop/scan', '/shop/items', '/shop/sales', '/shop/deliveries', '/shop/labels',
 ]
 
 // Only the local login; every source and Supabase variable is blanked so nothing real is reached.

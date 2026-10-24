@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
-import { ShoppingBag } from 'lucide-react'
+import { Printer, ShoppingBag } from 'lucide-react'
 import { Thumb } from '@/components/shop/bits'
 import { ItemStatusChip } from '@/components/ops/ui'
 import { ItemForm } from '@/components/inventory/item-form'
@@ -69,6 +69,7 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
               {kept ? <Link href={`/shop/sales/${kept.saleId}`} className="inline-flex h-12 items-center justify-center rounded-full border border-line px-6 text-base font-medium hover:bg-sunken">פתיחת המכירה</Link> : null}
             </div>
           ) : null}
+          <Link href={`/shop/labels?ids=${item.id}`} className="inline-flex h-11 items-center gap-2 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken"><Printer aria-hidden className="h-4 w-4" />הדפסת תווית</Link>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-line/70 pt-3 text-sm">
             {row('מיקום', item.locationId ? labels.get(item.locationId) : null, true)}
             {row('מצב', item.condition ? CONDITION_LABEL_HE[item.condition] : null)}

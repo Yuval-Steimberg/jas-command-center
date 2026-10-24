@@ -13,8 +13,8 @@ import { formatAgorot, shekelsToAgorot } from '@/lib/money'
 import { formatCount, formatDateTime, timeAgo } from '@/lib/format'
 import { ActionForm } from '../inventory/forms'
 import { syncNowAction } from './actions'
-import { getSalesStore } from '@/lib/sales/store'
-import { PAYMENT_STATE_LABEL, saleMoney } from '@/lib/sales/model'
+import { recentSales } from '@/lib/sales/views'
+import { PAYMENT_STATE_LABEL } from '@/lib/sales/model'
 import { inventorySection } from '@/lib/analytics/ops'
 import { israelDate } from '@/lib/time'
 
@@ -39,14 +39,7 @@ export default async function SalesPage() {
       return { sync, sold, moves, plannedOrders: new Set(deliveries.map((d) => d.websiteOrderId).filter((x): x is number => x != null)) }
     }),
     // Shop sales live in migration 0006: a database without it still shows everything else.
-    loadOps(async () => {
-      const st = getSalesStore()
-      const sales = await st.listSales({ limit: 50 })
-      const ids = sales.map((x) => x.id)
-      const contactIds = [...new Set(sales.map((x) => x.contactId).filter((x): x is string => !!x))]
-      const [lines, payments, contacts] = await Promise.all([st.linesOf(ids), st.paymentsOf(ids), may('crm:read') && contactIds.length ? getOpsStore().listContacts({ ids: contactIds, limit: contactIds.length }) : []])
-      return { sales, lines, payments, names: new Map(contacts.map((c) => [c.id, may('crm:read_pii') ? c.fullName : 'Customer'])) }
-    }),
+    loadOps(() => recentSales({ crm: may('crm:read'), pii: may('crm:read_pii') })),
     may('website:read') ? Promise.all((['paid', 'processing', 'shipped'] as const).map((st) => listWebsiteOrders('', st))) : null,
   ])
   const queueProblem = queue?.find((r): r is Exclude<typeof r, { state: 'ok' }> => r.state !== 'ok')
@@ -80,20 +73,17 @@ export default async function SalesPage() {
           <Card className="mb-4">
             <CardHeader title="Shop sales" meta="newest first · open lines are still to be picked up or delivered" action={may('inventory:financial') ? <Link href="/sales/new" className={`${linkCls} text-sm`}>New sale</Link> : undefined} />
             <CardBody>
-              {!shop.ok ? <OpsUnavailable message={shop.message} /> : shop.data.sales.length === 0 ? <p className="text-sm text-muted">No shop sales yet.</p> : (
+              {!shop.ok ? <OpsUnavailable message={shop.message} /> : shop.data.length === 0 ? <p className="text-sm text-muted">No shop sales yet.</p> : (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[620px] text-sm">
                     <thead className="text-xs text-muted"><tr><th className="py-2 text-start font-medium">Sale</th><th className="text-start font-medium">Customer</th><th className="text-start font-medium">Items</th><th className="text-end font-medium">Total</th><th className="text-start font-medium ps-3">Payment</th><th className="text-start font-medium">Handover</th></tr></thead>
                     <tbody>
-                      {shop.data.sales.map((sale) => {
-                        const lines = shop.data.lines.filter((l) => l.saleId === sale.id)
-                        const m = saleMoney(sale, lines, shop.data.payments.filter((p) => p.saleId === sale.id))
-                        const open = lines.filter((l) => l.status === 'open').length
+                      {shop.data.map(({ sale, money: m, units, openLines: open, customer }) => {
                         return (
                           <tr key={sale.id} className="border-t border-line/60 align-top">
                             <td className="py-2"><Link href={`/sales/${sale.id}`} className={linkCls} dir="ltr">{sale.number}</Link><div className="text-xs text-muted">{timeAgo(sale.createdAt)}</div></td>
-                            <td dir="auto">{sale.contactId ? shop.data.names.get(sale.contactId) ?? 'Customer' : <span className="text-muted">walk-in</span>}</td>
-                            <td className="num">{lines.reduce((a, l) => a + l.quantity, 0)}</td>
+                            <td dir="auto">{customer ?? <span className="text-muted">walk-in</span>}</td>
+                            <td className="num">{units}</td>
                             <td className="num text-end">{formatAgorot(m.dueMinor)}</td>
                             <td className={`ps-3 ${m.state === 'paid' || m.state === 'nothing_due' ? 'text-ok' : 'text-warn'}`}>{PAYMENT_STATE_LABEL[m.state]}{m.balanceMinor > 0 ? ` · ${formatAgorot(m.balanceMinor)} due` : ''}</td>
                             <td className={open ? 'text-warn' : 'text-muted'}>{open ? `${open} open` : 'done'}</td>

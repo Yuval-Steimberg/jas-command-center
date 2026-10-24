@@ -9,6 +9,8 @@ import { loadOps } from '@/lib/ops/guard'
 import { contactLabel } from '@/lib/ops/views'
 import type { DeliveryStatus } from '@/lib/ops/types'
 import { DELIVERY_NEXT } from '@/lib/deliveries/service'
+import { handoverQueue } from '@/lib/sales/views'
+import { handoverCounts } from '@/lib/sales/handovers'
 import { formatCount, formatDateTime, timeAgo } from '@/lib/format'
 import { input } from '../website/forms'
 import { ActionForm, Field } from '../inventory/forms'
@@ -26,10 +28,12 @@ export default async function DeliveriesPage({ searchParams }: { searchParams?: 
   const pii = may('crm:read_pii')
   const res = await loadOps(async () => {
     const store = getOpsStore()
-    const [active, closed, sold] = await Promise.all([
+    const [active, closed, sold, queue] = await Promise.all([
       store.listDeliveries({ statuses: ['planned', 'out', 'failed'] }),
       store.listDeliveries({ statuses: ['done', 'cancelled'], limit: 30 }),
       store.listItems({ statuses: ['sold'], limit: 300 }),
+      // Shop pickups have no delivery record; the shop's handover list counts them, so this page shows the same number.
+      handoverQueue({ crm: false, pii: false }).catch(() => null), // shop sales are migration 0006; without it the rest still loads
     ])
     const contactIds = [...new Set([...active, ...closed].map((d) => d.contactId).filter((x): x is string => !!x))]
     const itemIds = [...new Set([...active, ...closed].map((d) => d.itemId).filter((x): x is string => !!x))]
@@ -39,7 +43,9 @@ export default async function DeliveriesPage({ searchParams }: { searchParams?: 
     ])
     const items = new Map(itemRows.map((i) => [i.id, i]))
     const planned = new Set(active.map((d) => d.itemId))
-    return { active, closed: closed.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), unplanned: sold.filter((i) => !planned.has(i.id)), contacts: new Map(contacts.map((c) => [c.id, c])), items }
+    // A shop sale waiting for pickup is planned already: counted once, under shop pickups.
+    const waiting = new Set((queue?.list ?? []).filter((h) => h.line).map((h) => h.line!.itemId))
+    return { pickups: queue ? handoverCounts(queue.list).pickup : null, active, closed: closed.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), unplanned: sold.filter((i) => !planned.has(i.id) && !waiting.has(i.id)), contacts: new Map(contacts.map((c) => [c.id, c])), items }
   })
   const preItem = typeof searchParams?.item === 'string' ? searchParams.item : ''
 
@@ -52,7 +58,8 @@ export default async function DeliveriesPage({ searchParams }: { searchParams?: 
       {!res.ok ? <OpsUnavailable message={res.message} /> : (
         <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
           <div className="flex min-w-0 flex-col gap-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <Kpi label="Shop pickups waiting" value={formatCount(res.data.pickups)} hint="Sold at the counter, to be collected. Hand them over on the sale or in shop mode." />
               <Kpi label="Sold, nothing planned" value={formatCount(res.data.unplanned.length)} tone={res.data.unplanned.length ? 'warn' : undefined} />
               <Kpi label="Planned" value={formatCount(res.data.active.filter((d) => d.status === 'planned').length)} />
               <Kpi label="On the way" value={formatCount(res.data.active.filter((d) => d.status === 'out').length)} />
