@@ -26,16 +26,17 @@ const HREF = PRODUCT_HREF
 export default async function NotificationsPage() {
   const me = await requireUser()
   const s = (await getSession())!
-  // Who an alert can be given to: active staff (Supabase), or just you on the dev login.
-  const people = authMode().kind === 'supabase'
-    ? (await listStaff().catch(() => [])).filter((p) => p.active).map((p) => ({ id: p.id, label: p.name || p.email }))
-    : [{ id: me.id, label: me.name }]
+  // Staff, the live alerts and the history are independent reads: one wait, not three.
+  const [staff, state, history] = await Promise.all([
+    // Who an alert can be given to: active staff (Supabase), or just you on the dev login.
+    authMode().kind === 'supabase' ? listStaff().catch(() => []) : null,
+    notificationState(),
+    notificationStore().history(100).catch(() => []),
+  ])
+  const people = staff ? staff.filter((p) => p.active).map((p) => ({ id: p.id, label: p.name || p.email })) : [{ id: me.id, label: me.name }]
   const nameOf = (id: string | null) => (id ? (people.find((p) => p.id === id)?.label ?? 'someone no longer on staff') : null)
-  const state = await notificationState()
   const unread = state.open.filter((n) => n.unread)
-  const resolved = state.error
-    ? []
-    : (await notificationStore().history(100).catch(() => [])).filter((n) => n.resolvedAt && can(s.user.role, `${n.product}:read`, s.overrides)).slice(0, 30)
+  const resolved = state.error ? [] : history.filter((n) => n.resolvedAt && can(s.user.role, `${n.product}:read`, s.overrides)).slice(0, 30)
 
   return (
     <>

@@ -34,6 +34,10 @@ export function fail(error: PgError, setup: () => Error = () => new OpsSetupErro
   if (error?.code === '23505') throw new ConflictError('That already exists (email, phone or link must be unique).')
   throw new Error(msg)
 }
+/** PostgREST's default max_rows: one response never carries more. */
+export const PAGE = 1000
+type Query = ReturnType<ReturnType<SupabaseClient['from']>['select']>
+
 /** PostgREST or(...) syntax characters are stripped, never escaped by hand. */
 const term = (q: string) => q.replace(/[,()%*\\"]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100)
 
@@ -49,6 +53,23 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
     return ((data ?? []) as Row[]).map((r) => fromRow<T>(r))
   }
 
+  /**
+   * Up to `limit` rows. PostgREST silently cuts a response at max_rows (1000),
+   * so a larger limit is read in pages, with id as the tie-breaker so a page
+   * boundary never skips or repeats a row.
+   */
+  async function upTo<T>(build: () => Query, limit: number): Promise<T[]> {
+    if (limit <= PAGE) return many<T>(build().limit(limit))
+    const out: T[] = []
+    for (let from = 0; from < limit; from += PAGE) {
+      const size = Math.min(PAGE, limit - from)
+      const page = await many<T>(build().order('id').range(from, from + size - 1))
+      out.push(...page)
+      if (page.length < size) break
+    }
+    return out
+  }
+
   return {
     kind: 'supabase',
 
@@ -60,20 +81,22 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
       const t = f.q ? term(f.q) : ''
       // `colors` arrives with migration 0006; until it is run, search the columns 0003 has rather than fail.
       const query = (withColors: boolean) => {
-        let q = db.from('cc_inventory_items').select('*').order('updated_at', { ascending: false }).limit(f.limit ?? 500)
-        if (f.statuses) q = q.in('status', [...f.statuses])
-        if (f.locationId) q = q.eq('location_id', f.locationId)
-        if (f.ids) q = q.in('id', [...f.ids])
-        if (f.websiteProductIds) q = q.in('website_product_id', [...f.websiteProductIds])
-        if (f.furnitureItemIds) q = q.in('furniture_item_id', [...f.furnitureItemIds])
-        if (f.buyerContactId) q = q.eq('buyer_contact_id', f.buyerContactId)
-        if (f.reservedFor) q = q.eq('reserved_for', f.reservedFor)
-        if (f.createdSince) q = q.gte('created_at', f.createdSince)
-        if (t) {
-          const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
-          q = q.or(`sku.ilike.%${w}%,title.ilike.%${w}%,description.ilike.%${w}%,category.ilike.%${w}%,furniture_project_name.ilike.%${w}%,material.ilike.%${w}%${withColors ? `,colors.ilike.%${w}%` : ''}`)
-        }
-        return many<Item>(q)
+        return upTo<Item>(() => {
+          let q = db.from('cc_inventory_items').select('*').order('updated_at', { ascending: false })
+          if (f.statuses) q = q.in('status', [...f.statuses])
+          if (f.locationId) q = q.eq('location_id', f.locationId)
+          if (f.ids) q = q.in('id', [...f.ids])
+          if (f.websiteProductIds) q = q.in('website_product_id', [...f.websiteProductIds])
+          if (f.furnitureItemIds) q = q.in('furniture_item_id', [...f.furnitureItemIds])
+          if (f.buyerContactId) q = q.eq('buyer_contact_id', f.buyerContactId)
+          if (f.reservedFor) q = q.eq('reserved_for', f.reservedFor)
+          if (f.createdSince) q = q.gte('created_at', f.createdSince)
+          if (t) {
+            const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
+            q = q.or(`sku.ilike.%${w}%,title.ilike.%${w}%,description.ilike.%${w}%,category.ilike.%${w}%,furniture_project_name.ilike.%${w}%,material.ilike.%${w}%${withColors ? `,colors.ilike.%${w}%` : ''}`)
+          }
+          return q
+        }, f.limit ?? 500)
       }
       const rows = t ? await query(true).catch((e: unknown) => (e instanceof OpsSetupError ? query(false) : Promise.reject(e))) : await query(false)
       // The database narrowed by the longest word; every word must still match.
@@ -117,15 +140,17 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
     },
 
     async listContacts(f = {}) {
-      let q = db.from('cc_contacts').select('*').order('updated_at', { ascending: false }).limit(f.limit ?? 500)
-      if (f.role) q = q.contains('roles', [f.role])
-      if (f.ids) q = q.in('id', [...f.ids])
-      const t = f.q ? term(f.q) : ''
-      if (t) {
-        const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
-        q = q.or(`full_name.ilike.%${w}%,email.ilike.%${w}%,phone.ilike.%${w.replace(/\D/g, '') || w}%`)
-      }
-      return many<Contact>(q)
+      return upTo<Contact>(() => {
+        let q = db.from('cc_contacts').select('*').order('updated_at', { ascending: false })
+        if (f.role) q = q.contains('roles', [f.role])
+        if (f.ids) q = q.in('id', [...f.ids])
+        const t = f.q ? term(f.q) : ''
+        if (t) {
+          const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
+          q = q.or(`full_name.ilike.%${w}%,email.ilike.%${w}%,phone.ilike.%${w.replace(/\D/g, '') || w}%`)
+        }
+        return q
+      }, f.limit ?? 500)
     },
     async getContact(id) {
       const r = await many<Contact>(db.from('cc_contacts').select('*').eq('id', id).limit(1))
@@ -150,10 +175,12 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
     },
 
     async listDeals(f = {}) {
-      let q = db.from('cc_deals').select('*').order('updated_at', { ascending: false }).limit(f.limit ?? 500)
-      if (f.stages) q = q.in('stage', [...f.stages])
-      if (f.contactId) q = q.eq('contact_id', f.contactId)
-      return many<Deal>(q)
+      return upTo<Deal>(() => {
+        let q = db.from('cc_deals').select('*').order('updated_at', { ascending: false })
+        if (f.stages) q = q.in('stage', [...f.stages])
+        if (f.contactId) q = q.eq('contact_id', f.contactId)
+        return q
+      }, f.limit ?? 500)
     },
     async getDeal(id) {
       const r = await many<Deal>(db.from('cc_deals').select('*').eq('id', id).limit(1))
@@ -195,12 +222,14 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
     },
 
     async listTasks(f = {}) {
-      let q = db.from('cc_tasks').select('*').order('due_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false }).limit(f.limit ?? 500)
-      if (f.status) q = q.eq('status', f.status)
-      if (f.entityKind) q = q.eq('entity_kind', f.entityKind)
-      if (f.entityId) q = q.eq('entity_id', f.entityId)
-      if (f.assignee) q = q.eq('assignee_profile_id', f.assignee)
-      return many<Task>(q)
+      return upTo<Task>(() => {
+        let q = db.from('cc_tasks').select('*').order('due_at', { ascending: true, nullsFirst: false }).order('created_at', { ascending: false })
+        if (f.status) q = q.eq('status', f.status)
+        if (f.entityKind) q = q.eq('entity_kind', f.entityKind)
+        if (f.entityId) q = q.eq('entity_id', f.entityId)
+        if (f.assignee) q = q.eq('assignee_profile_id', f.assignee)
+        return q
+      }, f.limit ?? 500)
     },
     async createTask(input) {
       const { data, error } = await db.from('cc_tasks').insert(toRow(input)).select('*').single()
@@ -218,12 +247,14 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
     },
 
     async listDeliveries(f = {}) {
-      let q = db.from('cc_deliveries').select('*').order('scheduled_for', { ascending: true, nullsFirst: false }).limit(f.limit ?? 500)
-      if (f.statuses) q = q.in('status', [...f.statuses])
-      if (f.websiteOrderId != null) q = q.eq('website_order_id', f.websiteOrderId)
-      if (f.itemId) q = q.eq('item_id', f.itemId)
-      if (f.saleLineIds) q = q.in('sale_line_id', [...f.saleLineIds])
-      return many<Delivery>(q)
+      return upTo<Delivery>(() => {
+        let q = db.from('cc_deliveries').select('*').order('scheduled_for', { ascending: true, nullsFirst: false })
+        if (f.statuses) q = q.in('status', [...f.statuses])
+        if (f.websiteOrderId != null) q = q.eq('website_order_id', f.websiteOrderId)
+        if (f.itemId) q = q.eq('item_id', f.itemId)
+        if (f.saleLineIds) q = q.in('sale_line_id', [...f.saleLineIds])
+        return q
+      }, f.limit ?? 500)
     },
     async getDelivery(id) {
       const r = await many<Delivery>(db.from('cc_deliveries').select('*').eq('id', id).limit(1))

@@ -2,6 +2,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { primaryRole, type Role } from '@/lib/auth/rbac'
 import { PROFILE_WITH_ROLES } from '@/lib/auth/profile-query'
+import { dropProfileCache } from '@/lib/auth/session'
 import type { StaffMember } from './rules'
 
 /**
@@ -27,11 +28,13 @@ export async function setRole(profileId: string, role: Role, grantedBy: string):
   const ins = await db.from('cc_user_roles').upsert({ profile_id: profileId, role, granted_by: grantedBy }, { onConflict: 'profile_id,role' })
   if (ins.error) throw new Error(`staff: ${ins.error.message}`)
   const del = await db.from('cc_user_roles').delete().eq('profile_id', profileId).neq('role', role)
+  dropProfileCache()
   if (del.error) throw new Error(`staff: ${del.error.message}`)
 }
 
 export async function setActive(profileId: string, active: boolean): Promise<void> {
   const { error } = await supabaseAdmin().from('cc_profiles').update({ is_active: active, updated_at: new Date().toISOString() }).eq('id', profileId)
+  dropProfileCache()
   if (error) throw new Error(`staff: ${error.message}`)
 }
 

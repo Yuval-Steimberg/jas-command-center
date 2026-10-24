@@ -8,6 +8,7 @@ import { assertCan, can, primaryRole, type Permission, type Role, type Permissio
 import { supabaseAdmin, supabaseUserClient } from '@/lib/supabase'
 import { diagnoseSetupError, SetupError } from './setup-error'
 import { PROFILE_WITH_ROLES } from './profile-query'
+import { cached, invalidate } from '@/lib/integrations/cache'
 
 export { SetupError }
 
@@ -60,10 +61,26 @@ async function loadSession(): Promise<Session | null> {
     return { user: { id: 'dev-owner', email: 'owner@localhost', name: 'Local owner', role: 'owner', dev: true }, overrides: {} }
   }
 
-  const { data, error } = await supabaseUserClient().auth.getUser()
-  if (error || !data.user) return null
-  return resolveProfile(data.user.id)
+  // getClaims verifies the session token's signature locally once the project signs with
+  // asymmetric keys (falling back to a getUser round trip with the legacy shared secret).
+  // A token stays valid until it expires (an hour); is_active and the roles are re-read
+  // from the profile at most PROFILE_TTL_MS later (see below).
+  const { data, error } = await supabaseUserClient().auth.getClaims()
+  const sub = data?.claims?.sub
+  if (error || typeof sub !== 'string' || !sub) return null
+  return cached(`${PROFILE_CACHE}${sub}`, PROFILE_TTL_MS, () => resolveProfile(sub))
 }
+
+/**
+ * The profile lookup is a round trip to the command center's database (~600 ms
+ * from the function region), paid on every page. It is kept for 30 s per
+ * signed-in person. A staff change made here drops it at once on this instance
+ * (dropProfileCache); another warm instance may still act on the old role or
+ * active flag for up to 30 s.
+ */
+const PROFILE_CACHE = 'auth:profile:'
+export const PROFILE_TTL_MS = 30_000
+export const dropProfileCache = () => invalidate(PROFILE_CACHE)
 
 /** Map a Supabase Auth user to an active command-center profile with a role, or null. */
 export async function resolveProfile(authUserId: string): Promise<{ user: CurrentUser; overrides: PermissionOverrides } | null> {

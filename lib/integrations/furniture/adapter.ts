@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { env } from '@/lib/env'
-import { fetchJson, probe, SourceError, withHint } from '../http'
+import { fetchJson, probeRecent, SourceError, withHint } from '../http'
 import { notConfigured, readSource } from '../read'
 import { rollup, type HealthCheck, type IntegrationAdapter, type SourceResult } from '../types'
 
@@ -103,11 +103,12 @@ export const furnitureAdapter: IntegrationAdapter = {
   async health() {
     const e = env().furniture
     const checks: HealthCheck[] = []
+    const projects = getFurnitureProjects()
     if (e.appUrl) {
-      const p = await probe(e.appUrl)
+      const p = await probeRecent(e.appUrl)
       checks.push({ name: 'Field app', status: p.ok ? 'operational' : 'down', detail: p.ok ? `HTTP ${p.status}` : (p.error ?? `HTTP ${p.status}`), checkedAt: new Date().toISOString(), latencyMs: p.latencyMs })
     } else checks.push({ name: 'Field app', status: 'unknown', detail: 'FURNITURE_APP_URL not set', checkedAt: null, latencyMs: null })
-    const r = await getFurnitureProjects()
+    const r = await projects
     if (r.state === 'not_configured') checks.push({ name: 'Database', status: 'unknown', detail: `needs ${r.missing.join(', ')}`, checkedAt: null, latencyMs: null })
     else if (r.state === 'error') checks.push({ name: 'Database', status: 'down', detail: r.error, checkedAt: r.checkedAt, latencyMs: r.latencyMs })
     else checks.push({ name: 'Database', status: 'operational', detail: `${r.data.length} projects readable`, checkedAt: r.checkedAt, latencyMs: r.latencyMs })

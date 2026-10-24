@@ -179,7 +179,7 @@ export const designAgentAdapter: IntegrationAdapter = {
   ],
   async health() {
     const checks: HealthCheck[] = []
-    const h = await getDesignAgentHealthz()
+    const [h, s] = await Promise.all([getDesignAgentHealthz(), getDesignAgentStatus()])
     if (h.state === 'not_configured') checks.push({ name: 'Service', status: 'unknown', detail: 'DESIGN_AGENT_URL not set', checkedAt: null, latencyMs: null })
     else if (h.state === 'error') checks.push({ name: 'Service', status: 'down', detail: h.error, checkedAt: h.checkedAt, latencyMs: h.latencyMs })
     else
@@ -190,7 +190,6 @@ export const designAgentAdapter: IntegrationAdapter = {
         checkedAt: h.checkedAt,
         latencyMs: h.latencyMs,
       })
-    const s = await getDesignAgentStatus()
     if (s.state === 'not_configured') checks.push({ name: 'Jobs & delivery', status: 'unknown', detail: `needs ${s.missing.join(', ')}`, checkedAt: null, latencyMs: null })
     else if (s.state === 'error') checks.push({ name: 'Jobs & delivery', status: 'down', detail: s.error, checkedAt: s.checkedAt, latencyMs: s.latencyMs })
     else {

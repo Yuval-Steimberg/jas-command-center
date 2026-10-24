@@ -15,8 +15,13 @@ import { ActionForm } from '../inventory/forms'
 import { syncNowAction } from './actions'
 import { getSalesStore } from '@/lib/sales/store'
 import { PAYMENT_STATE_LABEL, saleMoney } from '@/lib/sales/model'
+import { inventorySection } from '@/lib/analytics/ops'
+import { israelDate } from '@/lib/time'
 
 export const dynamic = 'force-dynamic'
+
+/** Movements read for the 30-day figures; reaching it marks them a lower bound, as on /analytics. */
+const MOVES_CAP = 5000
 
 const STEP_LABEL = { orders: 'Website orders → inventory + customers', forms: 'Website forms → leads', reservations: 'Expired reservations', products: 'Website products → inventory, stock checks' } as const
 
@@ -26,31 +31,35 @@ export default async function SalesPage() {
   const may = (p: Parameters<typeof can>[1]) => can(s.user.role, p, s.overrides)
   const since = new Date(Date.now() - 30 * 86_400_000).toISOString()
 
-  const res = await loadOps(async () => {
-    const store = getOpsStore()
-    const [sync, sold, deliveries] = await Promise.all([syncStatus(), store.listItems({ statuses: ['sold', 'delivered'], limit: 1000 }), store.listDeliveries({ statuses: ['planned', 'out'] })])
-    return { sync, sold, plannedOrders: new Set(deliveries.map((d) => d.websiteOrderId).filter((x): x is number => x != null)) }
-  })
-  // Shop sales live in migration 0006: a database without it still shows everything else.
-  const shop = await loadOps(async () => {
-    const st = getSalesStore()
-    const sales = await st.listSales({ limit: 50 })
-    const ids = sales.map((x) => x.id)
-    const [lines, payments] = await Promise.all([st.linesOf(ids), st.paymentsOf(ids)])
-    const contacts = may('crm:read') ? await Promise.all([...new Set(sales.map((x) => x.contactId).filter((x): x is string => !!x))].map((id) => getOpsStore().getContact(id))) : []
-    return { sales, lines, payments, names: new Map(contacts.filter((c) => !!c).map((c) => [c!.id, may('crm:read_pii') ? c!.fullName : 'Customer'])) }
-  })
-  const queue = may('website:read')
-    ? await Promise.all((['paid', 'processing', 'shipped'] as const).map((st) => listWebsiteOrders('', st)))
-    : null
+  // The three reads are independent: run them together, so the page waits for the slowest one, not the sum.
+  const [res, shop, queue] = await Promise.all([
+    loadOps(async () => {
+      const store = getOpsStore()
+      const [sync, sold, deliveries, moves] = await Promise.all([syncStatus(), store.listItems({ statuses: ['sold', 'delivered'], limit: 1000 }), store.listDeliveries({ statuses: ['planned', 'out'] }), store.recentMovements(MOVES_CAP, since)])
+      return { sync, sold, moves, plannedOrders: new Set(deliveries.map((d) => d.websiteOrderId).filter((x): x is number => x != null)) }
+    }),
+    // Shop sales live in migration 0006: a database without it still shows everything else.
+    loadOps(async () => {
+      const st = getSalesStore()
+      const sales = await st.listSales({ limit: 50 })
+      const ids = sales.map((x) => x.id)
+      const contactIds = [...new Set(sales.map((x) => x.contactId).filter((x): x is string => !!x))]
+      const [lines, payments, contacts] = await Promise.all([st.linesOf(ids), st.paymentsOf(ids), may('crm:read') && contactIds.length ? getOpsStore().listContacts({ ids: contactIds, limit: contactIds.length }) : []])
+      return { sales, lines, payments, names: new Map(contacts.map((c) => [c.id, may('crm:read_pii') ? c.fullName : 'Customer'])) }
+    }),
+    may('website:read') ? Promise.all((['paid', 'processing', 'shipped'] as const).map((st) => listWebsiteOrders('', st))) : null,
+  ])
   const queueProblem = queue?.find((r): r is Exclude<typeof r, { state: 'ok' }> => r.state !== 'ok')
   const orders: WebsiteOrder[] = queue && !queueProblem ? queue.flatMap((r) => (r.state === 'ok' ? r.data : [])).sort((a, b) => a.created_at.localeCompare(b.created_at)) : []
   const pii = may('website:read_pii')
 
   const recent = res.ok ? res.data.sold.filter((i) => i.soldAt && i.soldAt >= since) : []
   const inStore = recent.filter((i) => i.soldChannel === 'in_store')
-  const online = recent.filter((i) => i.soldChannel === 'website')
-  const inStoreMinor = inStore.reduce((a, i) => a + (i.soldPriceMinor ?? 0), 0)
+  // The 30-day figures use the analytics definitions (lib/analytics/ops.ts), so this page and /analytics agree:
+  // every shop line counts (units of a lot included), returns are taken off, and a website sale counts once.
+  const period = { from: israelDate(new Date(since)), to: israelDate() }
+  const sec = res.ok ? inventorySection({ state: 'ok', data: { items: res.data.sold, movements: res.data.moves, deals: [], contacts: [], truncated: res.data.moves.length >= MOVES_CAP }, checkedAt: '' }, period, period) : null
+  const metric = (id: string) => sec?.metrics.find((m) => m.id === id)?.value ?? null
 
   return (
     <>
@@ -63,8 +72,8 @@ export default async function SalesPage() {
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Kpi label="Website orders to fulfil" value={queue && !queueProblem ? formatCount(orders.length) : '—'} sub="paid, processing or shipped" />
-            <Kpi label="In-store sales, 30 days" value={formatCount(inStore.length)} sub={formatAgorot(inStoreMinor, { whole: true })} hint="Inventory items recorded as sold in the shop. Not website revenue." />
-            <Kpi label="Inventory sold online, 30 days" value={formatCount(online.length)} sub="their revenue is in the website's numbers" />
+            <Kpi label="In-store sales, 30 days" value={formatCount(metric('inv.inStoreSales'))} sub={metric('inv.inStoreNet') == null ? undefined : `${formatAgorot(metric('inv.inStoreNet')!, { whole: true })} after returns`} hint="Shop sale lines in the last 30 days, the same figure as Analytics. Not website revenue." />
+            <Kpi label="Inventory sold online, 30 days" value={formatCount(metric('inv.soldOnline'))} sub="their revenue is in the website's numbers" />
             <Kpi label="Sold, not delivered" value={formatCount(res.data.sold.filter((i) => i.status === 'sold').length)} />
           </div>
 

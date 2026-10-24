@@ -42,8 +42,10 @@ async function refreshSupabaseSession(req: NextRequest, url: string, anon: strin
         },
       },
     })
-  const { data } = await supabase.auth.getUser()
-  return Boolean(data.user)
+  // Refreshes an expired session (getSession inside getClaims) and checks the token's signature,
+  // locally when the project has asymmetric signing keys. The page checks the profile and role.
+  const { data } = await supabase.auth.getClaims()
+  return Boolean(data?.claims?.sub)
 }
 
 export const config = {

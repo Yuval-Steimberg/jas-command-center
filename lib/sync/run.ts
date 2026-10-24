@@ -68,7 +68,8 @@ async function syncOrders(): Promise<StepReport> {
           done
             ? { status: 'sold', quantity: 0, soldChannel: 'website', soldAt: s.at, soldPriceMinor: s.lineTotalMinor, buyerContactId: buyer.get(s.orderId) ?? null, websiteOrderId: s.orderId, websiteOrderNumber: s.orderNumber, reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null }
             : { quantity: s.remaining },
-          { type: done ? 'sell' : 'adjust', refKind: 'website_order', refId: String(s.orderId), actorEmail: SYSTEM_ACTOR, quantityDelta: -s.units, detail: { channel: 'website', orderNumber: s.orderNumber, lineTotalMinor: s.lineTotalMinor } },
+          // Units of a lot sold online are a sale too (as in the shop), so analytics counts them; the lot itself stays listed.
+          { type: 'sell', refKind: 'website_order', refId: String(s.orderId), actorEmail: SYSTEM_ACTOR, quantityDelta: -s.units, detail: { channel: 'website', orderNumber: s.orderNumber, lineTotalMinor: s.lineTotalMinor, units: s.units } },
         )
         counts.sold++
         if (done) await runRule('sale_needs_delivery', { item, orderNumber: s.orderNumber }, SYSTEM_ACTOR)

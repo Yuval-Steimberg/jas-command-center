@@ -2,7 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import { env } from '@/lib/env'
 import { fetchJson, SourceError, withHint } from '../http'
-import { notConfigured, readOnce } from '../read'
+import { notConfigured, readOnce, readSource } from '../read'
 import { invalidate } from '../cache'
 import type { SourceResult } from '../types'
 
@@ -67,6 +67,17 @@ function missing() {
 }
 const NOTE = 'WEBSITE_COMMAND_CENTER_KEY must equal COMMAND_CENTER_API_KEY on the website (32+ characters), and the website must be redeployed after setting it.'
 
+/**
+ * Lists a page shows (orders, products, content, reviews, blog, marketing,
+ * messages) are reused for a few seconds, so going back and forth between a
+ * list and a detail page does not wait on the website each time. Every write
+ * through this module drops them (write() below), a 409 included, so a
+ * "reload" always reads afresh. Reads a write depends on (products by id for
+ * stock compare-and-set, the order sync, one product or post opened for
+ * editing) are never cached.
+ */
+export const LIST_TTL_MS = 30_000
+
 async function call(action: string, body: Record<string, unknown>, idempotent: boolean, timeoutMs = 20_000) {
   const { url, commandKey } = env().website
   return fetchJson(`${url}/api/analytics`, {
@@ -89,7 +100,7 @@ async function call(action: string, body: Record<string, unknown>, idempotent: b
 export async function listWebsiteOrders(q: string, status?: string): Promise<SourceResult<WebsiteOrder[]>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce(`website:orders:${status ?? ''}:${q}`, SOURCE, async () => {
+  return readSource(`website:orders:${status ?? ''}:${q}`, LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('orders-list', { q, status, limit: 100 }, true)
     return { data: ordersResponse.parse(data).orders, latencyMs }
   })
@@ -98,7 +109,7 @@ export async function listWebsiteOrders(q: string, status?: string): Promise<Sou
 export async function listWebsiteProducts(q: string): Promise<SourceResult<WebsiteProduct[]>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce(`website:products:${q}`, SOURCE, async () => {
+  return readSource(`website:products:${q}`, LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('products-list', { q, limit: 200 }, true)
     return { data: productsResponse.parse(data).products, latencyMs }
   })
@@ -166,7 +177,7 @@ export type WebsiteContent = z.infer<typeof contentResponse>
 export async function listWebsiteContent(section = ''): Promise<SourceResult<WebsiteContent>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce(`website:content:${section}`, SOURCE, async () => {
+  return readSource(`website:content:${section}`, LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('content-list', section ? { section } : {}, true)
     return { data: contentResponse.parse(data), latencyMs }
   })
@@ -205,7 +216,7 @@ export type ReviewFilter = 'pending' | 'approved' | ''
 export async function listWebsiteReviews(status: ReviewFilter): Promise<SourceResult<WebsiteReview[]>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce(`website:reviews:${status}`, SOURCE, async () => {
+  return readSource(`website:reviews:${status}`, LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('reviews-list', status ? { status } : {}, true)
     return { data: reviewsResponse.parse(data).reviews, latencyMs }
   })
@@ -263,7 +274,7 @@ export type WebsitePostInput = {
 export async function listWebsitePosts(): Promise<SourceResult<WebsitePostSummary[]>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce('website:blog', SOURCE, async () => {
+  return readSource('website:blog', LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('blog-list', {}, true)
     return { data: z.object({ posts: z.array(websitePostSummary) }).parse(data).posts, latencyMs }
   })
@@ -373,7 +384,7 @@ export async function getWebsiteProduct(id: number): Promise<SourceResult<Websit
 export async function getWebsiteProductMeta(): Promise<SourceResult<WebsiteProductMeta>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce('website:product-meta', SOURCE, async () => {
+  return readSource('website:product-meta', LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('product-meta', {}, true)
     return { data: productMetaResponse.parse(data), latencyMs }
   })
@@ -421,7 +432,7 @@ export type WebsiteCampaign = z.infer<typeof websiteCampaign>
 export async function listWebsiteDiscounts(): Promise<SourceResult<WebsiteDiscount[]>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce('website:discounts', SOURCE, async () => {
+  return readSource('website:discounts', LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('discounts-list', {}, true)
     return { data: z.object({ codes: z.array(websiteDiscount) }).parse(data).codes, latencyMs }
   })
@@ -448,7 +459,7 @@ export const deleteWebsiteSubscriber = (id: number) =>
 export async function listWebsiteCampaigns(): Promise<SourceResult<WebsiteCampaign[]>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce('website:campaigns', SOURCE, async () => {
+  return readSource('website:campaigns', LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('campaigns-list', {}, true)
     // A malformed history entry is dropped, not allowed to fail the page.
     const rows = z.object({ campaigns: z.array(z.unknown()) }).parse(data).campaigns
@@ -519,7 +530,7 @@ export type InquiryFilter = 'open' | 'handled' | 'all'
 export async function listWebsiteInquiries(status: InquiryFilter): Promise<SourceResult<{ inquiries: WebsiteInquiry[]; openCount: number | null }>> {
   const m = missing()
   if (m.length) return notConfigured(m, NOTE)
-  return readOnce(`website:inquiries:${status}`, SOURCE, async () => {
+  return readSource(`website:inquiries:${status}`, LIST_TTL_MS, SOURCE, async () => {
     const { data, latencyMs } = await call('inquiries-list', { status }, true)
     return { data: z.object({ inquiries: z.array(websiteInquiry), openCount: z.number().nullable() }).parse(data), latencyMs }
   })

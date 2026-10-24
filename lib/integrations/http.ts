@@ -1,4 +1,5 @@
 import 'server-only'
+import { cached } from './cache'
 
 export class SourceError extends Error {
   constructor(
@@ -93,6 +94,9 @@ export async function probe(url: string, timeoutMs = 6000): Promise<{ ok: boolea
     return { ok: false, status: null, latencyMs: Math.round(performance.now() - started), error: scrub(e instanceof Error ? e.message : String(e)) }
   }
 }
+
+/** probe() shared for 30 seconds: the status lights of every page view do not each hit the site. */
+export const probeRecent = (url: string) => cached(`probe:${url}`, 30_000, () => probe(url))
 
 /** Re-throw a SourceError with a fix appended, keeping its status and latency. */
 export function withHint(e: unknown, hint: (e: SourceError) => string | null): never {
