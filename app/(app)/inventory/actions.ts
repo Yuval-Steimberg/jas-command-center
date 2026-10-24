@@ -11,7 +11,7 @@ import { CONDITIONS, LOCATION_KINDS, REFURB_LEVELS, REFURB_STATUSES, type Condit
 import { isPhotoHash } from '@/lib/inventory/photo-hash'
 import { openSaleOf } from '@/lib/sales/service'
 import {
-  adoptWebsiteProducts, createManualItem, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
+  adoptWebsiteProducts, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
   type Actor, type OpResult,
 } from '@/lib/inventory/service'
 import { formatSku, skuCandidates } from '@/lib/inventory/model'
@@ -62,6 +62,31 @@ export async function adoptWebsiteAction(_p: ActionState, f: FormData): Promise<
     const r = await adoptWebsiteProducts(ids, { locationId: locationOf(f) }, actorOf(u))
     return { ok: r.created.length > 0, message: r.message }
   }, ['/inventory', '/inventory/website'])
+}
+
+/** Website writes take several calls each; a batch this size finishes well inside one serverless call. More ticked = the rest on the next press. */
+const MAX_PER_WEBSITE_BATCH = 30
+
+export async function listManyAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const ids = [...new Set(f.getAll('itemId').map(String).filter((x) => uuid.safeParse(x).success))]
+  if (!ids.length) return { ok: false, message: 'Tick at least one item.' }
+  const batch = ids.slice(0, MAX_PER_WEBSITE_BATCH)
+  const left = ids.length - batch.length
+  return act(['inventory:write', 'website:write'], 'inventory.list_many', `items:${batch.length}`, { items: batch }, async (u) => {
+    const r = await listManyOnWebsite(batch, actorOf(u))
+    return { ok: r.listed.length > 0, message: left ? `${r.message} ${left} more ticked: tick them again and press once more.` : r.message }
+  }, ['/inventory', '/inventory/online', '/website/products', '/shop'])
+}
+
+export async function hideWebsiteAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const ids = [...new Set(f.getAll('productId').map(Number).filter((x) => Number.isInteger(x) && x > 0))]
+  if (!ids.length) return { ok: false, message: 'Tick at least one product.' }
+  const batch = ids.slice(0, MAX_PER_WEBSITE_BATCH)
+  const left = ids.length - batch.length
+  return act(['website:write'], 'website.products.hide', `website_products:${batch.length}`, { productIds: batch }, async (u) => {
+    const r = await hideWebsiteProducts(batch, actorOf(u))
+    return { ok: r.hidden > 0, message: left ? `${r.message} ${left} more ticked: tick them again and press once more.` : r.message }
+  }, ['/inventory', '/inventory/online', '/website/products'])
 }
 
 /** Fields both the add and edit forms carry (photos, colours, cost, AI price), validated once. */

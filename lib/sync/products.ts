@@ -18,7 +18,8 @@ import type { WebsiteProduct } from '@/lib/integrations/website/manage'
  * - Nothing left to sell (stock 0 or marked sold) is not adopted.
  */
 export const ADOPT_AFTER_MS = 10 * 60_000
-export const CC_SLUG = /^jas-\d{6}$/
+/** A listing the command center made itself: its own 6-digit SKUs and the 4-digit jas-inventory serials it kept. */
+export const CC_SLUG = /^jas-(\d{4}|\d{6})$/
 
 /** What the website would sell right now (same rule as inventory/service websiteQuantity). */
 export const websiteQty = (p: Pick<WebsiteProduct, 'quantity' | 'in_stock'>) => (p.in_stock === false ? 0 : Math.max(0, p.quantity ?? 1))

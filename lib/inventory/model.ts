@@ -75,7 +75,7 @@ export const isHttps = (u: string | null | undefined) => {
  * product rules apply (a price above 0 and a main image), so an item without
  * them is refused here with the reason rather than by the website.
  */
-export function draftProduct(item: Item, opts: { categoryId?: number | null } = {}): { ok: true; product: WebsiteProductInput } | { ok: false; reason: string } {
+export function draftProduct(item: Item, opts: { categoryId?: number | null; published?: boolean } = {}): { ok: true; product: WebsiteProductInput } | { ok: false; reason: string } {
   if (!item.priceMinor || item.priceMinor <= 0) return { ok: false, reason: `${item.sku} has no asking price. Set one first.` }
   if (!isHttps(item.photoUrl)) return { ok: false, reason: `${item.sku} has no photo the website can show (an https link is needed).` }
   const story = [item.furnitureProjectName && `נאסף מפרויקט ${item.furnitureProjectName}`, item.furnitureApartment].filter(Boolean).join(', ')
@@ -102,9 +102,20 @@ export function draftProduct(item: Item, opts: { categoryId?: number | null } = 
       featured: false,
       quantity: item.quantity,
       tags: [item.sku],
-      published: false,
+      published: opts.published ?? false,
     },
   }
+}
+
+/**
+ * The website category an item's own category names, matched on the Hebrew
+ * name exactly (spaces trimmed). No match = no category: the product still
+ * shows in the shop's "all", and nothing is guessed.
+ */
+export function websiteCategoryFor(category: string | null | undefined, categories: readonly { id: number; name_he: string }[]): number | null {
+  const c = category?.trim()
+  if (!c) return null
+  return categories.find((x) => x.name_he.trim() === c)?.id ?? null
 }
 
 export const reservationExpired = (item: Pick<Item, 'status' | 'reservedUntil'>, now = Date.now()) =>

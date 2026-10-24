@@ -222,5 +222,8 @@ Shop sales + shop mode (`docs/CRM_INVENTORY.md`, migration `0006_shop_sales.sql`
   everywhere (snapshot, items filter). Home "sold this month" + category bars = `inventorySection` (same as /analytics). Dates DD/MM/YYYY
   (`formatDay`/`formatDayTime`).
 - Labels: QR (item link) + Code 128-B of the SKU (`lib/inventory/barcode.ts`, decoded by zxing when written), `/shop/labels?ids=`.
+- Website shop (`/inventory/online`, `website:write`): hide website products (unpublish via `hideWebsiteProducts`, never delete: orders point at them)
+  and put items in storage on sale in bulk (`listManyOnWebsite` = `listOnWebsite` per item, published, category matched by Hebrew name,
+  30 per press). `CC_SLUG` also covers the kept 4-digit serials (`jas-0042`) so the adoption sync never adopts our own listing.
 - jas-inventory data: imported once by SQL (project file `jas-inventory-import/import-jas-inventory.sql`), keeping its 4-digit
   serials (JAS-0042). `skuCandidates()` makes scan/lookup try the typed code, the 6-digit CC form and the legacy one.
