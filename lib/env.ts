@@ -60,6 +60,17 @@ export function env() {
       ga4PropertyId: read('MAP_GA4_PROPERTY_ID'),
       ga4ServiceAccount: read('GA4_SERVICE_ACCOUNT_JSON'),
     },
+    /**
+     * JAS Volunteers: the volunteer app's public URL (links in emails, the QR
+     * check-in code) and the sender for emails to volunteers. The tables live
+     * in this deployment's own Supabase (migration 0005).
+     */
+    volunteers: {
+      appUrl: url('VOLUNTEER_APP_URL'),
+      from: read('VOLUNTEER_EMAIL_FROM') ?? 'Just A Second · מתנדבים <volunteers@justasecond.co.il>',
+      replyTo: read('VOLUNTEER_REPLY_TO'),
+      teamPhone: read('VOLUNTEER_TEAM_PHONE') ?? '058-787-6549',
+    },
     /** Alert and report emails, through SendGrid (justasecond.co.il is domain-authenticated there). Unset = nothing is sent. */
     email: { sendgridKey: read('SENDGRID_API_KEY'), from: read('ALERT_EMAIL_FROM'), cronSecret: read('CRON_SECRET') },
     /** Production deployment status (read-only use; Vercel tokens are scoped per team). */

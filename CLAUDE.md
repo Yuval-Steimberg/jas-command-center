@@ -186,3 +186,15 @@ Customers, inventory, fulfilment (`docs/CRM_INVENTORY.md`, migration `0003_crm_i
   never `jas-NNNNNN` slugs) or by hand on `/inventory/website`; stock changed on the website without an order → one
   `automation:website_stock` task, never auto-corrected. No migration (source stays `manual`; provenance = intake ref).
 - The customer WhatsApp inbox (360dialog, coexistence) was PARKED by the owner on 2026-10-24; not built.
+
+Volunteers (`docs/VOLUNTEERS.md`, migration `0005_volunteers.sql`, `lib/volunteers/`, `app/(app)/volunteers/`, app `volunteers/`):
+- Two front ends, one database. `volunteers/` is its own Next app + Vercel project (Root Directory `volunteers`); it imports
+  `lib/volunteers` via `@shared/*`, so that library uses RELATIVE imports only and npm packages resolve from `volunteers/node_modules`
+  (Vercel installs only that package.json; CI's `volunteers` job builds it that way). The root tsconfig excludes `volunteers/`.
+- Capacity, waitlist (FIFO), overlap, attendance live in plpgsql under row locks (volunteer → shift). Joins are idempotent; staff on a
+  full shift is refused, not waitlisted; walk-ins exceed capacity, on the day only. Hours only from attendance. Matching only ranks.
+- Notifications = `cc_vol_outbox` (dedupe key, `not_before` past quiet hours 21:00–08:00), drained by `/api/cron/sweep` and the app's
+  `/api/cron`. `notifyVolunteers` never throws: a failed email is a warning on the action, not a failed write.
+- Errors cross Next bundles, so test `e.conflict === true`, never `instanceof ConflictError`.
+- Every Supabase list is paged (`.range`, 1000) and long `in()` lists chunked (150): PostgREST caps at max_rows silently.
+

@@ -9,6 +9,7 @@ export const PRODUCT_HREF: Record<Product, string> = {
   map: '/map',
   crm: '/crm',
   inventory: '/inventory',
+  volunteers: '/volunteers',
 }
 
 export const PRODUCT_LABEL: Record<Product, string> = {
@@ -19,4 +20,5 @@ export const PRODUCT_LABEL: Record<Product, string> = {
   map: 'Map',
   crm: 'Customers (CRM)',
   inventory: 'Inventory & sales',
+  volunteers: 'Volunteers',
 }

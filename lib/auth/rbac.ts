@@ -4,7 +4,7 @@
  * every server action and route calls assertPermission itself.
  */
 
-export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'viewer'] as const
+export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'viewer'] as const
 export type Role = (typeof ROLES)[number]
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -12,19 +12,21 @@ export const ROLE_LABELS: Record<Role, string> = {
   admin: 'Administrator',
   operations_manager: 'Operations manager',
   project_manager: 'Project manager',
+  volunteer_coordinator: 'Volunteer coordinator',
   viewer: 'Read-only viewer',
 }
 
 /** Most privileged first: a user with several roles acts with the first one listed here. */
-const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'viewer']
+const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'viewer']
 
 /**
- * The five source systems, plus the two modules whose data the command center
- * itself owns (migration 0003): `crm` (contacts, leads, interactions, tasks)
- * and `inventory` (physical items after intake, locations, in-store sales,
- * deliveries).
+ * The five source systems, plus the modules whose data the command center
+ * itself owns: `crm` (contacts, leads, interactions, tasks) and `inventory`
+ * (physical items after intake, locations, in-store sales, deliveries) from
+ * migration 0003, and `volunteers` (volunteers, activities, shifts,
+ * attendance; migration 0005, shared with the volunteer app).
  */
-export const PRODUCTS = ['website', 'gift_cards', 'furniture', 'design_agent', 'map', 'crm', 'inventory'] as const
+export const PRODUCTS = ['website', 'gift_cards', 'furniture', 'design_agent', 'map', 'crm', 'inventory', 'volunteers'] as const
 export type Product = (typeof PRODUCTS)[number]
 
 /**
@@ -75,6 +77,8 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'crm:read_pii',
     'crm:write',
     'inventory:write',
+    'volunteers:read_pii',
+    'volunteers:write',
     'integrations:read',
     'assistant:use',
   ]),
@@ -87,6 +91,25 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     // Intake of collected items into the warehouse is the end of a project manager's flow.
     'inventory:read',
     'inventory:operate',
+    // Field projects need people: a project manager staffs the activities on their projects.
+    'volunteers:read',
+    'volunteers:read_pii',
+    'volunteers:operate',
+    'volunteers:write',
+    'assistant:use',
+  ]),
+  /**
+   * Runs the volunteer programme: activities, shifts, assignments, attendance,
+   * messages to volunteers. Sees which furniture projects exist (to link an
+   * activity to one) and nothing about money, customers or other products.
+   */
+  volunteer_coordinator: new Set<Permission>([
+    'volunteers:read',
+    'volunteers:read_pii',
+    'volunteers:operate',
+    'volunteers:write',
+    'furniture:read',
+    'map:read',
     'assistant:use',
   ]),
   viewer: new Set<Permission>([...all(['read']), 'integrations:read']),

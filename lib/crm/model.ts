@@ -1,4 +1,4 @@
-import type { Contact, ContactRole, DealStage } from '@/lib/ops/types'
+import type { Contact, ContactRole, DealStage } from '../ops/types'
 
 /**
  * Contact identity, pure. One person = one contact, recognised by email or
@@ -47,6 +47,6 @@ export function daysWithoutContact(d: { lastContactedAt: string | null; createdA
   return Math.floor((now - Date.parse(d.lastContactedAt ?? d.createdAt)) / 86_400_000)
 }
 
-export const CHANNEL_LABEL: Record<import('@/lib/ops/types').Channel, string> = {
+export const CHANNEL_LABEL: Record<import('../ops/types').Channel, string> = {
   whatsapp: 'WhatsApp', phone: 'Phone call', email: 'Email', in_person: 'In person', website_form: 'Website form', website_order: 'Website order', gift_card: 'Gift card', note: 'Note',
 }
