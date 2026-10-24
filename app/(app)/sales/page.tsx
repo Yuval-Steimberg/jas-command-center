@@ -16,7 +16,7 @@ import { syncNowAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
-const STEP_LABEL = { orders: 'Website orders → inventory + customers', forms: 'Website forms → leads', reservations: 'Expired reservations' } as const
+const STEP_LABEL = { orders: 'Website orders → inventory + customers', forms: 'Website forms → leads', reservations: 'Expired reservations', products: 'Website products → inventory, stock checks' } as const
 
 export default async function SalesPage() {
   await requirePageAccess('inventory:read')
@@ -94,7 +94,7 @@ export default async function SalesPage() {
                       return (
                         <li key={k}>
                           <p className="font-medium text-ink">{STEP_LABEL[k]}</p>
-                          <p className="text-xs text-muted">{c.lastSuccessAt ? `last ok ${timeAgo(c.lastSuccessAt)}` : 'never run'}{c.cursor && k !== 'reservations' ? ` · up to ${formatDateTime(c.cursor)}` : ''}</p>
+                          <p className="text-xs text-muted">{c.lastSuccessAt ? `last ok ${timeAgo(c.lastSuccessAt)}` : 'never run'}{c.cursor && k === 'products' ? ` · up to product #${c.cursor}` : c.cursor && k !== 'reservations' ? ` · up to ${formatDateTime(c.cursor)}` : ''}</p>
                           {c.lastError ? <p dir="auto" className="text-xs text-bad">{c.lastError}</p> : null}
                         </li>
                       )

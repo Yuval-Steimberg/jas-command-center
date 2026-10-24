@@ -2,7 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { fakeServer, resetSourceCache } from './fake-server'
 import { getOpsStore, ConflictError } from '@/lib/ops'
 import { emptyData, memoryStore } from '@/lib/ops/memory'
-import { listOnWebsite, reserveItem, sellInStore, releaseItem } from '@/lib/inventory/service'
+import { adoptWebsiteProducts, listOnWebsite, reserveItem, sellInStore, releaseItem } from '@/lib/inventory/service'
+import { planProductAdoption } from '@/lib/sync/products'
 import { runOpsSync } from '@/lib/sync/run'
 import { proposalDef } from '@/lib/assistant/proposals'
 
@@ -183,6 +184,97 @@ describe('the website sync', () => {
     await runOpsSync()
     expect(await getOpsStore().listDeals()).toHaveLength(1)
     expect((await getOpsStore().listTasks({ status: 'open' })).filter((t) => t.source === 'automation:website_form_lead')).toHaveLength(1)
+  })
+})
+
+describe('products added on the website (studio /manager/quick) reach inventory', () => {
+  const old = new Date(Date.now() - 3_600_000).toISOString()
+  const product = (id: number, over: Partial<Product> = {}): Product => ({ id, slug: `p-${id}`, name_he: `כורסה ${id}`, price: 320, quantity: 1, in_stock: true, published: true, updated_at: old, ...over })
+  const step = (r: Awaited<ReturnType<typeof runOpsSync>>) => r.steps.find((x) => x.step === 'website_products')!
+
+  it('first run adopts nothing; later new products are adopted once, after they settle', async () => {
+    const w = website()
+    w.products.set(300, product(300))
+    await connect(w)
+    expect(step(await runOpsSync())).toMatchObject({ state: 'ok', counts: { adopted: 0 } })
+    expect(await getOpsStore().listItems({})).toHaveLength(0)
+
+    w.products.set(301, product(301, { quantity: 2, price: 149.9 }))
+    w.products.set(302, product(302, { updated_at: new Date().toISOString() })) // still being edited in the studio
+    w.products.set(303, product(303, { slug: 'jas-000009' })) // a command center listing, never adopted
+    w.products.set(304, product(304, { quantity: 0, in_stock: false })) // nothing left to sell
+    resetSourceCache()
+    expect(step(await runOpsSync())).toMatchObject({ state: 'ok', counts: { adopted: 1 } })
+    const [item] = await getOpsStore().listItems({ websiteProductIds: [301] })
+    expect(item).toMatchObject({ title: 'כורסה 301', status: 'listed', quantity: 2, kind: 'batch', priceMinor: 14990, websiteProductId: 301 })
+    expect((await getOpsStore().movements(item!.id))[0]).toMatchObject({ type: 'intake', refKind: 'website_product', refId: '301' })
+
+    w.products.get(302)!.updated_at = old
+    resetSourceCache()
+    expect(step(await runOpsSync())).toMatchObject({ counts: { adopted: 1 } })
+    resetSourceCache()
+    await runOpsSync()
+    expect((await getOpsStore().listItems({})).map((i) => i.websiteProductId).sort()).toEqual([301, 302])
+  })
+
+  it('a website sale of an adopted product sells the item; a studio "mark sold" opens one check task', async () => {
+    const w = website()
+    w.products.set(300, product(300))
+    await connect(w)
+    await runOpsSync()
+    w.products.set(310, product(310))
+    w.products.set(311, product(311))
+    resetSourceCache()
+    await runOpsSync()
+
+    w.products.get(311)!.in_stock = false // "סימון כנמכר" in the studio, no order
+    resetSourceCache()
+    await runOpsSync()
+    resetSourceCache()
+    await runOpsSync()
+    const checks = (await getOpsStore().listTasks({ status: 'open' })).filter((t) => t.source === 'automation:website_stock')
+    expect(checks).toHaveLength(1)
+    expect(checks[0]!.title).toMatch(/marked sold on the website/)
+
+    const T = new Date().toISOString()
+    const order = { id: 20, order_number: 'JAS-2001', customer_name: 'Dana Levi', customer_email: 'dana@x.com', customer_phone: '0501234567', items: [{ product_id: 310, price: 320, quantity: 1 }], subtotal: 320, shipping: 0, total: 320, status: 'paid', notes: null, paid_at: T, created_at: T, updated_at: T }
+    const w2 = website({ orders: [order] })
+    for (const [k, v] of w.products) w2.products.set(k, v)
+    w2.products.get(310)!.quantity = 0
+    w2.products.get(310)!.in_stock = false
+    await connect(w2)
+    resetSourceCache()
+    await runOpsSync()
+    const [sold] = await getOpsStore().listItems({ websiteProductIds: [310] })
+    expect(sold).toMatchObject({ status: 'sold', soldChannel: 'website', websiteOrderNumber: 'JAS-2001' })
+    expect(await getOpsStore().listContacts()).toHaveLength(1)
+    expect((await getOpsStore().listTasks({ status: 'open' })).filter((t) => t.source === 'automation:website_stock')).toHaveLength(1)
+  })
+
+  it('older products are brought in by a person, once, and only with stock', async () => {
+    const w = website()
+    w.products.set(300, product(300))
+    w.products.set(305, product(305, { quantity: 0, in_stock: false }))
+    await connect(w)
+    const shelf = await getOpsStore().saveLocation({ name: 'Shop floor', kind: 'shop' })
+    const r = await adoptWebsiteProducts([300, 305, 999], { locationId: shelf.id }, actor)
+    expect(r.created).toHaveLength(1)
+    expect(r.created[0]).toMatchObject({ websiteProductId: 300, locationId: shelf.id, status: 'listed' })
+    expect(r.refused.join(' ')).toMatch(/out of stock.*#999: no longer/)
+    resetSourceCache()
+    const again = await adoptWebsiteProducts([300], { locationId: null }, actor)
+    expect(again.created).toHaveLength(0)
+    expect(again.refused[0]).toMatch(/already in inventory/)
+  })
+
+  it('the cursor never passes a product that is still settling', () => {
+    const now = Date.parse('2026-10-24T10:00:00Z')
+    const p = (id: number, mins: number) => ({ id, slug: `p-${id}`, name_he: 'x', name_en: null, price: 1, original_price: null, quantity: 1, in_stock: true, featured: false, published: true, image_url: null, updated_at: new Date(now - mins * 60_000).toISOString() })
+    expect(planProductAdoption([p(5, 60)], new Set(), null, now)).toEqual({ adopt: [], cursor: 5 })
+    const r = planProductAdoption([p(6, 60), p(7, 1), p(8, 60)], new Set(), 5, now)
+    expect(r.adopt.map((x) => x.id)).toEqual([6, 8])
+    expect(r.cursor).toBe(6)
+    expect(planProductAdoption([p(6, 60), p(7, 60), p(8, 60)], new Set([6, 8]), 6, now)).toMatchObject({ cursor: 8 })
   })
 })
 

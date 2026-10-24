@@ -177,4 +177,8 @@ Customers, inventory, fulfilment (`docs/CRM_INVENTORY.md`, migration `0003_crm_i
   idempotent per request id). Lines change only before anything arrived. Received items keep `supplier_id` /
   `purchase_order_id` / `unit_cost_minor` forever (`cc_inventory_apply` never writes them). Tests: `tests/integration/suppliers.test.ts`;
   the SQL was run against a real Postgres 16, including four concurrent receipts of the same units (one wins).
+- Website-made products (phone studio `/manager/quick`; the rest of /manager is retired): adopted into
+  inventory by sync step `website_products` (`lib/sync/products.ts`: id cursor, first run adopts nothing, 10-min settle,
+  never `jas-NNNNNN` slugs) or by hand on `/inventory/website`; stock changed on the website without an order → one
+  `automation:website_stock` task, never auto-corrected. No migration (source stays `manual`; provenance = intake ref).
 - The customer WhatsApp inbox (360dialog, coexistence) was PARKED by the owner on 2026-10-24; not built.

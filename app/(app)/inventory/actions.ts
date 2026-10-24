@@ -9,7 +9,7 @@ import { runAct, formStr, formShekels, errText, type ActionState, type ActResult
 import { getOpsStore, OpsSetupError } from '@/lib/ops'
 import { CONDITIONS, LOCATION_KINDS, type Condition, type ItemPatch } from '@/lib/ops/types'
 import {
-  createManualItem, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
+  adoptWebsiteProducts, createManualItem, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
   type Actor, type OpResult,
 } from '@/lib/inventory/service'
 import { formatSku } from '@/lib/inventory/model'
@@ -18,6 +18,8 @@ import { upsertContact } from '@/lib/crm/service'
 export type { ActionState } from '@/lib/ops/act'
 
 const uuid = z.string().uuid()
+/** One confirm = one serverless call; each item is its own atomic write. */
+const MAX_PER_CONFIRM = 100
 const str = formStr
 const shekels = formShekels
 const actorOf = (u: CurrentUser): Actor => ({ email: u.email, name: u.name })
@@ -39,14 +41,25 @@ const version = (f: FormData) => {
 }
 
 export async function intakeAction(_p: ActionState, f: FormData): Promise<ActionState> {
-  const ids = f.getAll('fieldItemId').map(String).filter((x) => uuid.safeParse(x).success).slice(0, 100)
+  const ids = [...new Set(f.getAll('fieldItemId').map(String).filter((x) => uuid.safeParse(x).success))]
   if (!ids.length) return { ok: false, message: 'Tick at least one collected item.' }
+  if (ids.length > MAX_PER_CONFIRM) return { ok: false, message: `${ids.length} ticked: take in at most ${MAX_PER_CONFIRM} per confirm. Nothing was taken in.` }
   const price = shekels(f, 'price')
   if (Number.isNaN(price)) return { ok: false, message: 'The asking price must be an amount in ₪.' }
   return act(['inventory:operate'], 'inventory.intake', `furniture:${ids.length}`, { fieldItems: ids, locationId: locationOf(f) }, async (u) => {
     const r = await intakeFromFurniture(ids, { locationId: locationOf(f), condition: condition(f), priceMinor: price }, actorOf(u))
     return { ok: r.created.length > 0, message: r.message }
   }, ['/inventory', '/inventory/intake'])
+}
+
+export async function adoptWebsiteAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const ids = [...new Set(f.getAll('productId').map(Number).filter((x) => Number.isInteger(x) && x > 0))]
+  if (!ids.length) return { ok: false, message: 'Tick at least one product.' }
+  if (ids.length > MAX_PER_CONFIRM) return { ok: false, message: `${ids.length} ticked: bring in at most ${MAX_PER_CONFIRM} per confirm. Nothing was taken in.` }
+  return act(['inventory:operate'], 'inventory.adopt_website', `website_products:${ids.length}`, { productIds: ids, locationId: locationOf(f) }, async (u) => {
+    const r = await adoptWebsiteProducts(ids, { locationId: locationOf(f) }, actorOf(u))
+    return { ok: r.created.length > 0, message: r.message }
+  }, ['/inventory', '/inventory/website'])
 }
 
 export async function createItemAction(_p: ActionState, f: FormData): Promise<ActionState> {

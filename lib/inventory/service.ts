@@ -4,8 +4,10 @@ import type { Condition, Item, ItemPatch, MovementType } from '@/lib/ops/types'
 import { getFieldItems, intakeBlocker } from '@/lib/integrations/furniture/intake'
 import {
   deleteWebsiteProduct, getWebsiteProduct, listWebsiteProductsByIds, saveWebsiteProduct, setWebsiteStock,
-  type WebsiteProductFull, type WebsiteProductInput, PRODUCT_CONDITIONS,
+  type WebsiteProduct, type WebsiteProductFull, type WebsiteProductInput, PRODUCT_CONDITIONS,
 } from '@/lib/integrations/website/manage'
+import { shekelsToAgorot } from '@/lib/money'
+import { websiteQty } from '@/lib/sync/products'
 import { FIELD_CONDITION, OPS, draftProduct } from './model'
 import { touchContact } from '@/lib/crm/service'
 import { runRule } from '@/lib/tasks/automations'
@@ -120,6 +122,57 @@ export async function intakeFromFurniture(fieldItemIds: string[], opts: IntakeOp
 
 export async function createManualItem(input: Pick<Item, 'title'> & ItemPatch, actor: Actor, note?: string): Promise<Item> {
   return getOpsStore().createItem({ ...input, status: 'in_storage', source: 'manual', createdBy: actor.email }, { actorEmail: actor.email, note: note ?? null })
+}
+
+// ── Website products made on the website (studio /manager/quick) ─────────
+/**
+ * Link a product that was created on the website to a new inventory item. It
+ * is already for sale there, so the item starts `listed` with the website's
+ * stock; price and photo are copied for reference (the website keeps the
+ * listing's own). The intake movement's ref is the product id, which is how
+ * the item page tells this provenance apart from "added by hand".
+ */
+export async function adoptWebsiteProduct(p: WebsiteProduct, opts: { locationId: string | null }, actor: Actor): Promise<Item> {
+  const qty = websiteQty(p)
+  return getOpsStore().createItem(
+    {
+      title: p.name_he.slice(0, 200),
+      category: p.categories?.name_he ?? null,
+      kind: qty > 1 ? 'batch' : 'unique',
+      quantity: qty,
+      status: 'listed',
+      locationId: opts.locationId,
+      priceMinor: p.price != null ? shekelsToAgorot(p.price) : null,
+      photoUrl: p.image_url,
+      websiteProductId: p.id,
+      source: 'manual',
+      createdBy: actor.email,
+    },
+    { refKind: 'website_product', refId: String(p.id), actorEmail: actor.email, note: `From the website shop (product #${p.id})`, detail: { slug: p.slug, published: p.published ?? null } },
+  )
+}
+
+/** The person's pick on /inventory/website. Re-reads each product: the form only names ids. */
+export async function adoptWebsiteProducts(ids: number[], opts: { locationId: string | null }, actor: Actor): Promise<{ created: Item[]; refused: string[]; message: string }> {
+  const r = await listWebsiteProductsByIds(ids)
+  if (r.state !== 'ok') return { created: [], refused: [], message: `The website could not be read (${r.state === 'error' ? r.error : 'not connected'}); nothing was taken in.` }
+  const linked = new Set((await getOpsStore().listItems({ websiteProductIds: ids, limit: 1000 })).map((i) => i.websiteProductId))
+  const created: Item[] = []
+  const refused: string[] = []
+  for (const id of ids) {
+    const p = r.data.find((x) => x.id === id)
+    if (!p) { refused.push(`#${id}: no longer on the website`); continue }
+    if (linked.has(id)) { refused.push(`"${p.name_he.slice(0, 60)}": already in inventory`); continue }
+    if (websiteQty(p) === 0) { refused.push(`"${p.name_he.slice(0, 60)}": out of stock on the website`); continue }
+    try {
+      created.push(await adoptWebsiteProduct(p, opts, actor))
+    } catch (e) {
+      if (e instanceof ConflictError) refused.push(`"${p.name_he.slice(0, 60)}": ${e.message}`)
+      else throw e
+    }
+  }
+  const message = `${created.length ? `Brought in ${created.length} item(s): ${created.map((i) => i.sku).join(', ')}.` : 'Nothing was taken in.'}${refused.length ? ` Skipped ${refused.length}: ${refused.join('; ')}.` : ''}`
+  return { created, refused, message }
 }
 
 // ── Edit / move ───────────────────────────────────────────────────────────

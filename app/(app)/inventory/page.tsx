@@ -40,10 +40,11 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
     <>
       <PageHeader
         title="Inventory"
-        description="Every physical item after intake: where it is, its condition, and its way to a buyer, a donation or recycling. Once listed, the website owns the item's price, visibility and stock; this page reads them live. Regular shop products that never came through intake stay on the website and are listed below, read live."
+        description="Every physical item after intake: where it is, its condition, and its way to a buyer, a donation or recycling. Once listed, the website owns the item's price, visibility and stock; this page reads them live. Products added on the website itself (the phone studio) come in by the hourly sync; older ones are listed below until someone brings them in."
         actions={
           <div className="flex flex-wrap gap-2">
             {may('inventory:operate') ? <Link href="/inventory/intake" className={btn}>Intake from collections</Link> : null}
+            {may('inventory:operate') ? <Link href="/inventory/website" className={btn}>From the website</Link> : null}
             {may('inventory:write') ? <Link href="/inventory/new" className={btn}>Add an item</Link> : null}
             <Link href="/inventory/scan" className={btn}>Scan</Link>
             <Link href="/inventory/locations" className={btn}>Locations</Link>
@@ -122,6 +123,8 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
               const linked = new Set(res.ok ? res.data.items.map((i) => i.websiteProductId) : [])
               const own = allWeb.data.filter((p) => !linked.has(p.id) && !/^jas-\d{6}$/.test(p.slug))
               return own.length ? (
+                <>
+                {may('inventory:operate') ? <p className="mb-2 text-sm"><Link href="/inventory/website" className={linkCls}>Bring these into inventory</Link> <span className="text-muted">so website sales of them show here.</span></p> : null}
                 <ul className="divide-y divide-line/60 text-sm">
                   {own.slice(0, 50).map((p) => (
                     <li key={p.id} className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 py-1.5">
@@ -132,7 +135,8 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
                     </li>
                   ))}
                 </ul>
-              ) : <p className="text-sm text-muted">Every website product came through intake.</p>
+                </>
+              ) : <p className="text-sm text-muted">Every website product is in inventory.</p>
             })()}
           </CardBody>
         </Card>

@@ -9,12 +9,12 @@ import { locationOptions } from '@/lib/ops/views'
 import { listIntakeCandidates } from '@/lib/integrations/furniture/intake'
 import { CONDITION_LABEL, FIELD_CONDITION } from '@/lib/inventory/model'
 import { formatDateTime } from '@/lib/format'
-import { IntakeForm } from '../forms'
+import { IntakeForm, SelectAll } from '../forms'
 import { intakeAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
 
-export default async function IntakePage() {
+export default async function IntakePage({ searchParams }: { searchParams: { project?: string } }) {
   await requirePageAccess('inventory:operate')
   const r = await listIntakeCandidates()
   const ops = await loadOps(async () => {
@@ -23,7 +23,10 @@ export default async function IntakePage() {
     const [locations, taken] = await Promise.all([store.listLocations(), ids.length ? store.listItems({ furnitureItemIds: ids, limit: 5000 }) : Promise.resolve([])])
     return { locations, taken: new Map(taken.map((i) => [i.furnitureItemId!, i])) }
   })
-  const waiting = r.state === 'ok' && ops.ok ? r.data.filter((x) => !ops.data.taken.has(x.id)) : []
+  const allWaiting = r.state === 'ok' && ops.ok ? r.data.filter((x) => !ops.data.taken.has(x.id)) : []
+  const projects = [...allWaiting.reduce((m, x) => m.set(x.project_id, { name: x.projectName, n: (m.get(x.project_id)?.n ?? 0) + 1 }), new Map<string, { name: string; n: number }>())]
+  const project = projects.some(([id]) => id === searchParams.project) ? searchParams.project : undefined
+  const waiting = project ? allWaiting.filter((x) => x.project_id === project) : allWaiting
   return (
     <>
       <PageHeader
@@ -32,17 +35,27 @@ export default async function IntakePage() {
         actions={<Link href="/inventory" className={btn}>Inventory</Link>}
       />
       <Card>
-        <CardHeader title={`Waiting for intake${r.state === 'ok' && ops.ok ? ` (${waiting.length})` : ''}`} meta={r.state === 'ok' ? <Freshness checkedAt={r.checkedAt} source={r.source} latencyMs={r.latencyMs} /> : undefined} />
+        <CardHeader title={`Waiting for intake${r.state === 'ok' && ops.ok ? ` (${allWaiting.length})` : ''}`} meta={r.state === 'ok' ? <Freshness checkedAt={r.checkedAt} source={r.source} latencyMs={r.latencyMs} /> : undefined} />
         <CardBody>
           {r.state !== 'ok' ? (
             <SourceProblem result={r} what="Collected furniture" />
           ) : !ops.ok ? (
             <OpsUnavailable message={ops.message} />
-          ) : !waiting.length ? (
+          ) : !allWaiting.length ? (
             <p className="text-sm text-muted">{r.data.length ? `All ${r.data.length} collected JAS item(s) are already in inventory.` : 'No item is marked JAS and collected in the field app yet.'}</p>
           ) : (
             <IntakeForm action={intakeAction} locations={locationOptions(ops.data.locations)}>
               {!ops.data.locations.length ? <p className="text-sm text-warn">No storage locations exist yet. <Link href="/inventory/locations" className={linkCls}>Add your warehouse</Link> first, or take items in without one.</p> : null}
+              {projects.length > 1 ? (
+                <nav aria-label="Filter by project" className="flex flex-wrap gap-2 text-sm">
+                  <Link href="/inventory/intake" className={`rounded-full border px-3 py-1.5 ${project ? 'border-line text-muted' : 'border-ink text-ink'}`}>All ({allWaiting.length})</Link>
+                  {projects.map(([id, p]) => <Link key={id} href={`/inventory/intake?project=${id}`} dir="auto" className={`rounded-full border px-3 py-1.5 ${project === id ? 'border-ink text-ink' : 'border-line text-muted'}`}>{p.name} ({p.n})</Link>)}
+                </nav>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                <SelectAll name="fieldItemId" key={project ?? 'all'} />
+                <span className="text-xs text-muted">Up to 100 per confirm. Tick only what is in storage today.</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[720px] text-sm">
                   <thead><tr className="text-left text-xs text-muted"><th className="py-2 pe-2 font-medium"><span className="sr-only">Take in</span></th><th className="py-2 pe-3 font-medium">Item</th><th className="py-2 pe-3 font-medium">From</th><th className="py-2 pe-3 font-medium">Condition</th><th className="py-2 pe-3 font-medium">Collected</th></tr></thead>
