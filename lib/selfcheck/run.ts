@@ -41,6 +41,7 @@ import { loadAnalytics } from '@/lib/analytics/load'
 import { supabaseAdmin } from '@/lib/supabase'
 import { fromCall, fromSource, summarise, type Probe } from './probe'
 import { probeAdminRowsPrivate, probePrerenderedPages, probeSitemap } from './public'
+import { probeVolunteers } from './volunteers'
 
 /**
  * Every read a Command Center page depends on, run once against production.
@@ -185,6 +186,7 @@ export async function runSelfCheck(now = new Date()) {
     }),
   ])
   probes.push(...(await probeSitemap(env().website.url)))
+  probes.push(...(await probeVolunteers(now)))
   if (deployments.state === 'ok') {
     for (const p of deployments.data) {
       probes.push({
