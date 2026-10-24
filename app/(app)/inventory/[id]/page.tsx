@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { SourceProblem } from '@/components/ui/source-state'
@@ -9,7 +9,12 @@ import { can, type Permission } from '@/lib/auth/rbac'
 import { getOpsStore } from '@/lib/ops'
 import { loadOps } from '@/lib/ops/guard'
 import { contactLabel, locationLabels, locationOptions } from '@/lib/ops/views'
-import { CONDITION_LABEL, OPS, can as allowed, daysHeld, draftProduct } from '@/lib/inventory/model'
+import { CONDITION_LABEL, OPS, REFURB_LEVEL_LABEL, REFURB_STATUS_LABEL, can as allowed, daysHeld, describeChanges, draftProduct } from '@/lib/inventory/model'
+import { REFURB_LEVELS, REFURB_STATUSES } from '@/lib/ops/types'
+import { ItemForm } from '@/components/inventory/item-form'
+import { valuesOf } from '@/components/inventory/item-values'
+import { getSalesStore } from '@/lib/sales/store'
+import { keptQty } from '@/lib/sales/model'
 import { qrSvg, itemUrl } from '@/lib/inventory/qr'
 import { getWebsiteProduct, getWebsiteProductMeta } from '@/lib/integrations/website/manage'
 import { formatAgorot } from '@/lib/money'
@@ -17,7 +22,7 @@ import { formatDateTime } from '@/lib/format'
 import { input } from '../../website/forms'
 import { ActionForm, ContactPicker, Field, LocationSelect } from '../forms'
 import {
-  deliveredAction, disposeAction, editItemAction, listItemAction, moveItemAction, publishAction, releaseAction, reserveAction, returnAction, sellAction,
+  deliveredAction, disposeAction, listItemAction, moveItemAction, publishAction, refurbAction, releaseAction, reserveAction, returnAction,
 } from '../actions'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +36,8 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
   await requirePageAccess('inventory:read')
   if (!z.string().uuid().safeParse(params.id).success) notFound()
   const s = (await getSession())!
+  // A label scanned with a phone's own camera app opens this URL; a seller gets the shop view of the item.
+  if (s.user.role === 'seller') redirect(`/shop/items/${params.id}`)
   const may = (p: Permission) => can(s.user.role, p, s.overrides)
   const pii = may('crm:read_pii')
 
@@ -38,17 +45,23 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
     const store = getOpsStore()
     const item = await store.getItem(params.id)
     if (!item) return null
+    // Shop sale lines need migration 0006; without it the item page still works.
+    const saleLines = await getSalesStore().linesForItems([item.id]).catch(() => [])
+    const sales = saleLines.length ? await getSalesStore().listSales({ ids: [...new Set(saleLines.map((l) => l.saleId))] }).catch(() => []) : []
     const [movements, locations, contacts, tasks] = await Promise.all([
       store.movements(item.id),
       store.listLocations(),
       may('crm:read') ? store.listContacts({ limit: 500 }) : Promise.resolve([]),
       store.listTasks({ entityKind: 'item', entityId: item.id, limit: 50 }),
     ])
-    return { item, movements, locations, contacts, tasks }
+    return { item, movements, locations, contacts, tasks, saleLines, sales }
   })
   if (res.ok && !res.data) notFound()
   if (!res.ok) return (<><PageHeader title="Item" /><OpsUnavailable message={res.message} /></>)
-  const { item, movements, locations, contacts, tasks } = res.data!
+  const { item, movements, locations, contacts, tasks, saleLines, sales } = res.data!
+  const saleNo = new Map(sales.map((x) => [x.id, x.number]))
+  const keptLine = saleLines.find((l) => keptQty(l) > 0)
+  const money = may('inventory:financial')
   const labels = locationLabels(locations)
   const locs = locationOptions(locations)
   const people = new Map(contacts.map((c) => [c.id, c]))
@@ -82,12 +95,27 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={item.photoUrl} alt={item.title} className="aspect-square w-full rounded-md border border-line object-cover" />
               ) : <div className="grid aspect-square w-full place-items-center rounded-md border border-dashed border-line text-xs text-muted">No photo</div>}
+              {item.extraPhotos?.length ? (
+                <div className="flex flex-wrap gap-2 sm:col-span-2">
+                  {item.extraPhotos.map((u) => (
+                    <a key={u} href={u} target="_blank" rel="noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={u} alt="" className="h-20 w-20 rounded-md border border-line object-cover" />
+                    </a>
+                  ))}
+                </div>
+              ) : null}
               <dl className="grid grid-cols-[auto_1fr] content-start gap-x-3 gap-y-1.5 text-sm">
                 <dt className="text-muted">Location</dt><dd>{item.locationId ? labels.get(item.locationId) : '—'}</dd>
                 <dt className="text-muted">Condition</dt><dd>{item.condition ? CONDITION_LABEL[item.condition] : '—'}</dd>
                 <dt className="text-muted">Asking price</dt><dd className="num">{item.priceMinor ? formatAgorot(item.priceMinor) : '—'}</dd>
                 <dt className="text-muted">Dimensions</dt><dd dir="auto">{item.dimensions ?? '—'}</dd>
                 <dt className="text-muted">Material</dt><dd dir="auto">{item.material ?? '—'}</dd>
+                <dt className="text-muted">Colours</dt><dd dir="auto">{item.colors ?? '—'}</dd>
+                {item.priceApproved === false ? <><dt className="text-muted">Price check</dt><dd className="text-warn">AI estimate{item.aiPriceMinor != null ? ` ${formatAgorot(item.aiPriceMinor)}` : ''}, not approved yet</dd></> : null}
+                {money && item.unitCostMinor != null && item.source !== 'purchase' ? <><dt className="text-muted">Cost</dt><dd className="num">{formatAgorot(item.unitCostMinor)} each</dd></> : null}
+                {item.refurbStatus ? <><dt className="text-muted">Refurbishment</dt><dd>{REFURB_STATUS_LABEL[item.refurbStatus]}{item.refurbLevel ? ` · ${REFURB_LEVEL_LABEL[item.refurbLevel].split(' (')[0]}` : ''}{item.refurbContactId ? <> · {person(item.refurbContactId)}</> : null}</dd></> : null}
+                {saleLines.length ? <><dt className="text-muted">Shop sales</dt><dd className="flex flex-wrap gap-x-2">{saleLines.map((l) => <Link key={l.id} href={`/sales/${l.saleId}`} className={linkCls}>{saleNo.get(l.saleId) ?? 'sale'}{l.quantity > 1 ? ` (${l.quantity})` : ''}{l.status === 'open' ? ', open' : l.status === 'returned' ? ', returned' : ''}</Link>)}</dd></> : null}
                 {item.weightKg != null ? <><dt className="text-muted">Weight</dt><dd className="num">≈{item.weightKg} kg</dd></> : null}
                 <dt className="text-muted">Came from</dt>
                 <dd dir="auto">{item.source === 'furniture' && item.furnitureProjectId ? <><Link href={`/furniture/${item.furnitureProjectId}`} className={linkCls}>{item.furnitureProjectName}</Link>{item.furnitureApartment ? `, ${item.furnitureApartment}` : ''}</> : item.source === 'purchase' && item.supplierId ? <>Bought from <Link href={`/suppliers/${item.supplierId}`} className={linkCls}>{people.get(item.supplierId) ? contactLabel(people.get(item.supplierId)!, pii) : 'a supplier'}</Link>{item.purchaseOrderId ? <> · <Link href={`/suppliers/orders/${item.purchaseOrderId}`} className={linkCls}>order</Link></> : null}{item.unitCostMinor != null && (may('inventory:write') || may('inventory:financial')) ? `, ${formatAgorot(item.unitCostMinor)} each` : ''}</> : movements.some((m) => m.type === 'intake' && m.refKind === 'website_product') ? <>From the website shop{item.websiteProductId != null ? <> · <Link href={`/website/products/${item.websiteProductId}`} className={linkCls}>product #{item.websiteProductId}</Link></> : null}</> : 'Added by hand'}</dd>
@@ -135,8 +163,9 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
                     <span className="text-xs text-muted">{formatDateTime(m.at)}</span>
                     <div className="min-w-0">
                       <p className={m.type === 'conflict' ? 'font-medium text-bad' : 'font-medium'}>{MOVE_LABEL[m.type] ?? m.type}{m.fromStatus && m.toStatus && m.fromStatus !== m.toStatus ? <span className="font-normal text-muted"> · {m.fromStatus.replace('_', ' ')} → {m.toStatus.replace('_', ' ')}</span> : null}{m.fromLocation !== m.toLocation && m.type === 'move' ? <span className="font-normal text-muted"> · {m.fromLocation ? labels.get(m.fromLocation) : 'nowhere'} → {m.toLocation ? labels.get(m.toLocation) : 'nowhere'}</span> : null}</p>
+                      {m.type === 'edit' ? describeChanges(m.detail, { money }).map((c) => <p key={c} dir="auto" className="text-muted">{c}</p>) : null}
                       {m.note ? <p dir="auto" className="text-muted">{m.note}</p> : null}
-                      <p className="text-meta text-faint">{m.actorEmail}{m.refKind === 'website_order' ? ` · website order #${m.refId}` : m.refKind === 'furniture_item' ? ' · from the field app' : ''}</p>
+                      <p className="text-meta text-faint">{m.actorEmail}{m.refKind === 'website_order' ? ` · website order #${m.refId}` : m.refKind === 'furniture_item' ? ' · from the field app' : ''}{typeof m.detail.saleNumber === 'string' ? ` · sale ${m.detail.saleNumber}` : ''}</p>
                     </div>
                   </li>
                 ))}
@@ -175,19 +204,14 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
               ) : null}
               {item.status === 'reserved' && may('inventory:operate') ? <ActionForm action={releaseAction} hidden={{ id: item.id }} label="End the reservation" busy="Releasing…" confirm="End this reservation and put the item back on sale?"><Field label="Why"><input name="note" dir="auto" maxLength={500} className={input} /></Field></ActionForm> : null}
 
-              {allowed('sell_in_store', item.status) && may('inventory:financial') ? (
-                <details><summary className="cursor-pointer text-sm font-medium">Record a shop sale</summary>
-                  <div className="mt-2"><ActionForm action={sellAction} hidden={hidden} label="Record sale" busy="Recording…" confirm="Record this item as sold in the shop?">
-                    <Field label="Amount paid (₪)"><input name="price" required inputMode="decimal" dir="ltr" defaultValue={item.priceMinor ? String(item.priceMinor / 100) : ''} className={input} /></Field>
-                    {may('crm:read') ? <ContactPicker contacts={contactOpts} allowNew={may('crm:write')} label="Buyer (optional)" /> : null}
-                    <Field label="Note"><input name="note" dir="auto" maxLength={500} className={input} /></Field>
-                  </ActionForm></div>
-                </details>
+              {allowed('sell_in_store', item.status) && money && item.quantity > 0 ? (
+                <Link href={`/sales/new?item=${item.id}`} className={btn}>Sell in the shop</Link>
               ) : null}
 
-              {item.status === 'sold' && may('inventory:operate') ? <ActionForm action={deliveredAction} hidden={{ id: item.id }} label="Mark delivered / picked up" busy="Saving…" tone="primary"><p className="text-meta text-muted">{item.soldChannel === 'website' ? 'For a website order, marking the order delivered on the website does this too (on the next sync).' : 'Plan the delivery on the Deliveries page, or mark it here once done.'}</p></ActionForm> : null}
+              {keptLine ? <p className="text-sm">Sold in shop sale <Link href={`/sales/${keptLine.saleId}`} className={linkCls}>{saleNo.get(keptLine.saleId) ?? 'open sale'}</Link>: hand it over, change the delivery or take a return there.</p> : null}
+              {item.status === 'sold' && !keptLine && may('inventory:operate') ? <ActionForm action={deliveredAction} hidden={{ id: item.id }} label="Mark delivered / picked up" busy="Saving…" tone="primary"><p className="text-meta text-muted">{item.soldChannel === 'website' ? 'For a website order, marking the order delivered on the website does this too (on the next sync).' : 'Plan the delivery on the Deliveries page, or mark it here once done.'}</p></ActionForm> : null}
 
-              {allowed('return', item.status) && may('inventory:financial') ? (
+              {allowed('return', item.status) && money && !keptLine ? (
                 <details><summary className="cursor-pointer text-sm font-medium">Customer returned it</summary>
                   <div className="mt-2"><ActionForm action={returnAction} hidden={hidden} label="Return to stock" busy="Saving…" confirm="Put this item back in stock? The money is refunded in Grow or at the till, not here.">
                     <Field label="Why"><input name="reason" required dir="auto" maxLength={500} className={input} /></Field>
@@ -218,21 +242,30 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
             </CardBody>
           </Card>
 
+          {OPS.refurb.includes(item.status as 'in_storage') && may('inventory:operate') ? (
+            <Card>
+              <CardHeader title="Refurbishment" meta="what it needs, who does it, how far it is" />
+              <CardBody>
+                <ActionForm action={refurbAction} hidden={hidden} label="Save" busy="Saving…" className="flex flex-col gap-2">
+                  <Field label="Status"><select name="refurbStatus" defaultValue={item.refurbStatus ?? ''} className={input}><option value="">Not needed</option>{REFURB_STATUSES.map((k) => <option key={k} value={k}>{REFURB_STATUS_LABEL[k]}</option>)}</select></Field>
+                  <Field label="Level"><select name="refurbLevel" defaultValue={item.refurbLevel ?? ''} className={input}><option value="">—</option>{REFURB_LEVELS.map((k) => <option key={k} value={k}>{REFURB_LEVEL_LABEL[k]}</option>)}</select></Field>
+                  {may('crm:read') ? <Field label="Refurbisher"><select name="refurbContactId" defaultValue={item.refurbContactId ?? ''} className={input}><option value="">—</option>{contacts.filter((c) => c.roles.includes('refurbisher') || c.id === item.refurbContactId).map((c) => <option key={c.id} value={c.id}>{contactLabel(c, pii)}</option>)}</select></Field> : null}
+                  <Field label="Instructions"><textarea name="refurbInstructions" dir="auto" rows={3} maxLength={2000} defaultValue={item.refurbInstructions ?? ''} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" /></Field>
+                  <p className="text-meta text-muted">Refurbishers are customers with the Refurbisher role. Marking it done turns &quot;needs repair&quot; into &quot;good&quot;.</p>
+                </ActionForm>
+              </CardBody>
+            </Card>
+          ) : null}
+
           {allowed('edit', item.status) && may('inventory:write') ? (
             <Card>
               <CardHeader title="Edit details" />
               <CardBody>
-                <ActionForm action={editItemAction} hidden={hidden} label="Save" busy="Saving…">
-                  <Field label="Name"><input name="title" required dir="auto" maxLength={200} defaultValue={item.title} className={input} /></Field>
-                  <Field label="Asking price (₪)"><input name="price" inputMode="decimal" dir="ltr" defaultValue={item.priceMinor ? String(item.priceMinor / 100) : ''} className={input} /></Field>
-                  <Field label="Condition"><select name="condition" defaultValue={item.condition ?? ''} className={input}><option value="">—</option>{Object.entries(CONDITION_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></Field>
-                  {item.websiteProductId == null ? <Field label="Quantity"><input name="quantity" type="number" min={0} max={10000} defaultValue={item.quantity} className={input} /></Field> : null}
-                  <Field label="Photo (https link)"><input name="photoUrl" dir="ltr" maxLength={2000} defaultValue={item.photoUrl ?? ''} className={input} /></Field>
-                  <Field label="Category"><input name="category" dir="auto" maxLength={100} defaultValue={item.category ?? ''} className={input} /></Field>
-                  <Field label="Dimensions"><input name="dimensions" dir="auto" maxLength={200} defaultValue={item.dimensions ?? ''} className={input} /></Field>
-                  <Field label="Material"><input name="material" dir="auto" maxLength={200} defaultValue={item.material ?? ''} className={input} /></Field>
-                  <Field label="Notes"><textarea name="description" dir="auto" rows={3} maxLength={2000} defaultValue={item.description ?? ''} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" /></Field>
-                </ActionForm>
+                <ItemForm
+                  lang="en" base="/inventory" mode="edit" initial={valuesOf(item)} hidden={hidden}
+                  conditions={Object.entries(CONDITION_LABEL).map(([value, label]) => ({ value, label }))}
+                  canCost={money && item.source !== 'purchase'} quantityEditable={item.websiteProductId == null}
+                />
               </CardBody>
             </Card>
           ) : null}

@@ -3,6 +3,7 @@ import { getOpsStore } from '@/lib/ops'
 import type { Delivery, DeliveryStatus } from '@/lib/ops/types'
 import { FULFILMENT, listWebsiteOrders, setWebsiteOrderStatus } from '@/lib/integrations/website/manage'
 import { markDelivered, type Actor } from '@/lib/inventory/service'
+import { handOverLine } from '@/lib/sales/service'
 
 /** Where a delivery may go next. Done and cancelled are final; a failed run is planned again. */
 export const DELIVERY_NEXT: Record<DeliveryStatus, readonly DeliveryStatus[]> = {
@@ -31,7 +32,12 @@ export async function moveDelivery(d: Delivery, to: DeliveryStatus, note: string
   if (to !== 'done') return { ok: true, message: `Delivery is now ${to}.` }
 
   const warnings: string[] = []
-  if (d.itemId) {
+  if (d.saleLineId) {
+    // A shop sale line: closing it settles the item once nothing else is owed on it.
+    const r = await handOverLine(d.saleLineId, actor, { kind: 'delivery', id: d.id })
+    if (!r.ok && !/already handed over/.test(r.message)) warnings.push(`The sale line was not closed: ${r.message}`)
+    if (r.warning) warnings.push(r.warning)
+  } else if (d.itemId) {
     const item = await store.getItem(d.itemId)
     if (item && item.status === 'sold') {
       const r = await markDelivered(d.itemId, note, actor, { kind: 'delivery', id: d.id })

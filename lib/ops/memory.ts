@@ -1,6 +1,7 @@
 import { ConflictError, type OpsStore } from './store'
 import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Task } from './types'
 import type { PurchaseOrder, Receipt } from '@/lib/suppliers/model'
+import type { Sale, SaleLine, SalePayment } from '@/lib/sales/model'
 
 /**
  * In-memory OpsStore for local development and tests. Same rules as the SQL
@@ -23,9 +24,14 @@ export interface MemoryData {
   purchaseOrders: PurchaseOrder[]
   receipts: Receipt[]
   poSeq: number
+  /** Shop sales (migration 0006). */
+  sales: Sale[]
+  saleLines: SaleLine[]
+  salePayments: SalePayment[]
+  saleSeq: number
 }
 
-export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0, purchaseOrders: [], receipts: [], poSeq: 0 })
+export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0, purchaseOrders: [], receipts: [], poSeq: 0, sales: [], saleLines: [], salePayments: [], saleSeq: 0 })
 
 const now = () => new Date().toISOString()
 const id = () => crypto.randomUUID()
@@ -65,7 +71,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
               (!f.buyerContactId || i.buyerContactId === f.buyerContactId) &&
               (!f.reservedFor || i.reservedFor === f.reservedFor) &&
               (!f.createdSince || i.createdAt >= f.createdSince) &&
-              hit(f.q, i.sku, i.title, i.description, i.category, i.furnitureProjectName),
+              hit(f.q, i.sku, i.title, i.description, i.category, i.furnitureProjectName, i.colors, i.material),
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, f.limit ?? 500),
@@ -89,7 +95,8 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
         status: 'in_storage', locationId: null, priceMinor: null, photoUrl: null, dimensions: null, material: null, weightKg: null, source: 'manual',
         furnitureItemId: null, furnitureProjectId: null, furnitureProjectName: null, furnitureApartment: null, websiteProductId: null,
         reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, soldChannel: null, soldAt: null, soldPriceMinor: null,
-        buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, purchaseOrderId: null, supplierId: null, unitCostMinor: null, createdBy: 'system',
+        buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, purchaseOrderId: null, supplierId: null, unitCostMinor: null,
+        colors: null, extraPhotos: [], photoHash: null, priceApproved: true, aiPriceMinor: null, refurbStatus: null, refurbLevel: null, refurbContactId: null, refurbInstructions: null, createdBy: 'system',
         ...input, version: 1, createdAt: t, updatedAt: t,
       } as Item
       d.items.push(item)
@@ -105,13 +112,18 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
       if (set.websiteProductId != null && d.items.some((i) => i.id !== itemId && i.websiteProductId === set.websiteProductId)) throw new ConflictError('that website product is already linked to another item')
       const before = { ...item }
       const safe = { ...set } as Record<string, unknown>
-      for (const k of ['id', 'sku', 'version', 'createdAt', 'createdBy', 'source', 'furnitureItemId', 'purchaseOrderId', 'supplierId', 'unitCostMinor']) delete safe[k]
+      for (const k of ['id', 'sku', 'version', 'createdAt', 'createdBy', 'source', 'furnitureItemId', 'purchaseOrderId', 'supplierId']) delete safe[k]
+      // The cost of an item received from a supplier is provenance; any other item's cost can be corrected.
+      if (item.source === 'purchase') delete safe.unitCostMinor
       Object.assign(item, safe, { version: item.version + 1, updatedAt: now() })
       d.movements.push({
         id: id(), itemId, at: item.updatedAt, type: mv.type, fromStatus: before.status, toStatus: item.status, fromLocation: before.locationId, toLocation: item.locationId,
         quantityDelta: mv.quantityDelta ?? item.quantity - before.quantity, refKind: mv.refKind ?? null, refId: mv.refId ?? null, note: mv.note ?? null, actorEmail: mv.actorEmail, detail: mv.detail ?? {},
       })
       return copy(item)
+    },
+    async photoHashes() {
+      return copy(d.items.filter((i) => i.photoHash).map((i) => ({ id: i.id, sku: i.sku, title: i.title, photoUrl: i.photoUrl, status: i.status, photoHash: i.photoHash })))
     },
     async movements(itemId) {
       return copy(d.movements.filter((m) => m.itemId === itemId).sort((a, b) => b.at.localeCompare(a.at)))
@@ -208,7 +220,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
     async listDeliveries(f = {}) {
       return copy(
         d.deliveries
-          .filter((x) => (!f.statuses || f.statuses.includes(x.status)) && (f.websiteOrderId == null || x.websiteOrderId === f.websiteOrderId) && (!f.itemId || x.itemId === f.itemId))
+          .filter((x) => (!f.statuses || f.statuses.includes(x.status)) && (f.websiteOrderId == null || x.websiteOrderId === f.websiteOrderId) && (!f.itemId || x.itemId === f.itemId) && (!f.saleLineIds || (x.saleLineId != null && f.saleLineIds.includes(x.saleLineId))))
           .sort((a, b) => (a.scheduledFor ?? '9999').localeCompare(b.scheduledFor ?? '9999'))
           .slice(0, f.limit ?? 500),
       )

@@ -1,6 +1,6 @@
 import { Database } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import { STATUS_LABEL } from '@/lib/inventory/model'
+import { STATUS_LABEL, STATUS_LABEL_HE } from '@/lib/inventory/model'
 import { STAGE_LABEL } from '@/lib/crm/model'
 import { PO_STATUS_LABEL } from '@/lib/suppliers/model'
 import type { DealStage, ItemStatus } from '@/lib/ops/types'
@@ -16,8 +16,8 @@ const TONE: Record<ItemStatus, string> = {
   disposed: 'border-line bg-sunken text-muted',
 }
 
-export function ItemStatusChip({ status }: { status: ItemStatus }) {
-  return <span className={cn('inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs', TONE[status])}>{STATUS_LABEL[status]}</span>
+export function ItemStatusChip({ status, lang = 'en' }: { status: ItemStatus; lang?: 'en' | 'he' }) {
+  return <span className={cn('inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-xs', TONE[status])}>{(lang === 'he' ? STATUS_LABEL_HE : STATUS_LABEL)[status]}</span>
 }
 
 export function StageChip({ stage }: { stage: DealStage }) {

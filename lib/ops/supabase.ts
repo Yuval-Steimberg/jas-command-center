@@ -57,24 +57,28 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
       id ? one<Location>(db.from('cc_locations').update({ ...toRow(input), updated_at: new Date().toISOString() }).eq('id', id).select('*').single()) : one<Location>(db.from('cc_locations').insert(toRow(input)).select('*').single()),
 
     async listItems(f = {}) {
-      let q = db.from('cc_inventory_items').select('*').order('updated_at', { ascending: false }).limit(f.limit ?? 500)
-      if (f.statuses) q = q.in('status', [...f.statuses])
-      if (f.locationId) q = q.eq('location_id', f.locationId)
-      if (f.ids) q = q.in('id', [...f.ids])
-      if (f.websiteProductIds) q = q.in('website_product_id', [...f.websiteProductIds])
-      if (f.furnitureItemIds) q = q.in('furniture_item_id', [...f.furnitureItemIds])
-      if (f.buyerContactId) q = q.eq('buyer_contact_id', f.buyerContactId)
-      if (f.reservedFor) q = q.eq('reserved_for', f.reservedFor)
-      if (f.createdSince) q = q.gte('created_at', f.createdSince)
       const t = f.q ? term(f.q) : ''
-      if (t) {
-        const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
-        q = q.or(`sku.ilike.%${w}%,title.ilike.%${w}%,description.ilike.%${w}%,category.ilike.%${w}%,furniture_project_name.ilike.%${w}%`)
+      // `colors` arrives with migration 0006; until it is run, search the columns 0003 has rather than fail.
+      const query = (withColors: boolean) => {
+        let q = db.from('cc_inventory_items').select('*').order('updated_at', { ascending: false }).limit(f.limit ?? 500)
+        if (f.statuses) q = q.in('status', [...f.statuses])
+        if (f.locationId) q = q.eq('location_id', f.locationId)
+        if (f.ids) q = q.in('id', [...f.ids])
+        if (f.websiteProductIds) q = q.in('website_product_id', [...f.websiteProductIds])
+        if (f.furnitureItemIds) q = q.in('furniture_item_id', [...f.furnitureItemIds])
+        if (f.buyerContactId) q = q.eq('buyer_contact_id', f.buyerContactId)
+        if (f.reservedFor) q = q.eq('reserved_for', f.reservedFor)
+        if (f.createdSince) q = q.gte('created_at', f.createdSince)
+        if (t) {
+          const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
+          q = q.or(`sku.ilike.%${w}%,title.ilike.%${w}%,description.ilike.%${w}%,category.ilike.%${w}%,furniture_project_name.ilike.%${w}%,material.ilike.%${w}%${withColors ? `,colors.ilike.%${w}%` : ''}`)
+        }
+        return many<Item>(q)
       }
-      const rows = await many<Item>(q)
+      const rows = t ? await query(true).catch((e: unknown) => (e instanceof OpsSetupError ? query(false) : Promise.reject(e))) : await query(false)
       // The database narrowed by the longest word; every word must still match.
       const words = t.toLowerCase().split(' ').filter(Boolean)
-      return words.length ? rows.filter((i) => words.every((w) => [i.sku, i.title, i.description, i.category, i.furnitureProjectName].some((v) => v?.toLowerCase().includes(w)))) : rows
+      return words.length ? rows.filter((i) => words.every((w) => [i.sku, i.title, i.description, i.category, i.furnitureProjectName, i.colors, i.material].some((v) => v?.toLowerCase().includes(w)))) : rows
     },
     async getItem(id) {
       const r = await many<Item>(db.from('cc_inventory_items').select('*').eq('id', id).limit(1))
@@ -94,6 +98,16 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
       )
       if (!r[0]) throw new ConflictError('item not found')
       return r[0]
+    },
+    async photoHashes() {
+      type H = Pick<Item, 'id' | 'sku' | 'title' | 'photoUrl' | 'status' | 'photoHash'>
+      const out: H[] = []
+      for (let from = 0; from < 50_000; from += 1000) {
+        const page = await many<H>(db.from('cc_inventory_items').select('id,sku,title,photo_url,status,photo_hash').not('photo_hash', 'is', null).order('id').range(from, from + 999))
+        out.push(...page)
+        if (page.length < 1000) break
+      }
+      return out
     },
     movements: (itemId) => many<Movement>(db.from('cc_inventory_movements').select('*').eq('item_id', itemId).order('at', { ascending: false }).limit(500)),
     async recentMovements(limit, since) {
@@ -208,6 +222,7 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
       if (f.statuses) q = q.in('status', [...f.statuses])
       if (f.websiteOrderId != null) q = q.eq('website_order_id', f.websiteOrderId)
       if (f.itemId) q = q.eq('item_id', f.itemId)
+      if (f.saleLineIds) q = q.in('sale_line_id', [...f.saleLineIds])
       return many<Delivery>(q)
     },
     async getDelivery(id) {

@@ -26,7 +26,7 @@ export function whatsappLink(phone: string | null): string | null {
   return p && /^05\d{8}$/.test(p) ? `https://wa.me/972${p.slice(1)}` : null
 }
 
-export const ROLE_LABEL: Record<ContactRole, string> = { customer: 'Customer', lead: 'Lead', supplier: 'Supplier', partner: 'Partner', donor: 'Donor', volunteer: 'Volunteer' }
+export const ROLE_LABEL: Record<ContactRole, string> = { customer: 'Customer', lead: 'Lead', supplier: 'Supplier', partner: 'Partner', donor: 'Donor', volunteer: 'Volunteer', refurbisher: 'Refurbisher' }
 export const STAGE_LABEL: Record<DealStage, string> = { new: 'New', contacted: 'Contacted', qualified: 'Qualified', proposal: 'Proposal', won: 'Won', lost: 'Lost' }
 export const OPEN_STAGES: readonly DealStage[] = ['new', 'contacted', 'qualified', 'proposal']
 

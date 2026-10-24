@@ -7,7 +7,9 @@ import { audit } from '@/lib/audit/audit'
 import type { Permission } from '@/lib/auth/rbac'
 import { runAct, formStr, formShekels, errText, type ActionState, type ActResult } from '@/lib/ops/act'
 import { getOpsStore, OpsSetupError } from '@/lib/ops'
-import { CONDITIONS, LOCATION_KINDS, type Condition, type ItemPatch } from '@/lib/ops/types'
+import { CONDITIONS, LOCATION_KINDS, REFURB_LEVELS, REFURB_STATUSES, type Condition, type ItemPatch, type RefurbLevel, type RefurbStatus } from '@/lib/ops/types'
+import { isPhotoHash } from '@/lib/inventory/photo-hash'
+import { openSaleOf } from '@/lib/sales/service'
 import {
   adoptWebsiteProducts, createManualItem, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
   type Actor, type OpResult,
@@ -62,26 +64,51 @@ export async function adoptWebsiteAction(_p: ActionState, f: FormData): Promise<
   }, ['/inventory', '/inventory/website'])
 }
 
+/** Fields both the add and edit forms carry (photos, colours, cost, AI price), validated once. */
+async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } | { ok: false; message: string }> {
+  const price = shekels(f, 'price')
+  if (Number.isNaN(price)) return { ok: false, message: 'The asking price must be an amount in ₪.' }
+  const photo = str(f, 'photoUrl', 2000)
+  if (photo && !/^https:\/\//.test(photo)) return { ok: false, message: 'The photo must be an https link.' }
+  const extra = f.getAll('extraPhoto').map((x) => String(x).trim()).filter(Boolean).slice(0, 12)
+  if (extra.some((x) => !/^https:\/\//.test(x) || x.length > 2000)) return { ok: false, message: 'Every extra photo must be an https link.' }
+  const patch: ItemPatch = {
+    title: str(f, 'title', 200) ?? undefined, description: str(f, 'description'), category: str(f, 'category', 100), condition: condition(f), priceMinor: price, photoUrl: photo,
+    dimensions: str(f, 'dimensions', 200), material: str(f, 'material', 200), colors: str(f, 'colors', 200),
+  }
+  if (f.has('extraPhotosSent')) patch.extraPhotos = extra
+  const hash = String(f.get('photoHash') ?? '')
+  if (f.has('photoHash')) patch.photoHash = isPhotoHash(hash) ? hash : null
+  if (f.has('priceApproved')) patch.priceApproved = f.get('priceApproved') !== 'false'
+  const ai = shekels(f, 'aiPrice')
+  if (f.has('aiPrice') && !Number.isNaN(ai)) patch.aiPriceMinor = ai
+  // Purchase cost is a money figure: only roles that see money set it.
+  if (f.has('cost') && (await userCan('inventory:financial'))) {
+    const cost = shekels(f, 'cost')
+    if (Number.isNaN(cost)) return { ok: false, message: 'The purchase cost must be an amount in ₪.' }
+    patch.unitCostMinor = cost
+  }
+  return { ok: true, patch }
+}
+
 export async function createItemAction(_p: ActionState, f: FormData): Promise<ActionState> {
   const title = str(f, 'title', 200)
   if (!title) return { ok: false, message: 'Give the item a name.' }
-  const price = shekels(f, 'price')
-  if (Number.isNaN(price)) return { ok: false, message: 'The asking price must be an amount in ₪.' }
   const qty = Number(f.get('quantity') || 1)
   if (!Number.isInteger(qty) || qty < 1 || qty > 10_000) return { ok: false, message: 'Quantity must be a whole number from 1.' }
-  const photo = str(f, 'photoUrl', 2000)
-  if (photo && !/^https:\/\//.test(photo)) return { ok: false, message: 'The photo must be an https link.' }
+  const fields = await itemFields(f)
+  if (!fields.ok) return fields
   let createdId = ''
   const res = await act(['inventory:write'], 'inventory.create', 'item:new', { title }, async (u) => {
     const item = await createManualItem(
-      { title, description: str(f, 'description'), category: str(f, 'category', 100), quantity: qty, kind: qty > 1 ? 'batch' : 'unique', condition: condition(f), locationId: locationOf(f), priceMinor: price, photoUrl: photo, dimensions: str(f, 'dimensions', 200), material: str(f, 'material', 200) },
+      { ...fields.patch, title, quantity: qty, kind: qty > 1 ? 'batch' : 'unique', locationId: locationOf(f) },
       actorOf(u),
       str(f, 'note', 500) ?? undefined,
     )
     createdId = item.id
     return { ok: true, message: `Created ${item.sku}.` }
-  }, ['/inventory'])
-  if (res.ok && createdId) redirect(`/inventory/${createdId}`)
+  }, ['/inventory', '/shop'])
+  if (res.ok && createdId) redirect(f.get('base') === '/shop' ? `/shop/items/${createdId}` : `/inventory/${createdId}`)
   return res
 }
 
@@ -91,11 +118,9 @@ export async function editItemAction(_p: ActionState, f: FormData): Promise<Acti
   if (!id.success || !v) return { ok: false, message: 'Invalid item.' }
   const title = str(f, 'title', 200)
   if (!title) return { ok: false, message: 'The item needs a name.' }
-  const price = shekels(f, 'price')
-  if (Number.isNaN(price)) return { ok: false, message: 'The asking price must be an amount in ₪.' }
-  const photo = str(f, 'photoUrl', 2000)
-  if (photo && !/^https:\/\//.test(photo)) return { ok: false, message: 'The photo must be an https link.' }
-  const patch: ItemPatch = { title, description: str(f, 'description'), category: str(f, 'category', 100), condition: condition(f), priceMinor: price, photoUrl: photo, dimensions: str(f, 'dimensions', 200), material: str(f, 'material', 200) }
+  const fields = await itemFields(f)
+  if (!fields.ok) return fields
+  const patch: ItemPatch = { ...fields.patch, title }
   const q = f.get('quantity')
   if (q != null && q !== '') {
     const n = Number(q)
@@ -103,7 +128,28 @@ export async function editItemAction(_p: ActionState, f: FormData): Promise<Acti
     patch.quantity = n
     patch.kind = n > 1 ? 'batch' : 'unique'
   }
-  return act(['inventory:write'], 'inventory.edit', `item:${id.data}`, { fields: Object.keys(patch) }, (u) => editItem(id.data, v, patch, actorOf(u)), [`/inventory/${id.data}`, '/inventory'])
+  return act(['inventory:write'], 'inventory.edit', `item:${id.data}`, { fields: Object.keys(patch) }, (u) => editItem(id.data, v, patch, actorOf(u)), [`/inventory/${id.data}`, '/inventory', `/shop/items/${id.data}`])
+}
+
+/** Refurbishment: what it needs, who does it, and how far it is. Also allowed after a sale (paid, awaiting refurbishment). */
+export async function refurbAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const id = uuid.safeParse(f.get('id'))
+  const v = version(f)
+  if (!id.success || !v) return { ok: false, message: 'Invalid item.' }
+  const status = String(f.get('refurbStatus') ?? '')
+  const level = String(f.get('refurbLevel') ?? '')
+  const contact = uuid.safeParse(f.get('refurbContactId'))
+  const patch: ItemPatch = {
+    refurbStatus: (REFURB_STATUSES as readonly string[]).includes(status) ? (status as RefurbStatus) : null,
+    refurbLevel: (REFURB_LEVELS as readonly string[]).includes(level) ? (level as RefurbLevel) : null,
+    refurbContactId: contact.success ? contact.data : null,
+    refurbInstructions: str(f, 'refurbInstructions', 2000),
+  }
+  if (patch.refurbStatus === 'done' && patch.condition === undefined) {
+    const cur = await getOpsStore().getItem(id.data).catch(() => null)
+    if (cur?.condition === 'needs_repair') patch.condition = 'good'
+  }
+  return act(['inventory:operate'], 'inventory.refurb', `item:${id.data}`, { status: patch.refurbStatus, level: patch.refurbLevel }, (u) => editItem(id.data, v, patch, actorOf(u), { op: 'refurb' }), [`/inventory/${id.data}`, '/inventory', `/shop/items/${id.data}`, '/shop'])
 }
 
 export async function moveItemAction(_p: ActionState, f: FormData): Promise<ActionState> {
@@ -196,6 +242,8 @@ export async function returnAction(_p: ActionState, f: FormData): Promise<Action
   if (!id.success || !v) return { ok: false, message: 'Invalid item.' }
   const reason = str(f, 'reason', 500)
   if (!reason || reason.length < 3) return { ok: false, message: 'Say why it came back.' }
+  const sale = await openSaleOf({ id: id.data }).catch(() => null)
+  if (sale) return { ok: false, message: `This was sold in the shop on ${sale.detail.sale.number}: return it from that sale, so the sale and its payments stay right.` }
   return act(['inventory:financial'], 'inventory.return', `item:${id.data}`, { reason }, (u) => returnItem(id.data, v, locationOf(f), reason, actorOf(u)), [`/inventory/${id.data}`, '/inventory', '/sales'])
 }
 
@@ -245,12 +293,12 @@ export async function findBySkuAction(_p: ActionState, f: FormData): Promise<Act
     return { ok: false, message: 'Your role cannot read inventory.' }
   }
   const raw = String(f.get('code') ?? '').trim().slice(0, 300)
-  let target = /\/inventory\/([0-9a-f-]{36})/i.exec(raw)?.[1] ?? null
+  let target = /\/(?:inventory|shop\/items)\/([0-9a-f-]{36})/i.exec(raw)?.[1] ?? null
   try {
     if (!target) target = (await getOpsStore().getItemBySku(formatSku(raw)))?.id ?? null
   } catch (e) {
     return { ok: false, message: e instanceof OpsSetupError ? e.message : errText(e) }
   }
   if (!target) return { ok: false, message: `No item with code ${formatSku(raw) || '(empty)'}.` }
-  redirect(`/inventory/${target}`)
+  redirect(f.get('base') === '/shop' ? `/shop/items/${target}` : `/inventory/${target}`)
 }

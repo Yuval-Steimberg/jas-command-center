@@ -15,6 +15,7 @@ export const NAV: { section: string; items: NavItem[] }[] = [
       { href: '/crm', label: 'Customers', icon: 'crm', permission: 'crm:read' },
       { href: '/inventory', label: 'Inventory', icon: 'inventory', permission: 'inventory:read' },
       { href: '/sales', label: 'Sales & fulfilment', icon: 'sales', permission: 'inventory:read' },
+      { href: '/shop', label: 'Shop mode', icon: 'sales', permission: 'inventory:read' },
       { href: '/deliveries', label: 'Deliveries', icon: 'truck', permission: 'inventory:read' },
       { href: '/suppliers', label: 'Suppliers', icon: 'supplier', permission: 'inventory:read' },
       { href: '/tasks', label: 'Tasks', icon: 'tasks', permission: 'inventory:read' },

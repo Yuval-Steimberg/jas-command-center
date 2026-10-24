@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { Kpi } from '@/components/ui/kpi'
 import { SourceProblem } from '@/components/ui/source-state'
-import { OpsUnavailable, linkCls } from '@/components/ops/ui'
+import { OpsUnavailable, btn, linkCls } from '@/components/ops/ui'
 import { getSession, requirePageAccess } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { getOpsStore } from '@/lib/ops'
@@ -13,6 +13,8 @@ import { formatAgorot, shekelsToAgorot } from '@/lib/money'
 import { formatCount, formatDateTime, timeAgo } from '@/lib/format'
 import { ActionForm } from '../inventory/forms'
 import { syncNowAction } from './actions'
+import { getSalesStore } from '@/lib/sales/store'
+import { PAYMENT_STATE_LABEL, saleMoney } from '@/lib/sales/model'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,6 +30,15 @@ export default async function SalesPage() {
     const store = getOpsStore()
     const [sync, sold, deliveries] = await Promise.all([syncStatus(), store.listItems({ statuses: ['sold', 'delivered'], limit: 1000 }), store.listDeliveries({ statuses: ['planned', 'out'] })])
     return { sync, sold, plannedOrders: new Set(deliveries.map((d) => d.websiteOrderId).filter((x): x is number => x != null)) }
+  })
+  // Shop sales live in migration 0006: a database without it still shows everything else.
+  const shop = await loadOps(async () => {
+    const st = getSalesStore()
+    const sales = await st.listSales({ limit: 50 })
+    const ids = sales.map((x) => x.id)
+    const [lines, payments] = await Promise.all([st.linesOf(ids), st.paymentsOf(ids)])
+    const contacts = may('crm:read') ? await Promise.all([...new Set(sales.map((x) => x.contactId).filter((x): x is string => !!x))].map((id) => getOpsStore().getContact(id))) : []
+    return { sales, lines, payments, names: new Map(contacts.filter((c) => !!c).map((c) => [c!.id, may('crm:read_pii') ? c!.fullName : 'Customer'])) }
   })
   const queue = may('website:read')
     ? await Promise.all((['paid', 'processing', 'shipped'] as const).map((st) => listWebsiteOrders('', st)))
@@ -46,7 +57,7 @@ export default async function SalesPage() {
       <PageHeader
         title="Sales & fulfilment"
         description="What has been sold and what still has to reach its buyer. Website orders are owned by the website and read live; in-store sales of inventory items are recorded here. The two are shown apart and never added up, and gift cards (their own system) are not part of either."
-        actions={may('inventory:operate') ? <ActionForm action={syncNowAction} hidden={{}} label="Sync now" busy="Syncing…" className="flex flex-col items-end gap-1" /> : undefined}
+        actions={<div className="flex flex-wrap items-start gap-2">{may('inventory:financial') ? <Link href="/sales/new" className={btn}>New shop sale</Link> : null}{may('inventory:operate') ? <ActionForm action={syncNowAction} hidden={{}} label="Sync now" busy="Syncing…" className="flex flex-col items-end gap-1" /> : null}</div>}
       />
       {!res.ok ? <OpsUnavailable message={res.message} /> : (
         <>
@@ -56,6 +67,36 @@ export default async function SalesPage() {
             <Kpi label="Inventory sold online, 30 days" value={formatCount(online.length)} sub="their revenue is in the website's numbers" />
             <Kpi label="Sold, not delivered" value={formatCount(res.data.sold.filter((i) => i.status === 'sold').length)} />
           </div>
+
+          <Card className="mb-4">
+            <CardHeader title="Shop sales" meta="newest first · open lines are still to be picked up or delivered" action={may('inventory:financial') ? <Link href="/sales/new" className={`${linkCls} text-sm`}>New sale</Link> : undefined} />
+            <CardBody>
+              {!shop.ok ? <OpsUnavailable message={shop.message} /> : shop.data.sales.length === 0 ? <p className="text-sm text-muted">No shop sales yet.</p> : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[620px] text-sm">
+                    <thead className="text-xs text-muted"><tr><th className="py-2 text-start font-medium">Sale</th><th className="text-start font-medium">Customer</th><th className="text-start font-medium">Items</th><th className="text-end font-medium">Total</th><th className="text-start font-medium ps-3">Payment</th><th className="text-start font-medium">Handover</th></tr></thead>
+                    <tbody>
+                      {shop.data.sales.map((sale) => {
+                        const lines = shop.data.lines.filter((l) => l.saleId === sale.id)
+                        const m = saleMoney(sale, lines, shop.data.payments.filter((p) => p.saleId === sale.id))
+                        const open = lines.filter((l) => l.status === 'open').length
+                        return (
+                          <tr key={sale.id} className="border-t border-line/60 align-top">
+                            <td className="py-2"><Link href={`/sales/${sale.id}`} className={linkCls} dir="ltr">{sale.number}</Link><div className="text-xs text-muted">{timeAgo(sale.createdAt)}</div></td>
+                            <td dir="auto">{sale.contactId ? shop.data.names.get(sale.contactId) ?? 'Customer' : <span className="text-muted">walk-in</span>}</td>
+                            <td className="num">{lines.reduce((a, l) => a + l.quantity, 0)}</td>
+                            <td className="num text-end">{formatAgorot(m.dueMinor)}</td>
+                            <td className={`ps-3 ${m.state === 'paid' || m.state === 'nothing_due' ? 'text-ok' : 'text-warn'}`}>{PAYMENT_STATE_LABEL[m.state]}{m.balanceMinor > 0 ? ` · ${formatAgorot(m.balanceMinor)} due` : ''}</td>
+                            <td className={open ? 'text-warn' : 'text-muted'}>{open ? `${open} open` : 'done'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardBody>
+          </Card>
 
           <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
             <Card>
@@ -105,7 +146,7 @@ export default async function SalesPage() {
               <Card>
                 <CardHeader title="In-store sales" meta="last 30 days" />
                 <CardBody>
-                  {inStore.length === 0 ? <p className="text-sm text-muted">None recorded. Record one from the item page.</p> : (
+                  {inStore.length === 0 ? <p className="text-sm text-muted">None recorded. Start one with New shop sale.</p> : (
                     <ul className="flex flex-col gap-2 text-sm">
                       {inStore.sort((a, b) => (b.soldAt ?? '').localeCompare(a.soldAt ?? '')).map((i) => (
                         <li key={i.id} className="flex flex-wrap gap-x-2">

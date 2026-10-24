@@ -103,7 +103,13 @@ interface Detector {
  * presses Enter; a phone uses its camera where the browser has a barcode
  * detector (Chrome / Android). Typing the SKU always works.
  */
-export function ScanBox() {
+const SCAN_TEXT = {
+  en: { code: 'Code', placeholder: 'Scan or type a code, e.g. JAS-000123 or 123', open: 'Open item', looking: 'Looking…', camera: 'Use the camera', stop: 'Stop the camera', unsupported: 'This browser cannot read codes from the camera. Use a scanner or type the code.' },
+  he: { code: 'קוד', placeholder: 'סריקה או הקלדת קוד, למשל JAS-000123 או 123', open: 'פתיחת פריט', looking: 'מחפש…', camera: 'סריקה במצלמה', stop: 'עצירת המצלמה', unsupported: 'הדפדפן הזה לא קורא קודים מהמצלמה. השתמשו בסורק או הקלידו את הקוד.' },
+}
+
+export function ScanBox({ base = '/inventory', lang = 'en' }: { base?: '/inventory' | '/shop'; lang?: 'en' | 'he' }) {
+  const t = SCAN_TEXT[lang]
   const [state, run] = useFormState<ActionState, FormData>(findBySkuAction, {})
   const [camera, setCamera] = useState<'off' | 'on' | 'unsupported'>('off')
   const video = useRef<HTMLVideoElement>(null)
@@ -147,21 +153,22 @@ export function ScanBox() {
   return (
     <div className="flex flex-col gap-3">
       <form ref={form} action={run} className="flex flex-col gap-2 sm:flex-row">
+        <input type="hidden" name="base" value={base} />
         <label className="min-w-0 flex-1">
-          <span className="sr-only">Code</span>
-          <input ref={code} name="code" autoFocus dir="ltr" placeholder="Scan or type a code, e.g. JAS-000123 or 123" maxLength={300} className={input} />
+          <span className="sr-only">{t.code}</span>
+          <input ref={code} name="code" autoFocus dir="ltr" placeholder={t.placeholder} maxLength={300} className={input} />
         </label>
-        <Submit label="Open item" busy="Looking…" tone="primary" />
+        <Submit label={t.open} busy={t.looking} tone="primary" />
       </form>
       <Outcome state={state} />
       {camera === 'off' ? (
-        <button type="button" onClick={() => setCamera('on')} className="h-10 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">Use the camera</button>
+        <button type="button" onClick={() => setCamera('on')} className="h-10 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">{t.camera}</button>
       ) : camera === 'unsupported' ? (
-        <p className="text-sm text-muted">This browser cannot read codes from the camera. Use a scanner or type the code.</p>
+        <p className="text-sm text-muted">{t.unsupported}</p>
       ) : (
         <div className="flex flex-col gap-2">
           <video ref={video} muted playsInline className="aspect-video w-full max-w-md rounded-md bg-forest object-cover" />
-          <button type="button" onClick={() => setCamera('off')} className="h-10 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">Stop the camera</button>
+          <button type="button" onClick={() => setCamera('off')} className="h-10 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken">{t.stop}</button>
         </div>
       )}
     </div>

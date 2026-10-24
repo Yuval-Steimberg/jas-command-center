@@ -84,7 +84,32 @@ figure kept here) are never added to website revenue or gift card figures.
   order can be closed ("the rest is not coming"). Late orders (past the expected date in
   Israel) are an `ops:po-late` warning.
 
-## Permissions
+## Shop sales, photo intake and shop mode (migration 0006)
+
+- **Sale** (`lib/sales/`, `/sales/new`, `/sales/[id]`): one customer, one or more lines. A line is an item
+  (or units of a lot) at its own price, picked up or delivered on its own day (a delivery line plans a
+  `cc_deliveries` row with `sale_line_id`). `cc_sale_create` locks every item, sells all lines through
+  `cc_inventory_apply` (movement `sell`, ref `sale_line`) or none, and replays by request id. Website stock
+  is changed first (compare-and-set) for listed items and put back if the sale is refused.
+- **Money** is a ledger of hand-recorded payments (`cc_sale_payments`, cash/card/Bit/transfer/Grow link);
+  a refund is a negative payment; idempotent per request id. `saleMoney` (pure) is the one definition of
+  due / paid / balance. A return lowers what is due, never the sale total. Nothing here charges a card.
+- **Handover**: a pickup line is closed with "handed over"; a delivery line closes when its delivery is
+  marked done. The item becomes `delivered` once sold out and no line still owes it.
+- **Returns** (`cc_sale_return`): per line, never more than the customer still has; units go back to stock
+  in the same transaction (movement `return`, channel `in_store`). The item page refuses its own return for
+  an item sold through a sale: the sale page does it.
+- **Photo intake** (`components/inventory/item-form.tsx`): camera or gallery, resized on the device,
+  uploaded to the public `inventory-photos` bucket, plus up to 12 more photos. A 64-bit difference hash
+  (`lib/inventory/photo-hash.ts`) warns about a photo that looks like an existing item; it never blocks.
+  "Fill from photo" sends the photo to Claude (`PHOTO_AI_MODEL`, `ANTHROPIC_API_KEY`) for name, category,
+  colours, material, description and a price; a suggested price stays "not approved" until ticked.
+- **Refurbishment**: status / level / refurbisher (a contact with the `refurbisher` role) / instructions on
+  the item, also after a sale. Edits record before → after per field in the movement.
+- **Shop mode** (`app/shop/`): the same app in Hebrew for a phone or tablet: sell, add, scan, search,
+  hand over. Installable (`/shop-manifest.webmanifest`). The `seller` role (inventory read/operate/write/
+  financial + crm read/read_pii/write) lands there from `/`, and a scanned label opens the shop view.
+
 
 New products in `PRODUCTS`: `crm`, `inventory`.
 - owner: everything. admin: everything except gift card money (`inventory:financial` included).
@@ -95,7 +120,7 @@ New products in `PRODUCTS`: `crm`, `inventory`.
 Purchasing: see with `inventory:read`; create/edit/mark ordered/cancel/close with
 `inventory:write`; receive with `inventory:operate`; costs are shown with `inventory:write`
 or `inventory:financial`; adding a supplier needs `crm:write`.
-In-store sale and return need `inventory:financial`; anything that changes a listed
+In-store sale, payments, refunds and returns need `inventory:financial` (a listed item's website stock is changed as part of the sale, without `website:write`); handover and changing pickup/delivery need `inventory:operate`; refurbishment needs `inventory:operate`; anything that changes a listed
 item also needs `website:write`; automation switches need `crm:write` + `inventory:write`.
 Every write goes through `runAct` (`lib/ops/act.ts`): permission check, audit
 `requested`, run, audit outcome.
@@ -115,12 +140,14 @@ between the card and the click is refused.
 1. Run `supabase/migrations/0003_crm_inventory.sql` (done 2026-10-24), then `0004_suppliers.sql`, in the command center Supabase SQL editor. Until then every page says so (never zeros).
 2. Merge and deploy website PR #37 (atomic decrement + `stock-set`); without it listing and reservations of listed items are refused by the website.
 3. Name the storage locations on `/inventory/locations`.
-4. Decide: a customer WhatsApp Business number (would replace hand logging), whether map places should link to projects, and whether suppliers/procurement need more than contacts with the supplier role.
+4. Run `0006_shop_sales.sql` (shop sales, photos bucket, refurbishment, seller role). Without it the sale pages say so and everything else keeps working.
+5. Give shop staff the **Shop seller** role on `/settings/staff`; on the shop tablet open `/shop` and "Add to home screen".
+6. Decide: a customer WhatsApp Business number (would replace hand logging), whether map places should link to projects, and whether suppliers/procurement need more than contacts with the supplier role.
 
 ## Deliberately minimal
 
 Warehouses are a location tree (warehouse › zone › shelf). Barcode = the SKU in a
 QR label (`/inventory/labels`, scanned by `/inventory/scan` with a USB scanner or
 the phone camera). Suppliers are contacts with the supplier role, with purchase orders and receiving;
-no supplier invoices, payments or price lists. Returns put the item back in stock and say that the money goes back through
+no supplier invoices, payments or price lists. Returns put the item back in stock; a refund is recorded on the sale and paid back through
 Grow or the till: nothing here moves money.

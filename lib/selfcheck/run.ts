@@ -31,6 +31,7 @@ import { syncStatus } from '@/lib/sync/run'
 import { listIntakeCandidates } from '@/lib/integrations/furniture/intake'
 import { listWebsiteOrdersSince } from '@/lib/integrations/website/manage'
 import { getSupplierStore } from '@/lib/suppliers/store'
+import { getSalesStore } from '@/lib/sales/store'
 import { OpsSetupError } from '@/lib/ops/store'
 import { OPEN_PO, isOverdue } from '@/lib/suppliers/model'
 import { searchGiftCards, getGiftCard, getGiftCardHealth } from '@/lib/integrations/gift-cards/adapter'
@@ -122,6 +123,14 @@ export async function runSelfCheck(now = new Date()) {
             ? { section: 'ops', name: 'Purchase orders (migration 0004)', state: 'not_configured', latencyMs: null, detail: 'run 0004_suppliers.sql' }
             : { section: 'ops', name: 'Purchase orders (migration 0004)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) },
       ),
+    // Shop sales (migration 0006): same rule, not set up until it runs.
+    Promise.all([getSalesStore().listSales({ since: new Date(now.getTime() - 30 * 86_400_000).toISOString(), limit: 2000 }), getSalesStore().openLines(2000)]).then(
+      ([sales, open]): Probe => ({ section: 'ops', name: 'Shop sales (migration 0006)', state: 'ok', latencyMs: null, detail: `${sales.length} sales in 30 days, ${open.length} lines to hand over` }),
+      (e): Probe =>
+        e instanceof OpsSetupError
+          ? { section: 'ops', name: 'Shop sales (migration 0006)', state: 'not_configured', latencyMs: null, detail: 'run 0006_shop_sales.sql' }
+          : { section: 'ops', name: 'Shop sales (migration 0006)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) },
+    ),
     // Platform
     getDeployments().then((r) => fromSource('platform', 'Vercel deployments', r, (d) => `${d.length} projects`)),
     fromCall('platform', 'Staff', async () => {

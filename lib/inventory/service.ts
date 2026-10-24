@@ -48,6 +48,32 @@ async function zeroWebsite(item: Item): Promise<{ ok: true; had: number } | { ok
   return { ok: true, had: q.quantity }
 }
 
+/**
+ * Move a listed product's website stock by `delta` units with a compare-and-set
+ * (a checkout holding the unit makes it refuse). Returns what it was and what
+ * it became, so the caller can put it back with `undoWebsiteShift`.
+ */
+export async function shiftWebsiteStock(productId: number, delta: number): Promise<{ ok: true; had: number; now: number } | { ok: false; message: string }> {
+  const q = await websiteQuantity(productId)
+  if (!q.ok) return q
+  const next = q.quantity + delta
+  if (next < 0) return { ok: false, message: `the website has only ${q.quantity} in stock` }
+  if (next === q.quantity) return { ok: true, had: q.quantity, now: next }
+  const r = await setWebsiteStock(productId, q.quantity, next).catch((e: unknown) => ({ ok: false as const, message: `the website could not be reached (${e instanceof Error ? e.message : String(e)})` }))
+  if (!r.ok) return { ok: false, message: r.message }
+  return { ok: true, had: q.quantity, now: next }
+}
+
+export async function undoWebsiteShift(productId: number, shift: { had: number; now: number }): Promise<string | undefined> {
+  if (shift.had === shift.now) return undefined
+  try {
+    const r = await setWebsiteStock(productId, shift.now, shift.had)
+    return r.ok ? undefined : `The website stock could not be put back to ${shift.had} (${r.message}). Set it on the website product page.`
+  } catch (e) {
+    return `The website stock could not be put back to ${shift.had} (${e instanceof Error ? e.message : String(e)}). Set it on the website product page.`
+  }
+}
+
 async function restoreWebsite(productId: number | null, had: number): Promise<string | undefined> {
   if (productId == null || had <= 0) return undefined
   try {
@@ -176,14 +202,31 @@ export async function adoptWebsiteProducts(ids: number[], opts: { locationId: st
 }
 
 // ── Edit / move ───────────────────────────────────────────────────────────
-export async function editItem(id: string, version: number, patch: ItemPatch, actor: Actor): Promise<OpResult> {
+/** Fields whose old and new values the history keeps (everything a person edits by hand). */
+const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
+
+/**
+ * Change what a person typed about an item. Only fields that really changed
+ * are written, and the movement keeps each one's old and new value, so the
+ * item's history answers "who changed the price, and from what".
+ */
+export async function editItem(id: string, version: number, patch: ItemPatch, actor: Actor, opts: { op?: 'edit' | 'refurb' } = {}): Promise<OpResult> {
   try {
     const cur = await getOpsStore().getItem(id)
     if (!cur) return { ok: false, message: 'Item not found.' }
     if (patch.quantity !== undefined && cur.websiteProductId != null && patch.quantity !== cur.quantity)
       return { ok: false, message: 'This item is listed: change its stock on the website product, which owns it now.' }
-    const item = await getOpsStore().applyItem(id, { version, from: OPS.edit }, patch, { type: 'edit', actorEmail: actor.email, detail: { fields: Object.keys(patch) } })
-    const priceNote = cur.websiteProductId != null && patch.priceMinor !== undefined ? ' The website keeps its own price for a listed item: change it on the website product too.' : ''
+    const changed: ItemPatch = {}
+    const changes: Record<string, { from: unknown; to: unknown }> = {}
+    for (const [k, v] of Object.entries(patch) as [keyof ItemPatch, unknown][]) {
+      if (same(cur[k as keyof Item], v)) continue
+      ;(changed as Record<string, unknown>)[k] = v
+      changes[k] = { from: cur[k as keyof Item] ?? null, to: v ?? null }
+    }
+    if (!Object.keys(changed).length) return { ok: true, item: cur, message: 'Nothing changed.' }
+    const op = opts.op ?? 'edit'
+    const item = await getOpsStore().applyItem(id, { version, from: OPS[op] }, changed, { type: 'edit', actorEmail: actor.email, detail: { fields: Object.keys(changed), changes, ...(op === 'refurb' ? { refurb: true } : {}) } })
+    const priceNote = cur.websiteProductId != null && changed.priceMinor !== undefined ? ' The website keeps its own price for a listed item: change it on the website product too.' : ''
     return { ok: true, item, message: `Saved.${priceNote}` }
   } catch (e) {
     return fail(e)
