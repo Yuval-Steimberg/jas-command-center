@@ -78,15 +78,19 @@ export function Empty({ title, children, href, cta }: { title: string; children?
   )
 }
 
-export function Field({ label, hint, children, htmlFor }: { label: string; hint?: string; children: React.ReactNode; htmlFor?: string }) {
+export function Field({ label, hint, children, htmlFor, error }: { label: string; hint?: string; children: React.ReactNode; htmlFor?: string; error?: string }) {
   return (
     <div className="block">
       <label htmlFor={htmlFor} className="mb-1.5 block text-base font-semibold text-forest">{label}</label>
       {children}
+      {error ? <p id={htmlFor ? `${htmlFor}-error` : undefined} className="mt-1.5 text-sm font-medium text-bad">{error}</p> : null}
       {hint ? <p className="mt-1 text-sm text-slate">{hint}</p> : null}
     </div>
   )
 }
+
+/** The input class with the error state: a red border a person can see in sunlight, not only a message. */
+export const inputState = (error?: string) => (error ? `${input} border-bad ring-2 ring-bad/20` : input)
 
 /** Toggle chips over checkboxes: large targets, keyboard and screen-reader friendly. */
 export function Chips({ name, options, selected, legend }: { name: string; options: { value: string; label: string }[]; selected: readonly string[]; legend: string }) {

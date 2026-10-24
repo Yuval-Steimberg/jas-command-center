@@ -315,6 +315,35 @@ export function israeliMobile(v: string | null | undefined): string | null {
   return p && /^05\d{8}$/.test(p) ? p : null
 }
 
+/** The registration fields that can block sign-up, in the order they appear on the form. */
+export const SIGNUP_REQUIRED = ['fullName', 'phone', 'age16', 'consent'] as const
+export type SignupField = (typeof SIGNUP_REQUIRED)[number]
+export const SIGNUP_FIELD_HE: Record<SignupField, string> = { fullName: 'שם מלא', phone: 'טלפון נייד', age16: `אישור גיל ${MIN_AGE}+`, consent: 'הסכמה לאימיילים' }
+
+/**
+ * Every problem with a registration at once, keyed by field, in Hebrew. Run by
+ * the join form before it submits and again by the server action, so a person
+ * sees everything still missing in one go instead of one message per attempt.
+ */
+export function signupProblems(f: { fullName?: string | null; phone?: string | null; age16?: boolean; consent?: boolean }): Partial<Record<SignupField, string>> {
+  const out: Partial<Record<SignupField, string>> = {}
+  const name = (f.fullName ?? '').trim()
+  if (!name) out.fullName = 'חסר שם מלא.'
+  else if (!isFullName(name)) out.fullName = 'נא לכתוב שם פרטי ושם משפחה, באותיות בלבד.'
+  const phone = (f.phone ?? '').trim()
+  if (!phone) out.phone = 'חסר מספר טלפון נייד.'
+  else if (!israeliMobile(phone)) out.phone = 'זה לא נראה כמו נייד ישראלי. למשל 050-123-4567.'
+  if (!f.age16) out.age16 = `ההתנדבות פתוחה מגיל ${MIN_AGE}. נא לסמן שזה נכון.`
+  if (!f.consent) out.consent = 'בלי הסכמה לאימיילים לא נוכל לשלוח אישורים ועדכונים על המשמרות. נא לסמן.'
+  return out
+}
+
+/** One line naming what is still missing, in form order: "עוד 2 פרטים חסרים או לא תקינים: שם מלא, טלפון נייד." */
+export function signupSummary(errors: Partial<Record<SignupField, string>>): string {
+  const names = SIGNUP_REQUIRED.filter((k) => errors[k]).map((k) => SIGNUP_FIELD_HE[k])
+  return names.length === 1 ? `עוד פרט אחד חסר או לא תקין: ${names[0]}.` : `עוד ${names.length} פרטים חסרים או לא תקינים: ${names.join(', ')}.`
+}
+
 /** Shift input problems, in English for staff. Times are ISO instants. */
 export function shiftProblem(s: ShiftInput): string | null {
   const a = Date.parse(s.startsAt)
