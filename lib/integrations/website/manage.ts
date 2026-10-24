@@ -140,7 +140,7 @@ export const setWebsiteOrderStatus = (id: number, from: string, to: string) =>
 export const setWebsiteOrderNotes = (id: number, notes: string) =>
   write('order-set-notes', { id, notes }, (d) => z.object({ order: z.object({ id: z.number() }).passthrough() }).parse(d).order)
 
-export type ProductPatch = { price?: number; original_price?: number | null; quantity?: number; featured?: boolean }
+export type ProductPatch = { price?: number; original_price?: number | null; quantity?: number; featured?: boolean; published?: boolean }
 
 export const updateWebsiteProduct = (id: number, patch: ProductPatch, expectUpdatedAt: string) =>
   write('product-update', { id, patch, expectUpdatedAt }, (d) => z.object({ product: websiteProduct }).parse(d).product)

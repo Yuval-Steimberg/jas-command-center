@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { can, draftProduct, formatSku, skuCandidates, reservationExpired, skuSlug, websiteCategoryFor, WEBSITE_CONDITION } from '@/lib/inventory/model'
 import { CC_SLUG } from '@/lib/sync/products'
+import { driveFileId } from '@/lib/inventory/drive'
 import { mergeContact, normalizeEmail, normalizePhone, whatsappLink, daysWithoutContact } from '@/lib/crm/model'
 import { planOrderSync } from '@/lib/sync/plan'
 import { summarise } from '@/lib/ops/summary'
@@ -63,6 +64,14 @@ describe('inventory model', () => {
     expect(websiteCategoryFor('כיסא', cats)).toBe(7)
     expect(websiteCategoryFor('שולחן', cats)).toBeNull()
     expect(websiteCategoryFor(null, cats)).toBeNull()
+  })
+
+  it('recognises a Google Drive photo link, and only that', () => {
+    expect(driveFileId('https://drive.google.com/thumbnail?id=1MBTfiZOF1U5vtA0KczwZym_aK5CuoNBs&sz=w1000')).toBe('1MBTfiZOF1U5vtA0KczwZym_aK5CuoNBs')
+    expect(driveFileId('https://drive.google.com/file/d/1MBTfiZOF1U5vtA0KczwZym_aK5CuoNBs/view?usp=drivesdk')).toBe('1MBTfiZOF1U5vtA0KczwZym_aK5CuoNBs')
+    expect(driveFileId('https://xyz.supabase.co/storage/v1/object/public/inventory-photos/a.jpg')).toBeNull()
+    expect(driveFileId('https://evil.example/thumbnail?id=1MBTfiZOF1U5vtA0KczwZym')).toBeNull()
+    expect(driveFileId(null)).toBeNull()
   })
 
   it('never adopts a listing the command center made, including the kept jas-inventory serials', () => {

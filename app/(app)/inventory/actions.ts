@@ -11,7 +11,7 @@ import { CONDITIONS, LOCATION_KINDS, REFURB_LEVELS, REFURB_STATUSES, type Condit
 import { isPhotoHash } from '@/lib/inventory/photo-hash'
 import { openSaleOf } from '@/lib/sales/service'
 import {
-  adoptWebsiteProducts, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
+  adoptWebsiteProducts, copyDrivePhotosMany, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
   type Actor, type OpResult,
 } from '@/lib/inventory/service'
 import { formatSku, skuCandidates } from '@/lib/inventory/model'
@@ -76,6 +76,17 @@ export async function listManyAction(_p: ActionState, f: FormData): Promise<Acti
     const r = await listManyOnWebsite(batch, actorOf(u))
     return { ok: r.listed.length > 0, message: left ? `${r.message} ${left} more ticked: tick them again and press once more.` : r.message }
   }, ['/inventory', '/inventory/online', '/website/products', '/shop'])
+}
+
+export async function copyDrivePhotosAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const ids = [...new Set(f.getAll('itemId').map(String).filter((x) => uuid.safeParse(x).success))]
+  if (!ids.length) return { ok: false, message: 'No item has a Drive photo.' }
+  const batch = ids.slice(0, MAX_PER_WEBSITE_BATCH)
+  const left = ids.length - batch.length
+  return act(['inventory:write'], 'inventory.copy_drive_photos', `items:${batch.length}`, { items: batch }, async (u) => {
+    const r = await copyDrivePhotosMany(batch, actorOf(u))
+    return { ok: r.done > 0, message: left ? `${r.message} ${left} more to go: press again.` : r.message }
+  }, ['/inventory', '/inventory/online', '/shop'])
 }
 
 export async function hideWebsiteAction(_p: ActionState, f: FormData): Promise<ActionState> {

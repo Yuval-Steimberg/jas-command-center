@@ -53,6 +53,13 @@ function website(opts: { orders?: unknown[]; inquiries?: unknown[]; failStockSet
           products.set(p.id, p)
           return { status: 200, body: { product: full(p) } }
         }
+        case 'product-update': {
+          const p = products.get(b.id as number)
+          if (!p) return { status: 404, body: { error: 'no product' } }
+          if (p.updated_at !== b.expectUpdatedAt) return { status: 409, body: { error: 'changed' } }
+          Object.assign(p, b.patch as object, { updated_at: new Date(Date.parse(p.updated_at) + 1000).toISOString() })
+          return { status: 200, body: { product: full(p) } }
+        }
         case 'product-get': {
           const p = products.get(b.id as number)
           return p ? { status: 200, body: { product: full(p) } } : { status: 404, body: { error: 'no product' } }

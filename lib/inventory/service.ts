@@ -3,12 +3,14 @@ import { getOpsStore, ConflictError } from '@/lib/ops'
 import type { Condition, Item, ItemPatch, MovementType } from '@/lib/ops/types'
 import { getFieldItems, intakeBlocker } from '@/lib/integrations/furniture/intake'
 import {
-  deleteWebsiteProduct, getWebsiteProduct, getWebsiteProductMeta, listWebsiteProductsByIds, saveWebsiteProduct, setWebsiteStock,
-  type WebsiteProduct, type WebsiteProductFull, type WebsiteProductInput, PRODUCT_CONDITIONS,
+  deleteWebsiteProduct, getWebsiteProduct, getWebsiteProductMeta, listWebsiteProductsByIds, saveWebsiteProduct, setWebsiteStock, updateWebsiteProduct,
+  type WebsiteProduct,
 } from '@/lib/integrations/website/manage'
 import { shekelsToAgorot } from '@/lib/money'
 import { websiteQty } from '@/lib/sync/products'
 import { FIELD_CONDITION, OPS, draftProduct, websiteCategoryFor } from './model'
+import { driveDownloadUrls, driveFileId } from './drive'
+import { MAX_PHOTO_BYTES, PHOTO_TYPES, uploadInventoryPhoto } from './photos'
 import { touchContact } from '@/lib/crm/service'
 import { runRule } from '@/lib/tasks/automations'
 
@@ -243,16 +245,6 @@ export async function moveItem(id: string, version: number, locationId: string |
 }
 
 // ── Website listing ───────────────────────────────────────────────────────
-export function productInput(p: WebsiteProductFull): WebsiteProductInput {
-  const cond = PRODUCT_CONDITIONS.find((c) => c === p.condition) ?? 'good'
-  return {
-    name_he: p.name_he, name_en: p.name_en, slug: p.slug, description_he: p.description_he, description_en: p.description_en, story_he: p.story_he, story_en: p.story_en,
-    price: p.price ?? 0, original_price: p.original_price, category_id: p.category_id, condition: cond, style: p.style, dimensions: p.dimensions, material: p.material,
-    origin: p.origin, image_url: p.image_url ?? '', images: p.images ?? [], featured: Boolean(p.featured), quantity: p.quantity ?? 0, tags: p.tags ?? [],
-    ...(p.published === undefined ? {} : { published: Boolean(p.published) }),
-  }
-}
-
 /**
  * Create the website product as an unpublished draft and link it. An item
  * that was listed before (returned since) gets its existing product's stock
@@ -325,7 +317,11 @@ export async function listManyOnWebsite(ids: string[], actor: Actor): Promise<{ 
     const item = items.find((i) => i.id === id)
     if (!item) return { ok: false, why: `${id.slice(0, 8)}: not found` }
     try {
-      const r = await listOnWebsite(id, item.version, { categoryId: websiteCategoryFor(item.category, meta.data.categories), publish: true }, actor)
+      // The website must not depend on Drive either: copy a Drive photo first.
+      const copied = await copyDrivePhotos(item, actor)
+      if (!copied.ok) return { ok: false, why: `${item.sku}: ${copied.message}` }
+      const cur = copied.item
+      const r = await listOnWebsite(id, cur.version, { categoryId: websiteCategoryFor(cur.category, meta.data.categories), publish: true }, actor)
       return r.ok ? { ok: true, item: r.item } : { ok: false, why: `${item.sku}: ${r.message}` }
     } catch (e) {
       return { ok: false, why: `${item.sku}: ${e instanceof Error ? e.message : String(e)}` }
@@ -344,24 +340,86 @@ export async function listManyOnWebsite(ids: string[], actor: Actor): Promise<{ 
  * history records it.
  */
 export async function hideWebsiteProducts(productIds: number[], actor: Actor): Promise<{ hidden: number; refused: string[]; message: string }> {
-  const linked = await getOpsStore().listItems({ websiteProductIds: productIds, limit: productIds.length })
+  const [linked, products] = await Promise.all([
+    getOpsStore().listItems({ websiteProductIds: productIds, limit: productIds.length }),
+    listWebsiteProductsByIds(productIds),
+  ])
+  if (products.state !== 'ok') return { hidden: 0, refused: [], message: `The website could not be read (${products.state === 'error' ? products.error : 'not connected'}); nothing was hidden.` }
   const results = await pool(productIds, 5, async (pid): Promise<string | null> => {
-    const item = linked.find((i) => i.websiteProductId === pid)
-    if (item) {
-      const r = await setListingPublished(item.id, false, actor)
-      return r.ok ? null : `#${pid}: ${r.message}`
+    const p = products.data.find((x) => x.id === pid)
+    if (!p) return `#${pid}: no longer on the website`
+    if (p.published === false) return null
+    try {
+      // Only the flag is sent: re-saving the whole product can exceed the website's request size (HTTP 413).
+      const saved = await updateWebsiteProduct(pid, { published: false }, p.updated_at)
+      if (!saved.ok) return `"${p.name_he.slice(0, 60)}": ${saved.message}`
+    } catch (e) {
+      return `"${p.name_he.slice(0, 60)}": ${e instanceof Error ? e.message : String(e)}`
     }
-    const p = await getWebsiteProduct(pid)
-    if (p.state !== 'ok') return `#${pid}: ${p.state === 'error' ? p.error : 'the website is not connected'}`
-    if (!p.data) return `#${pid}: no longer on the website`
-    if (p.data.published === undefined) return `#${pid}: this website has no published column`
-    if (p.data.published === false) return null
-    const saved = await saveWebsiteProduct({ ...productInput(p.data), published: false }, pid, p.data.updated_at)
-    return saved.ok ? null : `"${p.data.name_he.slice(0, 60)}": ${saved.message}`
+    const item = linked.find((i) => i.websiteProductId === pid)
+    if (item) await getOpsStore().applyItem(item.id, {}, {}, { type: 'unpublish', actorEmail: actor.email, refKind: 'website_product', refId: `${pid}@hide:${p.updated_at}` }).catch(() => undefined)
+    return null
   })
   const refused = results.filter((r): r is string => r != null)
   const hidden = productIds.length - refused.length
   return { hidden, refused, message: `${hidden ? `${hidden} product(s) hidden from the website shop (kept, not deleted).` : 'Nothing was hidden.'}${refused.length ? ` Not hidden (${refused.length}): ${refused.join('; ')}.` : ''}` }
+}
+
+/** Fetch one Drive file server-side; null when it is not an image Drive will give us. */
+async function fetchDriveImage(id: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  for (const url of driveDownloadUrls(id)) {
+    try {
+      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(15_000), cache: 'no-store' })
+      const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim()
+      if (!res.ok || !PHOTO_TYPES.has(type)) continue
+      const bytes = await res.arrayBuffer()
+      if (bytes.byteLength > 0 && bytes.byteLength <= MAX_PHOTO_BYTES) return { bytes, type }
+    } catch {
+      // try the next form
+    }
+  }
+  return null
+}
+
+/**
+ * Copy an item's Drive photos into the command center's photo store and point
+ * the item at the copies (an ordinary edit, so the history keeps the old link).
+ * An item with no Drive photo comes back unchanged.
+ */
+export async function copyDrivePhotos(item: Item, actor: Actor): Promise<{ ok: true; item: Item; copied: number } | { ok: false; message: string }> {
+  const links = [item.photoUrl, ...(item.extraPhotos ?? [])]
+  if (!links.some((l) => driveFileId(l))) return { ok: true, item, copied: 0 }
+  const out: (string | null)[] = []
+  let copied = 0
+  for (const link of links) {
+    const id = driveFileId(link)
+    if (!id) { out.push(link); continue }
+    const img = await fetchDriveImage(id)
+    if (!img) return { ok: false, message: `its Drive photo could not be downloaded (file ${id}); check it is shared "anyone with the link"` }
+    out.push(await uploadInventoryPhoto(img.bytes, img.type))
+    copied++
+  }
+  const [photoUrl, ...extra] = out
+  const r = await editItem(item.id, item.version, { photoUrl: photoUrl ?? null, extraPhotos: extra.filter((x): x is string => !!x) }, actor)
+  return r.ok ? { ok: true, item: r.item, copied } : { ok: false, message: r.message }
+}
+
+/** Copy the Drive photos of several items, five at a time; one failure never stops the rest. */
+export async function copyDrivePhotosMany(ids: string[], actor: Actor): Promise<{ done: number; refused: string[]; message: string }> {
+  const items = await getOpsStore().listItems({ ids, limit: ids.length })
+  const results = await pool(ids, 5, async (id): Promise<string | null> => {
+    const item = items.find((i) => i.id === id)
+    if (!item) return `${id.slice(0, 8)}: not found`
+    try {
+      const r = await copyDrivePhotos(item, actor)
+      return r.ok ? null : `${item.sku}: ${r.message}`
+    } catch (e) {
+      return `${item.sku}: ${e instanceof Error ? e.message : String(e)}`
+    }
+  })
+  const refused = results.filter((r): r is string => r != null)
+  const done = ids.length - refused.length
+  return { done, refused, message: `${done ? `Photos of ${done} item(s) are stored in the command center now.` : 'No photo was copied.'}${refused.length ? ` Not copied (${refused.length}): ${refused.join('; ')}.` : ''}` }
 }
 
 async function restoreZero(productId: number, qty: number): Promise<string | undefined> {
@@ -383,7 +441,8 @@ export async function setListingPublished(id: string, published: boolean, actor:
   if (!p.data) return { ok: false, message: `Website product #${item.websiteProductId} no longer exists.` }
   if (p.data.published === undefined) return { ok: false, message: 'This website has no published column; products there are always visible.' }
   if (Boolean(p.data.published) === published) return { ok: false, message: published ? 'It is already published.' : 'It is already hidden.' }
-  const saved = await saveWebsiteProduct({ ...productInput(p.data), published }, p.data.id, p.data.updated_at)
+  // Only the flag: re-saving the whole product can exceed the website's request size (HTTP 413).
+  const saved = await updateWebsiteProduct(p.data.id, { published }, p.data.updated_at)
   if (!saved.ok) return { ok: false, message: saved.message }
   try {
     const updated = await store.applyItem(id, {}, {}, { type: published ? 'publish' : 'unpublish', actorEmail: actor.email, refKind: 'website_product', refId: `${item.websiteProductId}@${saved.value.updated_at}` })
