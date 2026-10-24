@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
+import { redirect } from 'next/navigation'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status'
 import { CardSkeleton } from '@/components/skeleton'
@@ -74,6 +75,8 @@ async function Health() {
 
 export default async function OverviewPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const user = await requireUser()
+  // A shop seller's home is shop mode.
+  if (user.role === 'seller') redirect('/shop')
   const overrides = (await getSession())?.overrides
   const sees = (p: Product) => can(user.role, `${p}:read`, overrides)
   const range = resolveRange(presetFrom(searchParams))

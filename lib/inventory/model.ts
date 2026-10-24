@@ -46,6 +46,8 @@ export const OPS = {
   dispose: ['in_storage', 'listed'],
   move: ['in_storage', 'listed', 'reserved', 'sold'],
   edit: ['in_storage', 'listed', 'reserved'],
+  /** Refurbishment can be planned or finished after a sale ("paid, awaiting refurbishment"). */
+  refurb: ['in_storage', 'listed', 'reserved', 'sold'],
 } as const satisfies Record<string, readonly ItemStatus[]>
 export type Op = keyof typeof OPS
 
@@ -118,3 +120,35 @@ export const formatSku = (raw: string) => {
   const m = /^\s*(?:jas-?)?(\d{1,6})\s*$/i.exec(raw)
   return m ? `JAS-${m[1]!.padStart(6, '0')}` : raw.trim().toUpperCase()
 }
+
+export const REFURB_STATUS_LABEL = { needed: 'Needs refurbishing', in_progress: 'Being refurbished', done: 'Refurbished' } as const
+export const REFURB_LEVEL_LABEL = { light: 'Light (clean, touch-up)', medium: 'Medium (repair, refinish)', full: 'Full (rebuild, reupholster)' } as const
+
+const FIELD_LABEL: Record<string, string> = {
+  title: 'name', description: 'notes', category: 'category', condition: 'condition', priceMinor: 'price', photoUrl: 'photo', dimensions: 'dimensions', material: 'material',
+  colors: 'colours', extraPhotos: 'more photos', photoHash: 'photo fingerprint', priceApproved: 'price approved', aiPriceMinor: 'AI price', unitCostMinor: 'cost',
+  quantity: 'quantity', kind: 'kind', locationId: 'location', refurbStatus: 'refurbishment', refurbLevel: 'refurbishment level', refurbContactId: 'refurbisher', refurbInstructions: 'refurbishment instructions',
+}
+const MONEY_FIELDS = new Set(['priceMinor', 'aiPriceMinor', 'unitCostMinor'])
+const HIDDEN_VALUE = new Set(['photoUrl', 'extraPhotos', 'photoHash', 'description', 'refurbInstructions', 'refurbContactId', 'locationId'])
+
+/** An edit movement's before → after, as short lines ("price: ₪100 → ₪120"). Pure; long or opaque values are named, not printed. */
+export function describeChanges(detail: Record<string, unknown>, opts: { money: boolean }): string[] {
+  const changes = detail.changes
+  if (!changes || typeof changes !== 'object') return []
+  const fmt = (k: string, v: unknown) => {
+    if (v == null || v === '') return '—'
+    if (MONEY_FIELDS.has(k) && typeof v === 'number') return `₪${(v / 100).toLocaleString('en-IL', { maximumFractionDigits: 2 })}`
+    if (typeof v === 'boolean') return v ? 'yes' : 'no'
+    return String(v).replace(/_/g, ' ').slice(0, 60)
+  }
+  return Object.entries(changes as Record<string, { from: unknown; to: unknown }>)
+    .filter(([k]) => opts.money || k !== 'unitCostMinor')
+    .map(([k, c]) => (HIDDEN_VALUE.has(k) ? `${FIELD_LABEL[k] ?? k} changed` : `${FIELD_LABEL[k] ?? k}: ${fmt(k, c?.from)} → ${fmt(k, c?.to)}`))
+}
+
+/** Shop mode (Hebrew) words for an item's status. */
+export const STATUS_LABEL_HE: Record<ItemStatus, string> = { in_storage: 'במלאי', listed: 'מפורסם באתר', reserved: 'שמור', sold: 'נמכר', delivered: 'נמסר', donated: 'נתרם', recycled: 'מוחזר', disposed: 'הושלך' }
+export const CONDITION_LABEL_HE: Record<Condition, string> = { as_new: 'כמו חדש', good: 'טוב', needs_repair: 'דורש תיקון', scrap_only: 'לפירוק בלבד' }
+export const REFURB_STATUS_LABEL_HE = { needed: 'צריך שיפוץ', in_progress: 'בשיפוץ', done: 'שופץ' } as const
+export const REFURB_LEVEL_LABEL_HE = { light: 'קל (ניקוי, תיקוני צבע)', medium: 'בינוני (תיקון, חידוש גימור)', full: 'מלא (בנייה מחדש, ריפוד)' } as const

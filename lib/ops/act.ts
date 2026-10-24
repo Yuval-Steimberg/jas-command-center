@@ -37,6 +37,8 @@ export async function runAct(
     const r = await run(user)
     await audit(user, { action, product, target, outcome: r.ok ? 'succeeded' : 'failed', detail: { ...detail, message: r.message, ...(r.warning ? { warning: r.warning } : {}) } })
     for (const p of paths) revalidatePath(p)
+    // An item or a sale shows on many nested pages (sale, item, shop mode): refresh those trees whole.
+    if (product === 'inventory') for (const p of ['/sales', '/shop', '/inventory']) revalidatePath(p, 'layout')
     return { ok: r.ok, message: r.message, warning: r.warning }
   } catch (e) {
     await audit(user, { action, product, target, outcome: 'failed', detail: { ...detail, error: errText(e) } })

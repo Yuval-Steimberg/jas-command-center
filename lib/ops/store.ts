@@ -54,6 +54,8 @@ export interface OpsStore {
   getItemBySku(sku: string): Promise<Item | null>
   createItem(item: NewItem, movement: Omit<MovementInput, 'type'>): Promise<Item>
   applyItem(id: string, expect: { version?: number; from?: readonly ItemStatus[] }, set: ItemPatch, movement: MovementInput): Promise<Item>
+  /** Every item with a photo hash (migration 0006), for the duplicate-photo warning. Paged past the row cap. */
+  photoHashes(): Promise<Pick<Item, 'id' | 'sku' | 'title' | 'photoUrl' | 'status' | 'photoHash'>[]>
   movements(itemId: string): Promise<Movement[]>
   recentMovements(limit: number, since?: string): Promise<Movement[]>
 
@@ -78,7 +80,7 @@ export interface OpsStore {
   createTask(input: TaskInput): Promise<{ task: Task; created: boolean }>
   setTaskStatus(id: string, status: Task['status'], by: string): Promise<Task | null>
 
-  listDeliveries(filter?: { statuses?: readonly DeliveryStatus[]; websiteOrderId?: number; itemId?: string; limit?: number }): Promise<Delivery[]>
+  listDeliveries(filter?: { statuses?: readonly DeliveryStatus[]; websiteOrderId?: number; itemId?: string; saleLineIds?: readonly string[]; limit?: number }): Promise<Delivery[]>
   getDelivery(id: string): Promise<Delivery | null>
   createDelivery(input: DeliveryInput): Promise<Delivery>
   /** Conditional on the current status, so two people cannot both close one delivery. */

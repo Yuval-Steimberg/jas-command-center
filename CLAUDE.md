@@ -201,3 +201,14 @@ Volunteers (`docs/VOLUNTEERS.md`, migration `0005_volunteers.sql`, `lib/voluntee
   message dedupes on a requestId made at proposal time). Analytics: `lib/analytics/volunteers.ts` over `volunteerStats` only.
   Production check: `lib/selfcheck/volunteers.ts` (tables + the app's /api/health, a separate Vercel project).
 
+
+Shop sales + shop mode (`docs/CRM_INVENTORY.md`, migration `0006_shop_sales.sql`, `lib/sales/`, `app/shop/`):
+- A sale sells every line or none (SQL `cc_sale_create`: item locks, replay by request id); returns only through `cc_sale_return`.
+  Payments are hand-recorded and a refund is a negative payment; `saleMoney` is the one definition of due/paid/balance.
+- Listed items: website stock first (`shiftWebsiteStock`, compare-and-set), undone if the sale is refused. A shop sale needs only
+  `inventory:financial`.
+- `/shop` is Hebrew, RTL, for the counter; it shares components with the console (`components/sales/`, `components/inventory/item-form.tsx`).
+  Server pages must not call functions from a `'use client'` module: form defaults live in `item-values.ts`.
+- `seller` role → `/` redirects to `/shop`; `/inventory/[id]` redirects to `/shop/items/[id]`. Manifest + icon are excluded from the middleware.
+- Photo AI: `lib/inventory/ai.ts` (`PHOTO_AI_MODEL`, default claude-sonnet-5-5) returns suggestions only; duplicate photos warn, never block.
+- runAct for product `inventory` revalidates the `/sales`, `/shop` and `/inventory` trees.

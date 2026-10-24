@@ -77,6 +77,8 @@ export function env() {
     vercel: { token: read('VERCEL_TOKEN'), teamId: read('VERCEL_TEAM_ID') },
     /** The read-only AI assistant. Off (and saying so) until the key is set. */
     assistant: { apiKey: read('ANTHROPIC_API_KEY'), model: read('ASSISTANT_MODEL') ?? 'claude-opus-5-5' },
+    /** Photo → item fields on intake (same key as the assistant; a smaller model is plenty for one photo). */
+    photoAi: { model: read('PHOTO_AI_MODEL') ?? 'claude-sonnet-5-5' },
   }
 }
 

@@ -10,6 +10,11 @@ export type ItemStatus = (typeof ITEM_STATUSES)[number]
 export const CONDITIONS = ['as_new', 'good', 'needs_repair', 'scrap_only'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
+export const REFURB_STATUSES = ['needed', 'in_progress', 'done'] as const
+export type RefurbStatus = (typeof REFURB_STATUSES)[number]
+export const REFURB_LEVELS = ['light', 'medium', 'full'] as const
+export type RefurbLevel = (typeof REFURB_LEVELS)[number]
+
 export const LOCATION_KINDS = ['warehouse', 'zone', 'shelf', 'shop', 'external'] as const
 export type LocationKind = (typeof LOCATION_KINDS)[number]
 
@@ -64,6 +69,17 @@ export interface Item {
   purchaseOrderId?: string | null
   supplierId?: string | null
   unitCostMinor?: number | null
+  /** Migration 0006: comma-separated colours, more photos, the main photo's difference hash. */
+  colors?: string | null
+  extraPhotos?: string[]
+  photoHash?: string | null
+  /** False while the asking price is still the AI's estimate. */
+  priceApproved?: boolean
+  aiPriceMinor?: number | null
+  refurbStatus?: RefurbStatus | null
+  refurbLevel?: RefurbLevel | null
+  refurbContactId?: string | null
+  refurbInstructions?: string | null
   version: number
   createdBy: string
   createdAt: string
@@ -71,7 +87,7 @@ export interface Item {
 }
 
 /** Fields a write may set (never id, sku, version, source, furniture link or timestamps). */
-export type ItemPatch = Partial<Omit<Item, 'id' | 'sku' | 'version' | 'source' | 'furnitureItemId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'purchaseOrderId' | 'supplierId' | 'unitCostMinor'>>
+export type ItemPatch = Partial<Omit<Item, 'id' | 'sku' | 'version' | 'source' | 'furnitureItemId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'purchaseOrderId' | 'supplierId'>>
 export type NewItem = ItemPatch & Pick<Item, 'title'> & Partial<Pick<Item, 'source' | 'furnitureItemId' | 'createdBy' | 'purchaseOrderId' | 'supplierId' | 'unitCostMinor'>>
 
 export interface Movement {
@@ -101,7 +117,7 @@ export interface MovementInput {
   detail?: Record<string, unknown>
 }
 
-export const CONTACT_ROLES = ['customer', 'lead', 'supplier', 'partner', 'donor', 'volunteer'] as const
+export const CONTACT_ROLES = ['customer', 'lead', 'supplier', 'partner', 'donor', 'volunteer', 'refurbisher'] as const
 export type ContactRole = (typeof CONTACT_ROLES)[number]
 export const CONTACT_SOURCES = ['manual', 'website_order', 'website_form', 'gift_card', 'whatsapp', 'in_store', 'volunteer_app'] as const
 
@@ -195,6 +211,8 @@ export interface Delivery {
   assigneeProfileId: string | null
   status: DeliveryStatus
   note: string | null
+  /** The shop sale line this delivery hands over (migration 0006). */
+  saleLineId?: string | null
   createdBy: string
   createdAt: string
   updatedAt: string

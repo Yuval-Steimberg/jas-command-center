@@ -55,10 +55,32 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
     return ds.length ? Math.round(ds.reduce((a, b) => a + b, 0) / ds.length) : null
   }
   const available = d?.items.filter((i) => AVAILABLE.includes(i.status)) ?? null
+  const byId = new Map((d?.items ?? []).map((i) => [i.id, i]))
+  const units = (x: Movement) => Math.max(1, Number(x.detail.units) || 1)
+  const shopReturn = (x: Movement) => x.type === 'return' && x.detail.channel === 'in_store' && Number(x.detail.priceMinor) > 0
+  const returned = (p: DateRange) => moves(p, shopReturn)?.reduce((a, x) => a + (Number(x.detail.priceMinor) || 0), 0) ?? null
+  const net = (p: DateRange) => { const v = value(p), r = returned(p); return v == null || r == null ? null : v - r }
+  const avgPrice = (p: DateRange) => {
+    const xs = moves(p, inStore)
+    if (!xs?.length) return null
+    return Math.round(xs.reduce((a, x) => a + (Number(x.detail.priceMinor) || 0), 0) / xs.reduce((a, x) => a + units(x), 0))
+  }
+  // Margin only where the item records what it cost; the rest are left out and counted in the note.
+  const margin = (p: DateRange) => {
+    const xs = moves(p, inStore)
+    if (!xs) return { value: null, known: 0, all: 0 }
+    const known = xs.filter((x) => byId.get(x.itemId)?.unitCostMinor != null)
+    return { value: known.length ? known.reduce((a, x) => a + (Number(x.detail.priceMinor) || 0) - units(x) * byId.get(x.itemId)!.unitCostMinor!, 0) : null, known: known.length, all: xs.length }
+  }
+  const mNow = margin(range)
   sec.metrics.push(
     m('inv.intake', 'Items taken in', 'count', 'period', count(range, (x) => x.type === 'intake'), count(previous, (x) => x.type === 'intake')),
     m('inv.inStoreSales', 'Sold in the shop', 'count', 'period', count(range, inStore), count(previous, inStore)),
     m('inv.inStoreValue', 'In-store sales value', 'agorot', 'period', value(range), value(previous), { note: 'Recorded here. Not website revenue; never added to it.' }),
+    m('inv.inStoreReturns', 'Returned to the shop', 'agorot', 'period', returned(range), returned(previous), { lowerIsBetter: true, note: 'Value of shop-sale units customers brought back.' }),
+    m('inv.inStoreNet', 'In-store sales after returns', 'agorot', 'period', net(range), net(previous)),
+    m('inv.avgSalePrice', 'Average in-store price per unit', 'agorot', 'period', avgPrice(range), avgPrice(previous)),
+    m('inv.margin', 'In-store margin (items with a cost)', 'agorot', 'period', mNow.value, margin(previous).value, { note: mNow.all ? `${mNow.known} of ${mNow.all} sales have a recorded cost; the rest are left out.` : 'Price minus recorded cost.' }),
     m('inv.soldOnline', 'Inventory items sold online', 'count', 'period', count(range, online), count(previous, online), { note: 'Their money is in the website revenue.' }),
     m('inv.diverted', 'Donated or recycled', 'count', 'period', count(range, (x) => x.type === 'donate' || x.type === 'recycle'), count(previous, (x) => x.type === 'donate' || x.type === 'recycle')),
     m('inv.daysToSell', 'Days from intake to sale', 'count', 'period', daysToSell(range), daysToSell(previous), { lowerIsBetter: true }),
@@ -81,6 +103,37 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
       title: 'By category',
       columns: [{ key: 'category', label: 'Category' }, { key: 'available', label: 'Available now', unit: 'count' }, { key: 'sold', label: 'Sold in period', unit: 'count' }],
       rows: [...cats].sort((a, b) => b[1].available + b[1].sold - (a[1].available + a[1].sold)).slice(0, MAX_ITEMS_SHOWN).map(([category, c]) => ({ category, ...c })),
+    })
+    const sales = new Map<string, { units: number; value: number; margin: number | null }>()
+    for (const x of moves(range, inStore) ?? []) {
+      const it = byId.get(x.itemId)
+      const k = it?.category?.trim() || 'Uncategorised'
+      const c = sales.get(k) ?? { units: 0, value: 0, margin: null }
+      c.units += units(x)
+      c.value += Number(x.detail.priceMinor) || 0
+      if (it?.unitCostMinor != null) c.margin = (c.margin ?? 0) + (Number(x.detail.priceMinor) || 0) - units(x) * it.unitCostMinor
+      sales.set(k, c)
+    }
+    sec.tables.push({
+      id: 'inv.inStoreByCategory',
+      title: 'In-store sales by category (period)',
+      columns: [{ key: 'category', label: 'Category' }, { key: 'units', label: 'Units', unit: 'count' }, { key: 'value', label: 'Value', unit: 'agorot' }, { key: 'avg', label: 'Avg per unit', unit: 'agorot' }, { key: 'margin', label: 'Margin (with cost)', unit: 'agorot' }],
+      rows: [...sales].sort((a, b) => b[1].value - a[1].value).slice(0, MAX_ITEMS_SHOWN).map(([category, c]) => ({ category, units: c.units, value: c.value, avg: Math.round(c.value / c.units), margin: c.margin })),
+    })
+    const colours = new Map<string, { available: number; sold: number }>()
+    for (const i of d.items) {
+      const first = i.colors?.split(',')[0]?.trim()
+      if (!first) continue
+      const c = colours.get(first) ?? { available: 0, sold: 0 }
+      if (AVAILABLE.includes(i.status)) c.available++
+      if (i.soldAt && inRange(i.soldAt, range)) c.sold++
+      colours.set(first, c)
+    }
+    if (colours.size) sec.tables.push({
+      id: 'inv.colours',
+      title: 'By main colour',
+      columns: [{ key: 'colour', label: 'Colour' }, { key: 'available', label: 'Available now', unit: 'count' }, { key: 'sold', label: 'Sold in period', unit: 'count' }],
+      rows: [...colours].sort((a, b) => b[1].available + b[1].sold - (a[1].available + a[1].sold)).slice(0, MAX_ITEMS_SHOWN).map(([colour, c]) => ({ colour, ...c })),
     })
     if (d.truncated) sec.notes.push('More records than one read returns: period counts are a lower bound.')
   }

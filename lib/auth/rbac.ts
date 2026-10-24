@@ -4,7 +4,7 @@
  * every server action and route calls assertPermission itself.
  */
 
-export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'viewer'] as const
+export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'seller', 'viewer'] as const
 export type Role = (typeof ROLES)[number]
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -13,11 +13,12 @@ export const ROLE_LABELS: Record<Role, string> = {
   operations_manager: 'Operations manager',
   project_manager: 'Project manager',
   volunteer_coordinator: 'Volunteer coordinator',
+  seller: 'Shop seller',
   viewer: 'Read-only viewer',
 }
 
 /** Most privileged first: a user with several roles acts with the first one listed here. */
-const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'viewer']
+const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'seller', 'viewer']
 
 /**
  * The five source systems, plus the modules whose data the command center
@@ -111,6 +112,21 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'furniture:read',
     'map:read',
     'assistant:use',
+  ]),
+  /**
+   * Works the shop floor through /shop: takes items in (photo, AI fields),
+   * sells, records payments, hands over and takes returns, and adds customers.
+   * Purchase cost is visible to them (the shop prices from it). Nothing about
+   * the website's content, gift cards, the field app or volunteers.
+   */
+  seller: new Set<Permission>([
+    'inventory:read',
+    'inventory:operate',
+    'inventory:write',
+    'inventory:financial',
+    'crm:read',
+    'crm:read_pii',
+    'crm:write',
   ]),
   viewer: new Set<Permission>([...all(['read']), 'integrations:read']),
 }
