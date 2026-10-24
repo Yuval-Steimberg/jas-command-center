@@ -9,6 +9,8 @@ export interface DeploymentRow {
   /** READY, ERROR, BUILDING, QUEUED, INITIALIZING, CANCELED. */
   state: string
   commit: string | null
+  /** Short git SHA, so a deploy can be matched to the repo's head. */
+  sha?: string | null
   branch: string | null
 }
 

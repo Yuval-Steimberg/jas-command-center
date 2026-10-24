@@ -160,8 +160,10 @@ export async function runSelfCheck(now = new Date()) {
     }),
     fromCall('platform', 'Activity feed', async () => {
       const f = await activityFeed(() => true)
-      if (f.gaps.length) throw new Error(`gaps: ${f.gaps.join(' · ')}`)
-      return `${f.items.length} items, no gaps`
+      // The standing note that two sources expose totals only is by design; a source that failed to read is not.
+      const failed = f.gaps.filter((g) => !g.includes('expose totals only'))
+      if (failed.length) throw new Error(`could not read: ${failed.join(' · ')}`)
+      return `${f.items.length} items, every source read`
     }),
     fromCall('platform', 'Analytics (7 days)', async () => {
       const rep = await loadAnalytics(week, () => true)
@@ -176,7 +178,10 @@ export async function runSelfCheck(now = new Date()) {
       if (error) throw new Error(error.message)
       const failed = (data ?? []).filter((r) => r.last_error)
       if (failed.length) throw new Error(failed.map((r) => `${r.source}: ${r.last_error}`).join(' · '))
-      return data?.length ? data.map((r) => `${String(r.source).slice(7)} last ${r.cursor}`).join(', ') : 'none sent yet'
+      // /api/cron/reports runs daily at 18:00 UTC and records report:daily even when nobody opted in.
+      const daily = (data ?? []).find((r) => r.source === 'report:daily')
+      if (daily && String(daily.cursor) < addDays(to, -2)) throw new Error(`daily report last ran for ${daily.cursor}: the Vercel cron /api/cron/reports is not running`)
+      return data?.length ? data.map((r) => `${String(r.source).slice(7)} last ${r.cursor}`).join(', ') : 'none sent yet (Vercel cron 18:00 UTC)'
     }),
   ])
   probes.push(...(await probeSitemap(env().website.url)))
@@ -187,7 +192,7 @@ export async function runSelfCheck(now = new Date()) {
         name: `Vercel · ${p.project}`,
         state: p.latestFailed ? 'error' : 'ok',
         latencyMs: null,
-        detail: `live ${p.live?.commit?.slice(0, 7) ?? 'none'} (${p.live?.branch ?? '?'})${p.latestFailed ? `, newest deploy FAILED (${p.latest.commit?.slice(0, 7) ?? '?'})` : ''}`,
+        detail: `live ${p.live?.sha ?? 'none'} (${p.live?.branch ?? '?'})${p.latestFailed ? `, newest deploy FAILED (${p.latest.sha ?? '?'})` : ''}`,
       })
     }
   }
