@@ -155,6 +155,10 @@ Production check (`lib/selfcheck/`, `/api/cron/selfcheck`, `.github/workflows/pr
   (never names, emails, codes or keys). Same `CRON_SECRET`; URL derived from the `SWEEP_URL` secret. Daily 05:30 UTC
   and on demand; fails when a configured section errors. A new page's read goes in `runSelfCheck`.
 - This is how a session without access to the live hosts verifies production: trigger the workflow, read the log.
+- `public.ts` checks what visitors get, anonymously: website pages are prerendered (canonical + h1, not the SPA shell),
+  sitemap.xml/llms.txt exist, the sitemap's canonical domain serves the same site, and admin-only `site_content` rows
+  (discount codes) are NOT readable with the public key found in the site's own bundle. Also one probe per Vercel project
+  (live commit; newest deploy failed = error).
 
 Design agent business OS (`getDesignAgentOs`, whatssup-bot `GET /admin/os`): pending manager approvals, automations,
 this month's AI cost. Read-only: approvals are decided in the bot's own /cc, where the hash binding lives.
