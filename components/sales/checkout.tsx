@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useFormState } from 'react-dom'
-import { Plus, X } from 'lucide-react'
+import { Check, Plus, Search, UserPlus, X } from 'lucide-react'
 import { Submit, input } from '@/app/(app)/website/forms'
 import { Outcome } from '@/app/(app)/inventory/forms'
 import { createSaleAction } from '@/app/(app)/sales/actions'
@@ -62,6 +62,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
   const [q, setQ] = useState('')
   const [contactId, setContactId] = useState('')
   const [nc, setNc] = useState({ name: '', phone: '', email: '' })
+  const [ncOpen, setNcOpen] = useState(false)
   const [payMode, setPayMode] = useState<'none' | 'all' | 'part'>('all')
   const [payAmount, setPayAmount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('cash')
@@ -79,9 +80,9 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
 
   const problem =
     !lines.length ? t.emptyBasket
-    : lines.some((l) => shekelsToMinor(l.price) == null) ? `${t.price}?`
-    : lines.some((l) => l.fulfilment === 'delivery' && !l.address.trim()) ? `${t.delivery}: ${t.address}?`
-    : payMode === 'part' && !(paidMinor > 0) ? `${t.amount}?`
+    : lines.some((l) => shekelsToMinor(l.price) == null) ? t.needPrice
+    : lines.some((l) => l.fulfilment === 'delivery' && !l.address.trim()) ? t.needAddress
+    : payMode === 'part' && !(paidMinor > 0) ? t.needAmount
     : null
 
   const basket = JSON.stringify({
@@ -99,18 +100,24 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
     payment: paidMinor > 0 ? { amountMinor: paidMinor, method, note: null } : null,
   })
 
-  const seg = (on: boolean) => `h-11 flex-1 rounded-full border px-3 text-sm font-medium ${on ? 'border-forest bg-forest text-cream' : 'border-line hover:bg-sunken'}`
+  const seg = (on: boolean) => `h-11 flex-1 rounded-full border px-3 text-sm font-medium transition-colors duration-150 ${on ? 'border-forest bg-forest text-cream' : 'border-line hover:bg-sunken'}`
+  // Once the basket has something in it the list folds away until the seller types, so the basket sits under the search.
+  const showList = q.trim() !== '' || lines.length === 0
+  const shop = base === '/shop'
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
       <section className="flex min-w-0 flex-col gap-2 rounded-lg border border-line bg-surface p-3">
-        <h2 className="text-sm font-semibold text-ink">{t.findItems}</h2>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.findHint} dir="auto" className={input} aria-label={t.findItems} />
-        {found.length === 0 ? <p className="text-sm text-muted">{t.noMatch}</p> : (
+        <h2 className="text-sm font-semibold text-ink">{lines.length ? t.addMore : t.findItems}</h2>
+        <div className="relative">
+          <Search aria-hidden className="pointer-events-none absolute start-3 top-1/2 h-5 w-5 -translate-y-1/2 text-faint" />
+          <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.findHint} dir={lang === 'he' ? 'rtl' : 'ltr'} enterKeyHint="search" className={`${input.replace('px-3', 'pe-3 ps-10')} h-12`} aria-label={t.findItems} />
+        </div>
+        {!showList ? null : found.length === 0 ? <p className="text-sm text-muted">{t.noMatch}</p> : (
           <ul className="flex max-h-[28rem] flex-col gap-1 overflow-y-auto">
             {found.map((i) => (
               <li key={i.id}>
-                <button type="button" onClick={() => setLines((ls) => [...ls, lineFor(i)])} className="flex min-h-14 w-full items-center gap-3 rounded-md px-2 py-1 text-start hover:bg-sunken">
+                <button type="button" onClick={() => { setLines((ls) => [...ls, lineFor(i)]); setQ('') }} className="flex min-h-14 w-full items-center gap-3 rounded-md px-2 py-1 text-start hover:bg-sunken">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   {i.photoUrl ? <img src={i.photoUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" /> : <span className="h-12 w-12 shrink-0 rounded bg-sunken" />}
                   <span className="min-w-0 flex-1">
@@ -118,7 +125,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
                     <span className="block truncate text-xs text-muted"><span dir="ltr">{i.sku}</span>{i.category ? ` · ${i.category}` : ''}{i.kind === 'batch' ? ` · ${i.quantity} ${t.qty}` : ''}{i.status !== 'in_storage' ? ` · ${i.status === 'listed' ? 'web' : t.reservedWarn}` : ''}</span>
                   </span>
                   <span className="num text-sm">{i.priceMinor != null ? formatAgorot(i.priceMinor) : '—'}</span>
-                  <Plus aria-hidden className="h-4 w-4 shrink-0 text-muted" />
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-line text-forest"><Plus aria-hidden className="h-4 w-4" /></span>
                 </button>
               </li>
             ))}
@@ -130,7 +137,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
         <input type="hidden" name="basket" value={basket} />
         <input type="hidden" name="base" value={base} />
         <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
-          <h2 className="text-sm font-semibold text-ink">{t.basket}</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-ink">{t.basket}{lines.length ? <span className="num inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sage-soft px-2 text-xs text-forest">{lines.length}</span> : null}</h2>
           {lines.length === 0 ? <p className="text-sm text-muted">{t.emptyBasket}</p> : lines.map((l, i) => {
             const it = byId.get(l.itemId)!
             return (
@@ -180,7 +187,10 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
               {contacts.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
           </label>
-          {!contactId && allowNewContact ? (
+          {!contactId && allowNewContact && !ncOpen ? (
+            <button type="button" onClick={() => setNcOpen(true)} className="inline-flex h-11 items-center gap-2 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken"><UserPlus aria-hidden className="h-4 w-4" />{t.newCustomer}</button>
+          ) : null}
+          {!contactId && allowNewContact && ncOpen ? (
             <fieldset className="grid gap-2 sm:grid-cols-3">
               <legend className="mb-1 text-xs text-muted">{t.newCustomer}</legend>
               <input value={nc.name} onChange={(e) => setNc({ ...nc, name: e.target.value })} placeholder={t.name} aria-label={t.name} dir="auto" maxLength={200} className={input} />
@@ -200,24 +210,31 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
           <div className="grid gap-2 sm:grid-cols-2">
             {payMode === 'part' ? <label className="flex flex-col gap-1 text-sm"><span className="text-muted">{t.amount}</span><input value={payAmount} onChange={(e) => setPayAmount(e.target.value)} inputMode="decimal" dir="ltr" className={input} /></label> : null}
             {payMode !== 'none' ? (
-              <label className="flex flex-col gap-1 text-sm"><span className="text-muted">{t.method}</span>
-                <select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)} className={input}>
-                  {PAYMENT_METHODS.map((m) => <option key={m} value={m}>{methodLabel[m]}</option>)}
-                </select>
-              </label>
+              <fieldset className="flex flex-col gap-1 text-sm sm:col-span-2">
+                <legend className="mb-1 text-muted">{t.method}</legend>
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_METHODS.map((k) => (
+                    <button key={k} type="button" aria-pressed={method === k} onClick={() => setMethod(k)} className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-md border px-2 text-center text-sm leading-tight transition-colors duration-150 ${method === k ? 'border-forest bg-forest font-semibold text-cream' : 'border-line hover:bg-sunken'}`}>
+                      {method === k ? <Check aria-hidden className="h-4 w-4 shrink-0" /> : null}{methodLabel[k]}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
             ) : null}
           </div>
           <label className="flex flex-col gap-1 text-sm"><span className="text-muted">{t.note}</span><input value={note} onChange={(e) => setNote(e.target.value)} dir="auto" maxLength={1000} className={input} /></label>
         </section>
 
-        <section className="sticky bottom-0 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-sm">
-          <dl className="grid grid-cols-3 gap-2 text-sm">
-            <div><dt className="text-muted">{t.total}</dt><dd className="num text-lg font-semibold text-ink">{formatAgorot(totalMinor)}</dd></div>
-            <div><dt className="text-muted">{t.paid}</dt><dd className="num text-lg">{formatAgorot(paidMinor)}</dd></div>
-            <div><dt className="text-muted">{t.balance}</dt><dd className={`num text-lg ${totalMinor - paidMinor > 0 ? 'text-warn' : ''}`}>{formatAgorot(totalMinor - paidMinor)}</dd></div>
+        {/* Total and the sale button stay under the thumb; in shop mode they sit above the tab bar, never under it. */}
+        <section className={`sticky z-10 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-lift ${shop ? 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'bottom-0'}`}>
+          <dl className="flex items-end justify-between gap-3 text-sm">
+            <div><dt className="text-muted">{t.total}{lines.length ? ` · ${lines.length === 1 ? t.oneItem : `${lines.length} ${t.itemsWord}`}` : ''}</dt><dd className="num text-2xl font-bold text-ink">{formatAgorot(totalMinor)}</dd></div>
+            <div className="text-end">
+              <dt className="text-muted">{t.balance}</dt><dd className={`num text-base font-semibold ${totalMinor - paidMinor > 0 ? 'text-warn' : 'text-ok'}`}>{formatAgorot(totalMinor - paidMinor)}</dd>
+            </div>
           </dl>
-          {problem && lines.length ? <p className="text-sm text-muted">{problem}</p> : null}
-          {problem ? <button type="button" disabled className="h-12 rounded-full bg-brand px-4 text-sm font-semibold text-forest opacity-50">{t.sell}</button> : <BigSubmit label={t.sell} busy={t.selling} />}
+          {problem && lines.length ? <p role="status" className="text-sm font-medium text-warn">{problem}</p> : null}
+          {problem ? <button type="button" disabled className="h-12 rounded-full bg-sunken px-4 text-base font-semibold text-muted">{t.sell}</button> : <BigSubmit label={t.sell} busy={t.selling} />}
           <Outcome state={state} />
         </section>
       </form>

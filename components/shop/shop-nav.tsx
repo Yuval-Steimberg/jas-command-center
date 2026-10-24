@@ -52,9 +52,10 @@ export function ShopTabBar({ tabs }: { tabs: ShopTabKey[] }) {
                 href={t.href}
                 aria-current={on ? 'page' : undefined}
                 onClick={() => { if (path !== t.href) setPending(t.href) }}
-                className={`flex h-16 flex-col items-center justify-center gap-1 text-xs font-medium ${on ? 'text-ink' : 'text-muted hover:text-ink'}`}
+                className={`flex h-16 flex-col items-center justify-center gap-1 text-xs ${on ? 'font-semibold text-ink' : 'font-medium text-muted hover:text-ink'}`}
               >
-                <span className={`inline-flex h-8 w-14 items-center justify-center rounded-full ${on ? 'bg-brand text-forest' : ''}`}><t.icon aria-hidden className="h-5 w-5" /></span>
+                {/* Selection is sage, not orange: orange is the one primary action on the screen above. */}
+                <span className={`inline-flex h-8 w-14 items-center justify-center rounded-full transition-colors duration-150 ${on ? 'bg-sage-soft text-forest' : ''}`}><t.icon aria-hidden className="h-5 w-5" strokeWidth={on ? 2.25 : 1.75} /></span>
                 {t.label}
               </Link>
             </li>

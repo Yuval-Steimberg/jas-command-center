@@ -212,3 +212,6 @@ Shop sales + shop mode (`docs/CRM_INVENTORY.md`, migration `0006_shop_sales.sql`
 - `seller` role → `/` redirects to `/shop`; `/inventory/[id]` redirects to `/shop/items/[id]`. Manifest + icon are excluded from the middleware.
 - Photo AI: `lib/inventory/ai.ts` (`PHOTO_AI_MODEL`, default claude-sonnet-5-5) returns suggestions only; duplicate photos warn, never block.
 - runAct for product `inventory` revalidates the `/sales`, `/shop` and `/inventory` trees.
+- Shop look: `data-shop` on the layout scopes `globals.css` rules (16px fields so iOS does not zoom, 44px fields/buttons, RTL
+  disclosure chevrons, themed selection/caret). One orange per screen: the active tab is sage, a handover is forest (`tone="strong"`).
+  Checkout's sticky total sits ABOVE the fixed tab bar in shop mode; never `bottom-0` there. Shared pieces: `components/shop/bits.tsx`.

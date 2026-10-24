@@ -1,13 +1,13 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
-import { PackagePlus, ScanLine, Search, ShoppingBag } from 'lucide-react'
+import { ChevronLeft, PackagePlus, ScanLine, Search, ShoppingBag, Store, Truck } from 'lucide-react'
 import { getSession } from '@/lib/auth/session'
-import { can, type Permission } from '@/lib/auth/rbac'
+import { can, ROLE_LABELS_HE, type Permission } from '@/lib/auth/rbac'
 import { getOpsStore } from '@/lib/ops'
 import { loadOps } from '@/lib/ops/guard'
 import { getSalesStore } from '@/lib/sales/store'
 import { saleMoney } from '@/lib/sales/model'
-import { PAYMENT_STATE_HE } from '@/components/sales/copy'
+import { PayChip, Thumb } from '@/components/shop/bits'
 import { formatAgorot } from '@/lib/money'
 import { israelDate } from '@/lib/time'
 
@@ -17,8 +17,8 @@ export default async function ShopHome() {
   const s = (await getSession())!
   const may = (p: Permission) => can(s.user.role, p, s.overrides)
 
+  const sell = may('inventory:financial')
   const tiles = [
-    may('inventory:financial') ? { href: '/shop/sell', label: 'מכירה', icon: ShoppingBag, primary: true } : null,
     may('inventory:write') ? { href: '/shop/new', label: 'הוספת פריט', icon: PackagePlus } : null,
     { href: '/shop/scan', label: 'סריקת תווית', icon: ScanLine },
     { href: '/shop/items', label: 'חיפוש פריט', icon: Search },
@@ -26,17 +26,30 @@ export default async function ShopHome() {
 
   // The tiles are what a seller came for: they render at once, and today's lists stream in after.
   return (
-    <div className="flex flex-col gap-5">
-      <h1 className="text-xl font-bold text-ink">חנות</h1>
-      <nav className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {tiles.map((t) => (
-          <Link key={t.href} href={t.href} className={`flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border p-4 text-center text-base font-semibold ${t.primary ? 'border-brand bg-brand text-forest' : 'border-line bg-surface text-ink hover:bg-sunken'}`}>
-            <t.icon aria-hidden className="h-8 w-8" />{t.label}
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold text-ink">שלום, {s.user.name}</h1>
+        <p className="text-sm text-muted">{ROLE_LABELS_HE[s.user.role]}</p>
+      </div>
+      <nav aria-label="פעולות" className="flex flex-col gap-3">
+        {/* Selling is the counter's main job: the one full-width, orange action on the screen. */}
+        {sell ? (
+          <Link href="/shop/sell" className="flex min-h-20 items-center gap-4 rounded-lg bg-brand px-5 text-forest shadow-card transition-colors duration-150 hover:bg-brand-pressed hover:text-cream active:scale-[0.99]">
+            <ShoppingBag aria-hidden className="h-8 w-8 shrink-0" />
+            <span className="flex-1 text-lg font-bold">מכירה חדשה</span>
+            <ChevronLeft aria-hidden className="h-6 w-6 shrink-0" />
           </Link>
-        ))}
+        ) : null}
+        <div className={`grid gap-3 ${tiles.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {tiles.map((t) => (
+            <Link key={t.href} href={t.href} className="flex min-h-24 flex-col items-center justify-center gap-2 rounded-lg border border-line bg-surface p-3 text-center text-sm font-semibold text-ink transition-colors duration-150 hover:bg-sunken active:scale-[0.98]">
+              <t.icon aria-hidden className="h-7 w-7 text-forest" strokeWidth={1.75} />{t.label}
+            </Link>
+          ))}
+        </div>
       </nav>
       <Suspense fallback={<ShopListsSkeleton />}>
-        <ShopToday money={may('inventory:financial')} />
+        <ShopToday money={sell} />
       </Suspense>
     </div>
   )
@@ -45,11 +58,22 @@ export default async function ShopHome() {
 function ShopListsSkeleton() {
   return (
     <>
-      <div className="h-32 animate-pulse rounded-lg border border-line bg-surface" />
-      <div className="h-32 animate-pulse rounded-lg border border-line bg-surface" />
+      <div className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
+      <div className="h-24 animate-pulse rounded-lg border border-line bg-surface" />
     </>
   )
 }
+
+function SectionHead({ title, count }: { title: string; count: number }) {
+  return (
+    <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+      {title}
+      <span className="num inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-sunken px-2 text-xs font-semibold text-muted">{count}</span>
+    </h2>
+  )
+}
+
+const israelTime = (iso: string) => new Intl.DateTimeFormat('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
 
 async function ShopToday({ money }: { money: boolean }) {
   const res = await loadOps(async () => {
@@ -71,25 +95,28 @@ async function ShopToday({ money }: { money: boolean }) {
   return (
     <>
       {!res.ok ? (
-        <p className="rounded-lg border border-line bg-surface p-3 text-sm text-muted" dir="ltr">{res.message}</p>
+        <p role="alert" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad" dir="auto">הרשימות של היום לא נטענו: {res.message}</p>
       ) : (
         <>
-          <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
-            <h2 className="text-sm font-semibold text-ink">ממתין למסירה ({res.data.open.length})</h2>
-            {res.data.open.length === 0 ? <p className="text-sm text-muted">אין פריטים שממתינים לאיסוף או למשלוח.</p> : (
-              <ul className="flex flex-col divide-y divide-line/60">
+          <section className="flex flex-col gap-2">
+            <SectionHead title="ממתין למסירה" count={res.data.open.length} />
+            {res.data.open.length === 0 ? <p className="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-muted">אין פריטים שממתינים לאיסוף או למשלוח.</p> : (
+              <ul className="flex flex-col divide-y divide-line/60 overflow-hidden rounded-lg border border-line bg-surface">
                 {res.data.open.map((l) => {
                   const it = res.data.items.get(l.itemId)
                   const sale = res.data.sales.get(l.saleId)
                   return (
                     <li key={l.id}>
-                      <Link href={`/shop/sales/${l.saleId}`} className="flex min-h-14 items-center gap-3 py-2 hover:bg-sunken">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        {it?.photoUrl ? <img src={it.photoUrl} alt="" className="h-12 w-12 shrink-0 rounded object-cover" /> : <span className="h-12 w-12 shrink-0 rounded bg-sunken" />}
+                      <Link href={`/shop/sales/${l.saleId}`} className="flex min-h-16 items-center gap-3 px-3 py-2 hover:bg-sunken">
+                        <Thumb src={it?.photoUrl} />
                         <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium" dir="auto">{it?.title ?? 'פריט'}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
-                          <span className="block truncate text-xs text-muted">{l.fulfilment === 'delivery' ? `משלוח${l.scheduledFor ? ` ${l.scheduledFor}` : ''}` : 'איסוף'} · <span dir="ltr">{sale?.number}</span></span>
+                          <span className="block truncate text-sm font-semibold text-ink" dir="auto">{it?.title ?? 'פריט'}{l.quantity > 1 ? ` ×${l.quantity}` : ''}</span>
+                          <span className="mt-0.5 flex items-center gap-1.5 truncate text-xs text-muted">
+                            {l.fulfilment === 'delivery' ? <Truck aria-hidden className="h-3.5 w-3.5 shrink-0" /> : <Store aria-hidden className="h-3.5 w-3.5 shrink-0" />}
+                            {l.fulfilment === 'delivery' ? `משלוח${l.scheduledFor ? ` · ${l.scheduledFor}` : ''}` : 'איסוף מהחנות'} · <span dir="ltr">{sale?.number}</span>
+                          </span>
                         </span>
+                        <ChevronLeft aria-hidden className="h-5 w-5 shrink-0 text-faint" />
                       </Link>
                     </li>
                   )
@@ -98,18 +125,22 @@ async function ShopToday({ money }: { money: boolean }) {
             )}
           </section>
 
-          <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
-            <h2 className="text-sm font-semibold text-ink">מכירות היום ({res.data.today.length})</h2>
-            {res.data.today.length === 0 ? <p className="text-sm text-muted">עוד לא נרשמה מכירה היום.</p> : (
-              <ul className="flex flex-col divide-y divide-line/60">
+          <section className="flex flex-col gap-2">
+            <SectionHead title="מכירות היום" count={res.data.today.length} />
+            {res.data.today.length === 0 ? <p className="rounded-lg border border-dashed border-line px-4 py-5 text-center text-sm text-muted">עוד לא נרשמה מכירה היום.</p> : (
+              <ul className="flex flex-col divide-y divide-line/60 overflow-hidden rounded-lg border border-line bg-surface">
                 {res.data.today.map((sale) => {
                   const m = saleMoney(sale, res.data.lines.filter((l) => l.saleId === sale.id), res.data.payments.filter((p) => p.saleId === sale.id))
                   return (
                     <li key={sale.id}>
-                      <Link href={`/shop/sales/${sale.id}`} className="flex min-h-12 items-center justify-between gap-3 py-2 text-sm hover:bg-sunken">
-                        <span dir="ltr">{sale.number}</span>
-                        <span className={m.state === 'paid' || m.state === 'nothing_due' ? 'text-ok' : 'text-warn'}>{PAYMENT_STATE_HE[m.state]}</span>
-                        {money ? <span className="num">{formatAgorot(m.dueMinor)}</span> : null}
+                      <Link href={`/shop/sales/${sale.id}`} className="flex min-h-14 items-center gap-3 px-3 py-2 text-sm hover:bg-sunken">
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-ink" dir="ltr">{sale.number}</span>
+                          <span className="text-xs text-muted">{israelTime(sale.createdAt)}</span>
+                        </span>
+                        <PayChip state={m.state} />
+                        {money ? <span className="num w-20 text-end font-semibold text-ink">{formatAgorot(m.dueMinor)}</span> : null}
+                        <ChevronLeft aria-hidden className="h-5 w-5 shrink-0 text-faint" />
                       </Link>
                     </li>
                   )

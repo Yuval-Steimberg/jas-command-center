@@ -28,3 +28,29 @@ html, body { background: rgb(var(--ground)); color: rgb(var(--ink)); }
 body { font-feature-settings: 'tnum' 1; -webkit-font-smoothing: antialiased; }
 .num { font-variant-numeric: tabular-nums; }
 :focus-visible { outline: 2px solid rgb(var(--forest)); outline-offset: 2px; border-radius: 4px; }
+
+/*
+ * Shop mode (/shop): a phone or tablet at the counter, used one-handed.
+ * Fields are 16px so iOS does not zoom the page on focus, and every field and
+ * button clears the 44px touch floor without each component restating it.
+ */
+[data-shop] input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+[data-shop] select,
+[data-shop] textarea { font-size: 16px; }
+[data-shop] input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='file']),
+[data-shop] select,
+[data-shop] button:not([data-compact]) { min-height: 2.75rem; }
+[data-shop] input[type='checkbox'], [data-shop] input[type='radio'] { accent-color: rgb(var(--forest)); }
+[data-shop] ::selection { background: rgb(var(--sage) / 0.6); color: rgb(var(--ink)); }
+[data-shop] input, [data-shop] textarea { caret-color: rgb(var(--brand-pressed)); }
+/* Disclosure rows: the browser's ▸ points the wrong way in RTL and is a glyph, not an icon. */
+[data-shop] details > summary { list-style: none; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; min-height: 2.75rem; }
+[data-shop] details > summary::-webkit-details-marker { display: none; }
+[data-shop] details > summary::after {
+  content: ''; width: 1.25rem; height: 1.25rem; flex-shrink: 0; background: rgb(var(--muted));
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  transition: transform 160ms cubic-bezier(.2,.7,.2,1);
+}
+[data-shop] details[open] > summary::after { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) { [data-shop] details > summary::after { transition: none; } }

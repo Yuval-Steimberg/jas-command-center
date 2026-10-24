@@ -55,13 +55,13 @@ export function SaleDetail({ v, lang, base, may, locations }: {
                     <p className={l.status === 'open' ? 'text-warn' : 'text-muted'}>
                       {lineState(l)}
                       {l.fulfilment === 'delivery' && l.status === 'open' ? <> · <span dir="auto">{l.address}</span> · {l.scheduledFor ? `${t.scheduled}${l.scheduledFor}${l.timeWindow ? ` ${l.timeWindow}` : ''}` : t.noDate}{d ? <> · {base === '/shop' ? <span>{DELIVERY_HE[d.status] ?? d.status}</span> : <Link href="/deliveries" className="underline-offset-2 hover:underline">{d.status}</Link>}</> : null}</> : null}
-                      {l.doneAt && l.status === 'done' ? ` · ${formatDateTime(l.doneAt)}` : ''}
+                      {l.doneAt && l.status === 'done' ? ` · ${formatDateTime(l.doneAt, lang)}` : ''}
                     </p>
                   </div>
                 </div>
                 {l.status === 'open' && may.operate ? (
                   <div className="flex flex-col gap-2">
-                    <ActionForm action={handOverAction} hidden={{ lineId: l.id }} label={t.handOver} busy={t.saving} tone="primary" confirm={t.handOverConfirm} />
+                    <ActionForm action={handOverAction} hidden={{ lineId: l.id }} label={t.handOver} busy={t.saving} tone={base === '/shop' ? 'strong' : 'primary'} confirm={t.handOverConfirm} className="flex flex-col gap-2 [&_button]:h-12 [&_button]:w-full [&_button]:text-base" />
                     <details className="text-sm">
                       <summary className="cursor-pointer py-2 text-muted">{t.change}</summary>
                       <ActionForm action={lineFulfilmentAction} hidden={{ lineId: l.id }} label={t.saveChange} busy={t.saving} className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -83,7 +83,7 @@ export function SaleDetail({ v, lang, base, may, locations }: {
                     <summary className="cursor-pointer py-2 text-muted">{t.returnIt}</summary>
                     <ActionForm action={returnLineAction} hidden={{ lineId: l.id, returned: l.returnedQty }} label={t.doReturn} busy={t.saving} confirm={t.returnConfirm} className="mt-2 grid gap-2 sm:grid-cols-2">
                       {kept > 1 ? <Field label={`${t.units} (≤ ${kept})`}><input name="units" type="number" min={1} max={kept} defaultValue={kept} dir="ltr" className={input} /></Field> : <input type="hidden" name="units" value={1} />}
-                      <Field label={t.putIn}><LocationSelect locations={locations} defaultValue={it?.locationId} /></Field>
+                      <Field label={t.putIn}><LocationSelect locations={locations} defaultValue={it?.locationId} emptyLabel={lang === 'he' ? 'ללא מיקום' : 'No location'} /></Field>
                       <div className="sm:col-span-2"><Field label={t.reason}><input name="reason" required minLength={3} dir="auto" maxLength={500} className={input} /></Field></div>
                     </ActionForm>
                   </details>
@@ -109,7 +109,7 @@ export function SaleDetail({ v, lang, base, may, locations }: {
           <ul className="flex flex-col gap-1 text-sm">
             {v.payments.map((p) => (
               <li key={p.id} className="flex flex-wrap justify-between gap-x-3">
-                <span>{methodLabel[p.method]} · <span className="text-muted">{formatDateTime(p.at)}</span>{p.note ? <span dir="auto" className="text-muted"> · {p.note}</span> : null}</span>
+                <span>{methodLabel[p.method]} · <span className="text-muted">{formatDateTime(p.at, lang)}</span>{p.note ? <span dir="auto" className="text-muted"> · {p.note}</span> : null}</span>
                 <span className={`num ${p.amountMinor < 0 ? 'text-bad' : ''}`}>{p.amountMinor < 0 ? '−' : ''}{formatAgorot(Math.abs(p.amountMinor))}</span>
               </li>
             ))}
