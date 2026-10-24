@@ -33,7 +33,14 @@ import { listWebsiteOrdersSince } from '@/lib/integrations/website/manage'
 import { getSupplierStore } from '@/lib/suppliers/store'
 import { OpsSetupError } from '@/lib/ops/store'
 import { OPEN_PO, isOverdue } from '@/lib/suppliers/model'
+import { searchGiftCards, getGiftCard, getGiftCardHealth } from '@/lib/integrations/gift-cards/adapter'
+import { getFurnitureProject } from '@/lib/integrations/furniture/manage'
+import { searchEverything } from '@/lib/search/search'
+import { activityFeed } from '@/lib/activity/feed'
+import { loadAnalytics } from '@/lib/analytics/load'
+import { supabaseAdmin } from '@/lib/supabase'
 import { fromCall, fromSource, summarise, type Probe } from './probe'
+import { probeAdminRowsPrivate, probePrerenderedPages, probeSitemap } from './public'
 
 /**
  * Every read a Command Center page depends on, run once against production.
@@ -45,7 +52,7 @@ export async function runSelfCheck(now = new Date()) {
   const to = israelDate(now)
   const week = { from: addDays(to, -6), to }
 
-  const [health, projects] = await Promise.all([allHealth(), getFurnitureProjects()])
+  const [health, projects, deployments] = await Promise.all([allHealth(), getFurnitureProjects(), getDeployments()])
   const firstProject = projects.state === 'ok' ? projects.data[0] : undefined
 
   const probes: Probe[] = await Promise.all([
@@ -123,7 +130,67 @@ export async function runSelfCheck(now = new Date()) {
     fromCall('platform', 'Notification tracking (migration 0002)', async () => ((await notificationStore().unemailed()) === null ? Promise.reject(new Error('run 0002_notification_prefs.sql')) : 'present')),
     fromCall('platform', 'Audit log', async () => `${(await listAudit(1)).length ? 'has entries' : 'empty'}`),
     fromCall('platform', 'Alert email', async () => (emailConfigured() ? 'configured' : Promise.reject(new Error('SENDGRID_API_KEY / ALERT_EMAIL_FROM missing')))),
+    // Public website (what visitors and crawlers get)
+    probePrerenderedPages(env().website.url),
+    probeAdminRowsPrivate(env().website.url),
+    // Deeper reads behind the detail pages
+    listWebsiteContent().then((r) => fromSource('website', 'Editable lists (menu, footer, team…)', r, (d) => `${d.items.filter((i) => i.list).length} list keys, ${d.items.length} keys in ${d.sections.length} sections`)),
+    listWebsiteInquiries('all').then((r) => fromSource('website', 'Messages (all, site_inquiries)', r, (d) => `${d.inquiries.length} total`)),
+    getGiftCardHealth().then((r) => fromSource('gift_cards', 'Deployed build', r, (d) => `commit ${String(d.commit ?? 'unknown')} branch ${String(d.branch ?? 'unknown')}`)),
+    fromCall('gift_cards', 'Card search + card detail', async () => {
+      const r = await searchGiftCards('')
+      if (r.state !== 'ok') throw new Error(r.state === 'error' ? r.error : `needs ${r.missing.join(', ')}`)
+      const first = r.data.items[0]
+      if (!first) return `${r.data.total} cards (no card to open)`
+      const d = await getGiftCard(first.id)
+      if (!d || d.state !== 'ok') throw new Error(`detail: ${!d ? 'not found' : d.state === 'error' ? d.error : 'not configured'}`)
+      return `${r.data.total} cards; detail opens (${d.data.delivery.length} delivery jobs)`
+    }),
+    firstProject
+      ? getFurnitureProject(firstProject.id).then((r) =>
+          r ? fromSource('furniture', 'Project page (apartments + items)', r, (d) => `${d.apartments.length} apartments, ${d.items.length} items${d.itemsCapped ? ' (capped)' : ''}`) : ({ section: 'furniture', name: 'Project page (apartments + items)', state: 'error', latencyMs: null, detail: 'first project not found' } as Probe),
+        )
+      : Promise.resolve<Probe>({ section: 'furniture', name: 'Project page (apartments + items)', state: 'not_configured', latencyMs: null, detail: 'no project to read' }),
+    // Cross-cutting pages, read as an owner would
+    fromCall('platform', 'Search (every source)', async () => {
+      const groups = await searchEverything('a', () => true)
+      const bad = groups.filter((g) => g.state === 'error')
+      if (bad.length) throw new Error(bad.map((g) => `${g.label}: ${g.note ?? 'error'}`).join(' · '))
+      return groups.map((g) => `${g.key} ${g.state}`).join(', ')
+    }),
+    fromCall('platform', 'Activity feed', async () => {
+      const f = await activityFeed(() => true)
+      if (f.gaps.length) throw new Error(`gaps: ${f.gaps.join(' · ')}`)
+      return `${f.items.length} items, no gaps`
+    }),
+    fromCall('platform', 'Analytics (7 days)', async () => {
+      const rep = await loadAnalytics(week, () => true)
+      const sources = rep.sections.flatMap((x) => x.sources.map((src) => ({ product: x.product, ...src })))
+      const bad = sources.filter((x) => x.state === 'error')
+      if (bad.length) throw new Error(bad.map((x) => `${x.product} ${x.label}: ${x.detail}`).join(' · '))
+      return `${rep.sections.length} sections, ${sources.length} sources, ${sources.filter((x) => x.state === 'not_configured').length} not connected`
+    }),
+    fromCall('platform', 'Assistant model key', async () => (env().assistant.apiKey ? `configured (${env().assistant.model})` : Promise.reject(new Error('ANTHROPIC_API_KEY missing')))),
+    fromCall('platform', 'Scheduled report emails', async () => {
+      const { data, error } = await supabaseAdmin().from('cc_sync_state').select('source,cursor,last_error').like('source', 'report:%')
+      if (error) throw new Error(error.message)
+      const failed = (data ?? []).filter((r) => r.last_error)
+      if (failed.length) throw new Error(failed.map((r) => `${r.source}: ${r.last_error}`).join(' · '))
+      return data?.length ? data.map((r) => `${String(r.source).slice(7)} last ${r.cursor}`).join(', ') : 'none sent yet'
+    }),
   ])
+  probes.push(...(await probeSitemap(env().website.url)))
+  if (deployments.state === 'ok') {
+    for (const p of deployments.data) {
+      probes.push({
+        section: 'platform',
+        name: `Vercel · ${p.project}`,
+        state: p.latestFailed ? 'error' : 'ok',
+        latencyMs: null,
+        detail: `live ${p.live?.commit?.slice(0, 7) ?? 'none'} (${p.live?.branch ?? '?'})${p.latestFailed ? `, newest deploy FAILED (${p.latest.commit?.slice(0, 7) ?? '?'})` : ''}`,
+      })
+    }
+  }
 
   return {
     generatedAt: now.toISOString(),
