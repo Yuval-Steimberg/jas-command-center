@@ -40,7 +40,7 @@ jobs:
           echo "Timings (each read alone, in sequence; first run may include a cold start):"
           tcode=$(curl -sS -o /tmp/timing.json -w '%{http_code}' --max-time 90 -H "Authorization: Bearer $CRON_SECRET" "$url?timing=1") || true
           if [ "$tcode" = "200" ]; then
-            jq -r '"  function region: \(.region // "unknown")", (.timings[] | "  \(.medianMs // "-") ms median  [\(.runsMs | map(tostring) | join(", "))]  \(.name)\(if .error then "  (\(.error))" else "" end)")' /tmp/timing.json
+            jq -r '"  function region: \(.region // "unknown"), auth signing keys: \(.authSigningKeys // "none")", (.timings[] | "  \(.medianMs // "-") ms median  [\(.runsMs | map(tostring) | join(", "))]  \(.name)\(if .error then "  (\(.error))" else "" end)")' /tmp/timing.json
           else
             echo "  timing request answered HTTP $tcode"
           fi

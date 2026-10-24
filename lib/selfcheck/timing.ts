@@ -48,7 +48,24 @@ const must = <T extends { state: string }>(r: T) => {
   return r
 }
 
-export async function runTimings(): Promise<{ region: string | null; timings: Timing[] }> {
+/**
+ * How many asymmetric signing keys the auth server publishes. With one, a
+ * session can be verified locally (no round trip per page); with none, every
+ * verification is a call to the auth server.
+ */
+async function authSigningKeys(url: string | null | undefined, anon: string): Promise<number | null> {
+  if (!url) return null
+  try {
+    const r = await fetch(`${url}/auth/v1/.well-known/jwks.json`, { headers: { apikey: anon }, cache: 'no-store' })
+    if (!r.ok) return null
+    const body = (await r.json()) as { keys?: unknown[] }
+    return Array.isArray(body.keys) ? body.keys.length : null
+  } catch {
+    return null
+  }
+}
+
+export async function runTimings(): Promise<{ region: string | null; authSigningKeys: number | null; timings: Timing[] }> {
   const e = env()
   const db = supabaseAdmin()
   const out: Timing[] = []
@@ -68,5 +85,5 @@ export async function runTimings(): Promise<{ region: string | null; timings: Ti
   // Sources, through the same adapters the pages use (uncached reads).
   out.push(await time('Website endpoint: one product', 3, async () => must(await listWebsiteProductsByIds([1]))))
   out.push(await time('Gift card endpoint: card search', 3, async () => must(await searchGiftCards('zz-timing'))))
-  return { region: process.env.VERCEL_REGION ?? null, timings: out }
+  return { region: process.env.VERCEL_REGION ?? null, authSigningKeys: await authSigningKeys(e.cc.supabaseUrl, e.cc.supabaseAnonKey ?? ''), timings: out }
 }
