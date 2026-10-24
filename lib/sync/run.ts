@@ -1,12 +1,13 @@
 import 'server-only'
 import { getOpsStore, ConflictError, OpsSetupError } from '@/lib/ops'
 import type { Item } from '@/lib/ops/types'
-import { listWebsiteInquiries, listWebsiteOrdersSince, type WebsiteInquiry } from '@/lib/integrations/website/manage'
+import { listWebsiteInquiries, listWebsiteOrdersSince, listWebsiteProducts, listWebsiteProductsByIds, type WebsiteInquiry, type WebsiteProduct } from '@/lib/integrations/website/manage'
 import { upsertContact, touchContact } from '@/lib/crm/service'
-import { releaseItem } from '@/lib/inventory/service'
+import { adoptWebsiteProduct, releaseItem } from '@/lib/inventory/service'
 import { reservationExpired } from '@/lib/inventory/model'
 import { ruleEnabled, runRule } from '@/lib/tasks/automations'
 import { planOrderSync } from './plan'
+import { driftTask, planProductAdoption, planStockDrift } from './products'
 
 /**
  * The event bridge between the sources and the command center's own records.
@@ -19,9 +20,10 @@ export const SYSTEM_ACTOR = 'system:sync'
 const ORDERS_KEY = 'ops:website_orders'
 const FORMS_KEY = 'ops:website_forms'
 const RESERVE_KEY = 'ops:reservations'
+const PRODUCTS_KEY = 'ops:website_products'
 
 export interface StepReport {
-  step: 'website_orders' | 'website_forms' | 'reservations'
+  step: 'website_orders' | 'website_forms' | 'reservations' | 'website_products'
   state: 'ok' | 'error' | 'skipped'
   message: string
   counts: Record<string, number>
@@ -154,6 +156,59 @@ async function expireReservations(): Promise<StepReport> {
   return { step: 'reservations', state: problems.length ? 'error' : 'ok', message: `${counts.released} expired reservation(s) released.${problems.length ? ` ${problems.join(' · ')}` : ''}`, counts }
 }
 
+/**
+ * Website products → inventory (lib/sync/products.ts): adopt products created
+ * on the website since the last run, then report listed items whose website
+ * stock changed without an order. Runs after the order step on purpose.
+ */
+async function syncProducts(): Promise<StepReport> {
+  const counts = { products: 0, adopted: 0, drift: 0 }
+  if (!(await ruleEnabled('website_product_inventory'))) return { step: 'website_products', state: 'skipped', message: 'The "website product → inventory" automation is switched off.', counts }
+  const store = getOpsStore()
+  const r = await listWebsiteProducts('')
+  if (r.state === 'not_configured') return { step: 'website_products', state: 'skipped', message: `Website products are not connected (${r.missing.join(', ')}).`, counts }
+  if (r.state === 'error') {
+    await store.setCursor(PRODUCTS_KEY, { ok: false, error: r.error })
+    return { step: 'website_products', state: 'error', message: r.error, counts }
+  }
+  counts.products = r.data.length
+  const cur = await store.getCursor(PRODUCTS_KEY)
+  const cursor = cur.cursor != null && /^\d+$/.test(cur.cursor) ? Number(cur.cursor) : null
+  const ids = r.data.map((p) => p.id)
+  const linked = new Set(ids.length ? (await store.listItems({ websiteProductIds: ids, limit: 1000 })).map((i) => i.websiteProductId!) : [])
+  const plan = planProductAdoption(r.data, linked, cursor)
+  const problems: string[] = []
+  for (const p of plan.adopt) {
+    try {
+      await adoptWebsiteProduct(p, { locationId: null }, { email: SYSTEM_ACTOR, name: 'Sync' })
+      counts.adopted++
+    } catch (e) {
+      if (!(e instanceof ConflictError)) problems.push(`#${p.id}: ${err(e)}`)
+    }
+  }
+
+  const listed = (await store.listItems({ statuses: ['listed'], limit: 5000 })).filter((i) => i.websiteProductId != null)
+  const byId = new Map<number, WebsiteProduct>()
+  const want = listed.map((i) => i.websiteProductId!)
+  let read = true
+  for (let k = 0; k < want.length; k += 200) {
+    const page = await listWebsiteProductsByIds(want.slice(k, k + 200))
+    if (page.state !== 'ok') { read = false; problems.push(`stock check: ${page.state === 'error' ? page.error : 'not connected'}`); break }
+    for (const p of page.data) byId.set(p.id, p)
+  }
+  if (read) {
+    for (const d of planStockDrift(listed, byId)) {
+      const t = driftTask(d)
+      const made = await store.createTask({ ...t, dueAt: new Date().toISOString(), entityKind: 'item', entityId: d.item.id, source: 'automation:website_stock', createdBy: SYSTEM_ACTOR })
+      if (made.created) counts.drift++
+    }
+  }
+  // A failed adoption keeps the old cursor, so that product is tried again next run (adopted ones are linked by then).
+  const adoptFailed = problems.some((x) => x.startsWith('#'))
+  await store.setCursor(PRODUCTS_KEY, { cursor: adoptFailed ? cur.cursor : String(plan.cursor), ok: !problems.length, error: problems.join(' · ') || null })
+  return { step: 'website_products', state: problems.length ? 'error' : 'ok', message: `${counts.products} website product(s) read; ${counts.adopted} new one(s) taken into inventory, ${counts.drift} stock change(s) to check.${problems.length ? ` ${problems.join(' · ')}` : ''}`, counts }
+}
+
 export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps: StepReport[]; message?: string }> {
   try {
     await getOpsStore().getCursor(ORDERS_KEY)
@@ -163,7 +218,7 @@ export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps:
     throw e
   }
   const steps: StepReport[] = []
-  for (const [step, run] of [['website_orders', syncOrders], ['website_forms', syncForms], ['reservations', expireReservations]] as const) {
+  for (const [step, run] of [['website_orders', syncOrders], ['website_forms', syncForms], ['reservations', expireReservations], ['website_products', syncProducts]] as const) {
     try {
       steps.push(await run())
     } catch (e) {
@@ -175,6 +230,6 @@ export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps:
 
 export async function syncStatus() {
   const store = getOpsStore()
-  const [orders, forms, reservations] = await Promise.all([store.getCursor(ORDERS_KEY), store.getCursor(FORMS_KEY), store.getCursor(RESERVE_KEY)])
-  return { orders, forms, reservations }
+  const [orders, forms, reservations, products] = await Promise.all([store.getCursor(ORDERS_KEY), store.getCursor(FORMS_KEY), store.getCursor(RESERVE_KEY), store.getCursor(PRODUCTS_KEY)])
+  return { orders, forms, reservations, products }
 }

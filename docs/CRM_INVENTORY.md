@@ -15,7 +15,7 @@ https://claude.ai/artifact/Fb4yBjgibHstr2oM8z6SZX
 | Listed item's price, publish state, stock; every website order and its payment | **Website** | read live; stock via the guarded `stock-set` (website PR #37) |
 | Field item before intake (description, photo, collected) | **Furniture-Collect** | read; never written |
 | Gift card balances, codes, sales | **gift_card_system** | read live, masked codes |
-| Regular shop products that never came through intake | **Website** | listed read-only on `/inventory` |
+| A website product before it is linked to an item (studio /manager/quick, old manager) | **Website** | read; adopted into inventory by the sync or on `/inventory/website` |
 | Purchase orders, their lines, goods receipts (migration `0004_suppliers.sql`) | **Command center** `cc_purchase_orders`, `cc_purchase_order_lines`, `cc_po_receipts` | read + write |
 
 No stock, order or money figure is copied: an item linked to a website product
@@ -28,6 +28,17 @@ figure kept here) are never added to website revenue or gift card figures.
   items. Confirming creates one item per field item (unique `furniture_item_id`, so a
   second intake is refused); a field item with quantity > 1 becomes one record
   carrying that quantity (`kind = batch`).
+- **Website → Inventory (products made on the website).** The phone studio at
+  `/manager/quick` writes straight to the website's `products` table. The sync step
+  `website_products` (`lib/sync/products.ts`, rule `website_product_inventory`) adopts
+  every product created after its first run, once it has been quiet 10 minutes and
+  has stock: a `listed` item linked by `website_product_id`, intake movement
+  `ref_kind = website_product`. Products from before the first run are picked by a
+  person on `/inventory/website` (only they know what is still on the shelf).
+  `jas-NNNNNN` slugs (the command center's own listings) are never adopted.
+  After the order step, a listed item whose website stock differs (the studio's
+  "סימון כנמכר", a quantity edit, a deleted product) opens one
+  `automation:website_stock` task; it is never corrected automatically.
 - **Inventory → Website.** "List on website" creates an UNPUBLISHED product
   (slug `jas-000123`, needs a price and an https photo) and links it; publishing is a
   separate click. From then on the website owns price, visibility and stock.

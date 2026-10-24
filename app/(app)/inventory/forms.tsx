@@ -192,3 +192,23 @@ export function IntakeForm({ action, locations, children }: { action: Action; lo
     </form>
   )
 }
+
+/** Tick or untick every `name` checkbox in the same form (intake lists can run to hundreds). */
+export function SelectAll({ name, label = 'Select all' }: { name: string; label?: string }) {
+  const ref = useRef<HTMLInputElement>(null)
+  return (
+    <label className="inline-flex min-h-11 items-center gap-2 text-sm text-muted">
+      <input
+        ref={ref}
+        type="checkbox"
+        className="h-5 w-5"
+        onChange={(e) => {
+          const form = ref.current?.form
+          if (!form) return
+          for (const el of Array.from(form.querySelectorAll<HTMLInputElement>(`input[type="checkbox"][name="${name}"]`))) el.checked = e.target.checked
+        }}
+      />
+      {label}
+    </label>
+  )
+}
