@@ -1,7 +1,7 @@
 import { ConflictError, type OpsStore } from './store'
 import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Task } from './types'
 import type { PurchaseOrder, Receipt } from '@/lib/suppliers/model'
-import type { Sale, SaleLine, SalePayment } from '@/lib/sales/model'
+import type { Sale, SaleLine, SalePayment, TerminalCharge } from '@/lib/sales/model'
 
 /**
  * In-memory OpsStore for local development and tests. Same rules as the SQL
@@ -29,9 +29,11 @@ export interface MemoryData {
   saleLines: SaleLine[]
   salePayments: SalePayment[]
   saleSeq: number
+  /** Grow terminal charges (migration 0007). */
+  terminalCharges: TerminalCharge[]
 }
 
-export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0, purchaseOrders: [], receipts: [], poSeq: 0, sales: [], saleLines: [], salePayments: [], saleSeq: 0 })
+export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0, purchaseOrders: [], receipts: [], poSeq: 0, sales: [], saleLines: [], salePayments: [], saleSeq: 0, terminalCharges: [] })
 
 const now = () => new Date().toISOString()
 const id = () => crypto.randomUUID()

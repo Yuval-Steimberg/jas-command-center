@@ -3,10 +3,12 @@ import { randomUUID } from 'node:crypto'
 import { ActionForm, Field, LocationSelect } from '@/app/(app)/inventory/forms'
 import { paymentAction, returnLineAction } from '@/app/(app)/sales/actions'
 import { HandoverControls } from './handover-controls'
+import { TerminalCharge } from './terminal-charge'
 import { input } from '@/app/(app)/website/forms'
 import { formatAgorot } from '@/lib/money'
 import { formatDateTime, formatDay, formatDayTime } from '@/lib/format'
-import { METHOD_LABEL, PAYMENT_METHODS, PAYMENT_STATE_LABEL, keptQty, lineValue, saleMoney, type SaleLine } from '@/lib/sales/model'
+import { METHOD_LABEL, PAYMENT_METHODS, PAYMENT_STATE_LABEL, keptQty, lineValue, saleMoney, type SaleLine, type TerminalCharge as Charge } from '@/lib/sales/model'
+import { TERMINAL_WAIT_MS } from '@/lib/payments/grow-terminal'
 import type { SaleView } from '@/lib/sales/views'
 import { METHOD_LABEL_HE, PAYMENT_STATE_HE, SALE_COPY, type Lang } from './copy'
 
@@ -17,12 +19,14 @@ const box = 'flex flex-col gap-3 rounded-lg border border-line bg-surface p-3'
  * One sale: each line with its own handover (pickup now, or its delivery),
  * returns per line, and the money ledger. Shared by /sales/[id] and the shop.
  */
-export function SaleDetail({ v, lang, base, may, locations }: {
+export function SaleDetail({ v, lang, base, may, locations, terminal }: {
   v: SaleView
   lang: Lang
   base: '/sales' | '/shop'
   may: { operate: boolean; money: boolean }
   locations: { id: string; label: string }[]
+  /** The Grow card terminal (lib/sales/terminal.ts terminalView); absent = not shown. */
+  terminal?: { on: boolean; missing: string[]; devices: string[]; charges: Charge[] }
 }) {
   const t = SALE_COPY[lang]
   const when = (iso: string) => (lang === 'he' ? formatDayTime(iso) : formatDateTime(iso))
@@ -99,9 +103,17 @@ export function SaleDetail({ v, lang, base, may, locations }: {
             ))}
           </ul>
         )}
+        {may.money && terminal?.on ? (
+          <div className="flex flex-col gap-2 border-t border-line pt-3">
+            <h3 className="text-sm font-semibold text-ink">{t.terminal}</h3>
+            <TerminalCharge saleId={v.sale.id} t={t} amount={m.balanceMinor > 0 ? m.balanceMinor : null} devices={terminal.devices} last={chargeState(terminal.charges[0])} requestId={randomUUID()} />
+          </div>
+        ) : may.money && terminal && base === '/sales' ? (
+          <p className="text-meta text-muted">{t.terminalOff} {terminal.missing.join(', ')})</p>
+        ) : null}
         {may.money ? (
           <>
-            <details open={m.balanceMinor > 0} className="text-sm">
+            <details open={m.balanceMinor > 0 && !terminal?.on} className="text-sm">
               <summary className="cursor-pointer py-2 font-medium">{t.recordPayment}</summary>
               <PaymentForm saleId={v.sale.id} kind="payment" amount={m.balanceMinor > 0 ? m.balanceMinor : null} lang={lang} methodLabel={methodLabel} />
             </details>
@@ -115,6 +127,14 @@ export function SaleDetail({ v, lang, base, may, locations }: {
       </section>
     </div>
   )
+}
+
+function chargeState(c: Charge | undefined) {
+  if (!c) return null
+  return {
+    id: c.id, status: c.status, url: c.url, amount: formatAgorot(c.amountMinor), cents: c.amountMinor, device: c.device,
+    fresh: Date.now() - Date.parse(c.createdAt) < TERMINAL_WAIT_MS, error: c.error, approveError: c.approveError,
+  }
 }
 
 function PaymentForm({ saleId, kind, amount, lang, methodLabel }: { saleId: string; kind: 'payment' | 'refund'; amount: number | null; lang: Lang; methodLabel: Record<string, string> }) {

@@ -11,6 +11,7 @@ import { upsertContact } from '@/lib/crm/service'
 import { moveDelivery } from '@/lib/deliveries/service'
 import { FULFILMENTS, PAYMENT_METHODS, basketProblem } from '@/lib/sales/model'
 import { createShopSale, handOverLine, recordPayment, returnSaleUnits, setLineFulfilment } from '@/lib/sales/service'
+import { cancelTerminalCharge, startTerminalCharge } from '@/lib/sales/terminal'
 
 /** Run the website → command center sync now instead of waiting for the hourly sweep. Idempotent. */
 export async function syncNowAction(_p: ActionState, _f: FormData): Promise<ActionState> {
@@ -132,4 +133,26 @@ export async function paymentAction(_p: ActionState, f: FormData): Promise<Actio
   return runAct('inventory', ['inventory:financial'], refund ? 'sale.refund' : 'sale.payment', `sale:${id.data}`, { amountMinor: refund ? -amount : amount, method: method.data }, (u) =>
     recordPayment(id.data, { amountMinor: refund ? -amount : amount, method: method.data, note: str(f, 'note', 300) }, requestId, actorOf(u)),
   SALE_PATHS)
+}
+
+// ── Card terminal (migration 0007) ────────────────────────────────────────
+// Pushing an amount moves no money by itself: Grow's server update records the payment
+// (lib/sales/terminal.ts). Same permission as recording a payment by hand.
+
+export async function terminalChargeAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const id = uuid.safeParse(f.get('saleId'))
+  const amount = formShekels(f, 'amount')
+  const requestId = String(f.get('requestId') ?? '')
+  const device = str(f, 'device', 100)
+  if (!id.success || requestId.length < 8) return { ok: false, message: 'Invalid request.' }
+  if (!amount || Number.isNaN(amount)) return { ok: false, message: 'Enter the amount in ₪.' }
+  return runAct('inventory', ['inventory:financial'], 'sale.terminal_charge', `sale:${id.data}`, { amountMinor: amount, device }, (u) =>
+    startTerminalCharge(id.data, amount, device, requestId, actorOf(u)),
+  SALE_PATHS)
+}
+
+export async function terminalCancelAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const id = uuid.safeParse(f.get('chargeId'))
+  if (!id.success) return { ok: false, message: 'Invalid request.' }
+  return runAct('inventory', ['inventory:financial'], 'sale.terminal_cancel', `terminal_charge:${id.data}`, {}, () => cancelTerminalCharge(id.data), SALE_PATHS)
 }
