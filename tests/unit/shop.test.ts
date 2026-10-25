@@ -40,8 +40,8 @@ describe('photo AI answer', () => {
 
 describe('sale money', () => {
   it('a return lowers what is due, not the total; a refund is a negative payment', () => {
-    const m = saleMoney({ totalMinor: 10000 }, [{ returnedQty: 1, unitPriceMinor: 4000 }], [{ amountMinor: 10000 }, { amountMinor: -4000 }])
-    expect(m).toEqual({ totalMinor: 10000, returnedMinor: 4000, dueMinor: 6000, paidMinor: 6000, balanceMinor: 0, state: 'paid' })
+    const m = saleMoney({ totalMinor: 10000 }, [{ returnedQty: 1, quantity: 1, unitPriceMinor: 4000 }], [{ amountMinor: 10000 }, { amountMinor: -4000 }])
+    expect(m).toEqual({ totalMinor: 10000, discountMinor: 0, returnedMinor: 4000, dueMinor: 6000, paidMinor: 6000, balanceMinor: 0, state: 'paid' })
     expect(saleMoney({ totalMinor: 10000 }, [], []).state).toBe('unpaid')
     expect(saleMoney({ totalMinor: 10000 }, [], [{ amountMinor: 3000 }]).state).toBe('deposit')
   })

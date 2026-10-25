@@ -9,7 +9,7 @@ import { runAct, formStr as str, formShekels, type ActionState } from '@/lib/ops
 import { runOpsSync } from '@/lib/sync/run'
 import { upsertContact } from '@/lib/crm/service'
 import { moveDelivery } from '@/lib/deliveries/service'
-import { FULFILMENTS, PAYMENT_METHODS, basketProblem } from '@/lib/sales/model'
+import { FULFILMENTS, MAX_COUPON, PAYMENT_METHODS, basketProblem } from '@/lib/sales/model'
 import { createShopSale, handOverLine, recordPayment, returnSaleUnits, setLineFulfilment } from '@/lib/sales/service'
 import { cancelTerminalCharge, startTerminalCharge } from '@/lib/sales/terminal'
 
@@ -52,6 +52,8 @@ const basket = z.object({
     )
     .min(1)
     .max(50),
+  discountMinor: z.number().int().min(0).max(100_000_000).optional(),
+  couponCode: z.string().max(MAX_COUPON).nullable().optional(),
   payment: z.object({ amountMinor: z.number().int().min(1).max(100_000_000), method: z.enum(PAYMENT_METHODS), note: z.string().max(300).nullable().optional() }).nullable(),
 })
 
@@ -63,10 +65,10 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
   } catch {
     return { ok: false, message: 'The basket could not be read. Reload and try again.' }
   }
-  const problem = basketProblem({ ...parsed, lines: parsed.lines, payment: parsed.payment })
+  const problem = basketProblem(parsed)
   if (problem) return { ok: false, message: problem }
   let saleId = ''
-  const res = await runAct('inventory', ['inventory:financial'], 'sale.create', `sale:${parsed.requestId}`, { lines: parsed.lines.length, totalMinor: parsed.lines.reduce((a, l) => a + l.quantity * l.unitPriceMinor, 0), paidMinor: parsed.payment?.amountMinor ?? 0 }, async (u) => {
+  const res = await runAct('inventory', ['inventory:financial'], 'sale.create', `sale:${parsed.requestId}`, { lines: parsed.lines.length, totalMinor: parsed.lines.reduce((a, l) => a + l.quantity * l.unitPriceMinor, 0) - (parsed.discountMinor ?? 0), discountMinor: parsed.discountMinor ?? 0, couponCode: parsed.couponCode?.trim() || null, paidMinor: parsed.payment?.amountMinor ?? 0 }, async (u) => {
     let contactId = parsed.contactId
     if (!contactId && parsed.newContact && (parsed.newContact.phone.trim() || parsed.newContact.email.trim())) {
       if (!parsed.newContact.name.trim()) return { ok: false, message: 'Give the new customer a name.' }
@@ -77,7 +79,7 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
       contactId = c.contact.id
     }
     if (!contactId && parsed.lines.some((l) => l.fulfilment === 'delivery')) return { ok: false, message: 'A delivery needs a customer to call. Pick or add one.' }
-    const r = await createShopSale({ contactId, note: parsed.note, lines: parsed.lines, payment: parsed.payment }, parsed.requestId, actorOf(u))
+    const r = await createShopSale({ contactId, note: parsed.note, lines: parsed.lines, discountMinor: parsed.discountMinor ?? 0, couponCode: parsed.couponCode?.trim() || null, payment: parsed.payment }, parsed.requestId, actorOf(u))
     if (r.ok) saleId = r.sale.id
     return r
   }, SALE_PATHS)

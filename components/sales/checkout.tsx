@@ -8,7 +8,7 @@ import { Outcome } from '@/app/(app)/inventory/forms'
 import { createSaleAction } from '@/app/(app)/sales/actions'
 import type { ActionState } from '@/lib/ops/act'
 import { formatAgorot } from '@/lib/money'
-import { METHOD_LABEL, PAYMENT_METHODS, type Fulfilment, type PaymentMethod } from '@/lib/sales/model'
+import { MAX_COUPON, METHOD_LABEL, PAYMENT_METHODS, discountFromInput, type Fulfilment, type PaymentMethod } from '@/lib/sales/model'
 import { COPY, METHOD_LABEL_HE, minorToShekels, shekelsToMinor, type Lang } from './copy'
 
 export interface CheckoutItem {
@@ -67,13 +67,18 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
   const [payAmount, setPayAmount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('cash')
   const [note, setNote] = useState('')
+  const [coupon, setCoupon] = useState('')
+  const [discKind, setDiscKind] = useState<'amount' | 'percent'>('amount')
+  const [discValue, setDiscValue] = useState('')
   const [state, run] = useFormState<ActionState, FormData>(createSaleAction, {})
 
   const inBasket = new Set(lines.map((l) => l.itemId))
   const words = norm(q).split(/\s+/).filter(Boolean)
   const found = items.filter((i) => !inBasket.has(i.id) && words.every((w) => [i.sku, i.title, i.category, i.colors, i.material].some((f) => norm(f).includes(w)))).slice(0, 30)
 
-  const totalMinor = lines.reduce((a, l) => a + (shekelsToMinor(l.price) ?? 0) * l.qty, 0)
+  const grossMinor = lines.reduce((a, l) => a + (shekelsToMinor(l.price) ?? 0) * l.qty, 0)
+  const discountMinor = discountFromInput(discKind, discValue, grossMinor)
+  const totalMinor = grossMinor - Math.min(discountMinor ?? 0, grossMinor)
   const paidMinor = payMode === 'all' ? totalMinor : payMode === 'part' ? (shekelsToMinor(payAmount) ?? 0) : 0
   const set = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)))
   const lastDelivery = [...lines].reverse().find((l) => l.fulfilment === 'delivery' && l.address)
@@ -82,6 +87,8 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
     !lines.length ? t.emptyBasket
     : lines.some((l) => shekelsToMinor(l.price) == null) ? t.needPrice
     : lines.some((l) => l.fulfilment === 'delivery' && !l.address.trim()) ? t.needAddress
+    : discountMinor == null ? t.badDiscount
+    : discountMinor > grossMinor ? t.discountTooBig
     : payMode === 'part' && !(paidMinor > 0) ? t.needAmount
     : null
 
@@ -97,6 +104,8 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
         address: l.fulfilment === 'delivery' ? l.address.trim() || null : null, scheduledFor: l.fulfilment === 'delivery' ? l.date || null : null, timeWindow: l.fulfilment === 'delivery' ? l.window.trim() || null : null,
       }
     }),
+    discountMinor: discountMinor ?? 0,
+    couponCode: coupon.trim() || null,
     payment: paidMinor > 0 ? { amountMinor: paidMinor, method, note: null } : null,
   })
 
@@ -201,6 +210,26 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
         </section>
 
         <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
+          <h2 className="text-sm font-semibold text-ink">{t.discount}</h2>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm"><span className="text-muted">{t.coupon}</span>
+              <input value={coupon} onChange={(e) => setCoupon(e.target.value)} dir="auto" maxLength={MAX_COUPON} autoCapitalize="characters" autoComplete="off" spellCheck={false} className={input} />
+            </label>
+            <div className="flex flex-col gap-1 text-sm">
+              <label htmlFor="sale-discount" className="text-muted">{t.specialDiscount}</label>
+              <div className="flex gap-2">
+                <input id="sale-discount" value={discValue} onChange={(e) => setDiscValue(e.target.value)} inputMode="decimal" dir="ltr" placeholder="0" className={`${input} min-w-0 flex-1`} />
+                <div role="group" aria-label={t.discountKind} className="flex shrink-0 gap-1">
+                  <button type="button" aria-pressed={discKind === 'amount'} className={`${seg(discKind === 'amount')} w-11 flex-none px-0`} onClick={() => setDiscKind('amount')}>₪</button>
+                  <button type="button" aria-pressed={discKind === 'percent'} className={`${seg(discKind === 'percent')} w-11 flex-none px-0`} onClick={() => setDiscKind('percent')}>%</button>
+                </div>
+              </div>
+              {discKind === 'percent' && discountMinor ? <span className="num text-xs text-muted">= {formatAgorot(discountMinor)}</span> : null}
+            </div>
+          </div>
+        </section>
+
+        <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
           <h2 className="text-sm font-semibold text-ink">{t.payment}</h2>
           <div className="flex gap-2">
             <button type="button" className={seg(payMode === 'all')} onClick={() => setPayMode('all')}>{t.payAll}</button>
@@ -228,7 +257,8 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
         {/* Total and the sale button stay under the thumb; in shop mode they sit above the tab bar, never under it. */}
         <section className={`sticky z-10 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3 shadow-lift ${shop ? 'bottom-[calc(4.5rem+env(safe-area-inset-bottom))]' : 'bottom-0'}`}>
           <dl className="flex items-end justify-between gap-3 text-sm">
-            <div><dt className="text-muted">{t.total}{lines.length ? ` · ${lines.length === 1 ? t.oneItem : `${lines.length} ${t.itemsWord}`}` : ''}</dt><dd className="num text-2xl font-bold text-ink">{formatAgorot(totalMinor)}</dd></div>
+            <div><dt className="text-muted">{t.total}{lines.length ? ` · ${lines.length === 1 ? t.oneItem : `${lines.length} ${t.itemsWord}`}` : ''}</dt><dd className="num text-2xl font-bold text-ink">{formatAgorot(totalMinor)}</dd>
+              {discountMinor && discountMinor <= grossMinor ? <dd className="num text-xs text-muted">{formatAgorot(grossMinor)} − {t.discountShort} {formatAgorot(discountMinor)}</dd> : null}</div>
             <div className="text-end">
               <dt className="text-muted">{t.balance}</dt><dd className={`num text-base font-semibold ${totalMinor - paidMinor > 0 ? 'text-warn' : 'text-ok'}`}>{formatAgorot(totalMinor - paidMinor)}</dd>
             </div>

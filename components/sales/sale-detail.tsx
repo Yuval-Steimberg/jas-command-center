@@ -7,7 +7,7 @@ import { TerminalCharge } from './terminal-charge'
 import { input } from '@/app/(app)/website/forms'
 import { formatAgorot } from '@/lib/money'
 import { formatDateTime, formatDay, formatDayTime } from '@/lib/format'
-import { METHOD_LABEL, PAYMENT_METHODS, PAYMENT_STATE_LABEL, keptQty, lineValue, saleMoney, type SaleLine, type TerminalCharge as Charge } from '@/lib/sales/model'
+import { METHOD_LABEL, PAYMENT_METHODS, PAYMENT_STATE_LABEL, keptQty, lineGross, saleMoney, type SaleLine, type TerminalCharge as Charge } from '@/lib/sales/model'
 import { TERMINAL_WAIT_MS } from '@/lib/payments/grow-terminal'
 import type { SaleView } from '@/lib/sales/views'
 import { METHOD_LABEL_HE, PAYMENT_STATE_HE, SALE_COPY, type Lang } from './copy'
@@ -55,7 +55,8 @@ export function SaleDetail({ v, lang, base, may, locations, terminal }: {
                   <div className="min-w-0 flex-1 text-sm">
                     <Link href={itemHref(l.itemId)} className="font-medium text-ink underline-offset-2 hover:underline" dir="auto">{it ? `${it.sku} · ${it.title}` : l.itemId}</Link>
                     <p className="text-muted">
-                      <span className="num" dir="ltr">{l.quantity > 1 ? `${l.quantity} × ${formatAgorot(l.unitPriceMinor)} = ` : ''}{formatAgorot(lineValue(l))}</span>
+                      <span className="num" dir="ltr">{l.quantity > 1 ? `${l.quantity} × ${formatAgorot(l.unitPriceMinor)} = ` : ''}{formatAgorot(lineGross(l))}</span>
+                      {l.discountMinor ? <> · {t.discount} <span className="num" dir="ltr">−{formatAgorot(l.discountMinor)}</span></> : null}
                       {l.returnedQty ? ` · ${l.returnedQty} ${t.unitsReturned}` : ''}
                     </p>
                     <p className={l.status === 'open' ? 'text-warn' : 'text-muted'}>
@@ -86,6 +87,9 @@ export function SaleDetail({ v, lang, base, may, locations, terminal }: {
       <section className={box}>
         <h2 className="flex items-center justify-between text-sm font-semibold text-ink">{t.money}<span className={m.state === 'paid' || m.state === 'nothing_due' ? 'text-ok' : 'text-warn'}>{stateLabel}</span></h2>
         <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 text-sm">
+          {m.discountMinor ? <><dt className="text-muted">{t.beforeDiscount}</dt><dd className="num">{formatAgorot(m.totalMinor + m.discountMinor)}</dd></> : null}
+          {m.discountMinor ? <><dt className="text-muted">{t.discount}</dt><dd className="num">−{formatAgorot(m.discountMinor)}</dd></> : null}
+          {v.sale.couponCode ? <><dt className="text-muted">{t.coupon}</dt><dd dir="auto" className="font-medium">{v.sale.couponCode}</dd></> : null}
           <dt className="text-muted">{t.total}</dt><dd className="num">{formatAgorot(m.totalMinor)}</dd>
           {m.returnedMinor ? <><dt className="text-muted">{t.returnedValue}</dt><dd className="num">−{formatAgorot(m.returnedMinor)}</dd></> : null}
           <dt className="text-muted">{t.due}</dt><dd className="num">{formatAgorot(m.dueMinor)}</dd>
