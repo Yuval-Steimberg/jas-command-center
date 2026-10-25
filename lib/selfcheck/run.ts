@@ -154,6 +154,13 @@ export async function runSelfCheck(now = new Date()) {
         : { section: 'ops', name: 'Item renewal level (migration 0008)', state: 'not_configured', latencyMs: null, detail: 'run 0008_renewal_level.sql (the level is not saved until then)' }),
       (e): Probe => ({ section: 'ops', name: 'Item renewal level (migration 0008)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) }),
     ),
+    // Sale discount + coupon code (migration 0009): until it runs, a discounted sale is refused.
+    getSalesStore().discountReady().then(
+      (ready): Probe => (ready
+        ? { section: 'ops', name: 'Sale discount (migration 0009)', state: 'ok', latencyMs: null, detail: 'columns present' }
+        : { section: 'ops', name: 'Sale discount (migration 0009)', state: 'not_configured', latencyMs: null, detail: 'run 0009_sale_discount.sql (a sale with a discount or coupon is refused until then)' }),
+      (e): Probe => ({ section: 'ops', name: 'Sale discount (migration 0009)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) }),
+    ),
     // Platform
     getDeployments().then((r) => fromSource('platform', 'Vercel deployments', r, (d) => `${d.length} projects`)),
     fromCall('platform', 'Staff', async () => {

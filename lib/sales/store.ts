@@ -49,6 +49,8 @@ export interface SalesStore {
   updateLine(id: string, patch: LinePatch): Promise<SaleLine | null>
   returnUnits(lineId: string, units: number, expectReturned: number | null, locationId: string | null, reason: string, actor: string): Promise<SaleLine>
   addPayment(saleId: string, p: { amountMinor: number; method: PaymentMethod; note: string | null }, requestId: string, actor: string): Promise<{ payment: SalePayment; replay: boolean }>
+  /** Migration 0009 (discount + coupon code) has run. */
+  discountReady(): Promise<boolean>
 }
 
 const g = globalThis as unknown as { __ccOpsData?: MemoryData }
@@ -185,6 +187,9 @@ export function memorySalesStore(d: MemoryData): SalesStore {
       d.salePayments.push(payment)
       return { payment: copy(payment), replay: false }
     },
+    async discountReady() {
+      return true
+    },
   }
 }
 
@@ -232,10 +237,7 @@ export function supabaseSalesStore(db: SupabaseClient): SalesStore {
       if (problem) throw new ConflictError(problem)
       // Before 0009 the SQL would ignore a discount and sell at full price: refuse instead.
       const discounted = (input.discountMinor ?? 0) > 0 || !!input.couponCode?.trim()
-      if (discounted) {
-        const { error } = await db.from('cc_sales').select('discount_minor, coupon_code').limit(1)
-        if (error) fail(error, () => new OpsSetupError('0009_sale_discount.sql', 'Discounts and coupon codes on a sale'))
-      }
+      if (discounted && !(await store.discountReady())) throw new OpsSetupError('0009_sale_discount.sql', 'Discounts and coupon codes on a sale')
       const shares = spreadDiscount(input.lines.map((l) => l.quantity * l.unitPriceMinor), input.discountMinor ?? 0)
       const r = await rows<Sale>(
         db.rpc('cc_sale_create', {
@@ -276,6 +278,17 @@ export function supabaseSalesStore(db: SupabaseClient): SalesStore {
       if (!Number.isInteger(p.amountMinor) || p.amountMinor === 0) throw new ConflictError('the amount cannot be zero')
       const r = await rows<SalePayment>(db.from('cc_sale_payments').insert({ sale_id: saleId, amount_minor: p.amountMinor, method: p.method, note: p.note, request_id: requestId, actor_email: actor }).select('*'))
       return { payment: r[0]!, replay: false }
+    },
+    async discountReady() {
+      const { error } = await db.from('cc_sale_lines').select('discount_minor').limit(1)
+      if (!error) return true
+      try {
+        bad(error)
+      } catch (e) {
+        if (e instanceof OpsSetupError) return false
+        throw e
+      }
+      return false
     },
   }
   return store
