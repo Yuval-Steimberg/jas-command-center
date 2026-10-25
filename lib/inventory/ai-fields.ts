@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { ITEM_CATEGORIES, toItemCategory } from './categories'
 
 /** What the photo AI returns. Pure (no SDK), so tests pin the parsing. */
 export interface PhotoFields {
@@ -18,7 +19,7 @@ export const PHOTO_PROMPT = [
   'You get ONE photo of ONE piece. Every piece is one of a kind.',
   'Answer in Hebrew, except numbers:',
   '- title: a short name for the piece (2–5 words), e.g. "כורסת עור וינטג׳".',
-  '- category: one short category, e.g. ספה, כורסא, שולחן אוכל, כיסא, שידה, ארון, מדף, מנורה, אחר.',
+  `- category: exactly one of: ${ITEM_CATEGORIES.join(', ')}. Use אחר when none fits.`,
   '- colors: the main colour first, at most three.',
   '- material: the main material, e.g. עץ אלון, עץ מלא, סנדוויץ׳, בד, עור, מתכת, ראטן.',
   '- description: one or two plain sentences a buyer would find useful. No exclamation marks, no emoji, no claims you cannot see (age, brand, provenance).',
@@ -32,7 +33,7 @@ export const PHOTO_FIELDS_SCHEMA = {
   required: ['title', 'category', 'colors', 'material', 'description', 'length_cm', 'width_cm', 'height_cm', 'diameter_cm', 'suggested_price_ils'],
   properties: {
     title: { type: 'string' },
-    category: { type: 'string' },
+    category: { type: 'string', enum: [...ITEM_CATEGORIES] },
     colors: { type: 'array', items: { type: 'string' } },
     material: { type: 'string' },
     description: { type: 'string' },
@@ -78,7 +79,7 @@ export function parsePhotoFields(text: string): PhotoFields | null {
   const price = p.data.suggested_price_ils
   return {
     title: clip(p.data.title, 200),
-    category: clip(p.data.category, 100),
+    category: toItemCategory(p.data.category) ?? 'אחר',
     colors: p.data.colors.map((c) => clip(c, 40)).filter(Boolean).slice(0, 3),
     material: clip(p.data.material, 200),
     description: clip(p.data.description, 2000),

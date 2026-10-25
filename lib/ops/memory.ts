@@ -98,7 +98,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
         furnitureItemId: null, furnitureProjectId: null, furnitureProjectName: null, furnitureApartment: null, websiteProductId: null,
         reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, soldChannel: null, soldAt: null, soldPriceMinor: null,
         buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, purchaseOrderId: null, supplierId: null, unitCostMinor: null,
-        colors: null, extraPhotos: [], photoHash: null, priceApproved: true, aiPriceMinor: null, refurbStatus: null, refurbLevel: null, renewalLevel: null, refurbContactId: null, refurbInstructions: null, createdBy: 'system',
+        colors: null, extraPhotos: [], photoHash: null, priceApproved: true, aiPriceMinor: null, refurbStatus: null, refurbLevel: null, renewalLevel: null, beforePhotoUrl: null, origin: null, notes: null, refurbContactId: null, refurbInstructions: null, createdBy: 'system',
         ...input, version: 1, createdAt: t, updatedAt: t,
       } as Item
       d.items.push(item)

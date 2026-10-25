@@ -147,7 +147,7 @@ export const REFURB_LEVEL_LABEL = { light: 'Light (clean, touch-up)', medium: 'M
 const FIELD_LABEL: Record<string, string> = {
   title: 'name', description: 'notes', category: 'category', condition: 'condition', priceMinor: 'price', photoUrl: 'photo', dimensions: 'dimensions', material: 'material',
   colors: 'colours', extraPhotos: 'more photos', photoHash: 'photo fingerprint', priceApproved: 'price approved', aiPriceMinor: 'AI price', unitCostMinor: 'cost',
-  quantity: 'quantity', kind: 'kind', locationId: 'location', refurbStatus: 'refurbishment', refurbLevel: 'refurbishment level', refurbContactId: 'refurbisher', refurbInstructions: 'refurbishment instructions', renewalLevel: 'renewal level',
+  quantity: 'quantity', kind: 'kind', locationId: 'location', refurbStatus: 'refurbishment', refurbLevel: 'refurbishment level', refurbContactId: 'refurbisher', refurbInstructions: 'refurbishment instructions', renewalLevel: 'renewal level', beforePhotoUrl: 'before photo', origin: 'origin', notes: 'notes',
 }
 const MONEY_FIELDS = new Set(['priceMinor', 'aiPriceMinor', 'unitCostMinor'])
 const HIDDEN_VALUE = new Set(['photoUrl', 'extraPhotos', 'photoHash', 'description', 'refurbInstructions', 'refurbContactId', 'locationId'])

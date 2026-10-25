@@ -8,7 +8,8 @@ import { ItemStatusChip } from '@/components/ops/ui'
 import { ItemForm } from '@/components/inventory/item-form'
 import { valuesOf } from '@/components/inventory/item-values'
 import { ActionForm, Field, LocationSelect } from '@/app/(app)/inventory/forms'
-import { moveItemAction, refurbAction } from '@/app/(app)/inventory/actions'
+import { moveItemAction, refurbAction, websiteShownAction } from '@/app/(app)/inventory/actions'
+import { getWebsiteProduct } from '@/lib/integrations/website/manage'
 import { input } from '@/app/(app)/website/forms'
 import { getSession } from '@/lib/auth/session'
 import { can, type Permission } from '@/lib/auth/rbac'
@@ -23,7 +24,7 @@ import { formatAgorot } from '@/lib/money'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ShopItemPage({ params }: { params: { id: string } }) {
+export default async function ShopItemPage({ params, searchParams }: { params: { id: string }; searchParams?: { website?: string } }) {
   if (!z.string().uuid().safeParse(params.id).success) notFound()
   const s = (await getSession())!
   const may = (p: Permission) => can(s.user.role, p, s.overrides)
@@ -31,16 +32,23 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
     const store = getOpsStore()
     const item = await store.getItem(params.id)
     if (!item) return null
-    const [locations, contacts, lines] = await Promise.all([
+    const [locations, contacts, lines, product] = await Promise.all([
       store.listLocations(),
       may('crm:read') ? store.listContacts({ role: 'refurbisher', limit: 200 }) : Promise.resolve([]),
       getSalesStore().linesForItems([item.id]).catch(() => []),
+      item.websiteProductId != null && may('website:read') ? getWebsiteProduct(item.websiteProductId) : Promise.resolve(null),
     ])
-    return { item, locations, contacts, lines }
+    return { item, locations, contacts, lines, product }
   })
   if (res.ok && !res.data) notFound()
   if (!res.ok) return <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p>
-  const { item, locations, contacts, lines } = res.data!
+  const { item, locations, contacts, lines, product } = res.data!
+  // On the website = listed (or reserved) through a linked product that is not hidden. Unknown when the website could not be read.
+  const live = item.websiteProductId != null && (item.status === 'listed' || item.status === 'reserved')
+  const published = product?.state === 'ok' && product.data ? product.data.published !== false : null
+  const shown: boolean | null = !live ? false : product === null ? true : published
+  const canToggle = may('inventory:write') && may('website:write') && (live ? published !== null : allowed('list', item.status))
+  const websiteNote = searchParams?.website
   const labels = locationLabels(locations)
   const hidden = { id: item.id, version: item.version }
   const kept = lines.find((l) => keptQty(l) > 0)
@@ -59,8 +67,9 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
           <div className="flex items-start gap-3">
             {item.photoUrl ? null : <Thumb size="lg" />}
             <div className="min-w-0 flex-1">
+              <p className="mb-1 inline-flex items-baseline gap-2 rounded-md bg-sunken px-2 py-1"><span className="text-xs text-muted">מק״ט</span><span dir="ltr" className="font-mono text-lg font-bold tracking-wide text-ink">{item.sku}</span></p>
               <h1 className="text-xl font-bold text-ink" dir="auto">{item.title}</h1>
-              <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted"><span dir="ltr" className="font-mono">{item.sku}</span><ItemStatusChip status={item.status} lang="he" />{item.quantity > 1 ? <span>{item.quantity} יח׳</span> : null}</p>
+              <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted"><ItemStatusChip status={item.status} lang="he" />{item.quantity > 1 ? <span>{item.quantity} יח׳</span> : null}</p>
             </div>
           </div>
           <p className="num text-3xl font-bold text-ink">{item.priceMinor != null ? formatAgorot(item.priceMinor) : <span className="text-lg font-medium text-muted">ללא מחיר</span>}{item.priceApproved === false ? <span className="ms-2 text-sm font-normal text-warn">הערכת AI, לא אושר</span> : null}</p>
@@ -79,11 +88,31 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
             {row('צבעים', item.colors)}
             {row('חומר', item.material)}
             {row('מידות', item.dimensions)}
+            {row('מקור', item.origin)}
+            {row('מופיע באתר', shown === null ? 'לא ידוע (האתר לא נקרא)' : shown ? 'כן' : 'לא', true)}
             {item.refurbStatus ? row('שיפוץ', `${REFURB_STATUS_LABEL_HE[item.refurbStatus]}${item.refurbLevel ? ` · ${REFURB_LEVEL_LABEL_HE[item.refurbLevel].split(' (')[0]}` : ''}`) : null}
           </dl>
           {item.description ? <p dir="auto" className="whitespace-pre-wrap text-sm text-muted">{item.description}</p> : null}
+          {item.notes ? <p dir="auto" className="whitespace-pre-wrap rounded-md border border-line/70 p-2 text-sm text-ink"><span className="text-muted">הערות: </span>{item.notes}</p> : null}
+          {websiteNote ? (
+            <p role="status" dir="auto" className={`rounded-md border p-2 text-sm ${websiteNote === 'ok' ? 'border-ok/40 text-ok' : 'border-warn/50 bg-warn/5 text-warn'}`}>
+              {websiteNote === 'ok' ? 'הפריט עלה לאתר.' : `הפריט נשמר, אבל לא עלה לאתר: ${websiteNote}`}
+            </p>
+          ) : null}
+          {canToggle ? (
+            <ActionForm action={websiteShownAction} hidden={{ id: item.id, show: String(!shown) }} label={shown ? 'הסתרה מהאתר' : 'העלאה לאתר'} busy="שומר…" confirm={shown ? 'להסתיר את הפריט מהחנות באתר?' : 'להעלות את הפריט לחנות באתר עכשיו?'} />
+          ) : null}
         </div>
       </div>
+      {item.beforePhotoUrl ? (
+        <div className="flex flex-col gap-1">
+          <p className="text-sm text-muted">לפני החידוש</p>
+          <a href={item.beforePhotoUrl} target="_blank" rel="noreferrer" className="self-start">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={item.beforePhotoUrl} alt="לפני החידוש" className="h-32 w-32 rounded-md border border-line object-cover" />
+          </a>
+        </div>
+      ) : null}
       {item.extraPhotos?.length ? (
         <div className="flex flex-wrap gap-2">
           {item.extraPhotos.map((u) => (
