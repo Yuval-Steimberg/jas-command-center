@@ -27,6 +27,17 @@ const url = (name: string): string | undefined => {
   }
 }
 
+const PRODUCTION_URL = 'https://jas-command-center.vercel.app'
+/**
+ * A localhost CC_APP_URL copied into a deployment would put a dev address in
+ * every invitation and email link; in a production build it is ignored.
+ */
+export function appUrl(configured: string | undefined, production: boolean): string {
+  if (!configured) return PRODUCTION_URL
+  if (production && /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(configured)) return PRODUCTION_URL
+  return configured
+}
+
 export function env() {
   return {
     isProduction: process.env.NODE_ENV === 'production',
@@ -38,7 +49,7 @@ export function env() {
       devPassword: read('CC_DEV_PASSWORD'),
       sessionSecret: read('CC_SESSION_SECRET'),
       /** This deployment's public URL: invite links and links inside emails. */
-      appUrl: url('CC_APP_URL') ?? 'https://jas-command-center.vercel.app',
+      appUrl: appUrl(url('CC_APP_URL'), process.env.NODE_ENV === 'production'),
     },
     /** agentKey reads the analytics snapshot; commandKey (the website's COMMAND_CENTER_API_KEY) reads and changes orders and products. */
     website: { url: url('WEBSITE_URL'), agentKey: read('WEBSITE_AGENT_API_KEY'), commandKey: read('WEBSITE_COMMAND_CENTER_KEY') },

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { supabaseUserClient } from '@/lib/supabase'
 import { resolveProfile } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
+import { OTP_TYPES } from '@/lib/auth/auth-link'
 
 export type SetPasswordState = { error?: string }
 
@@ -14,6 +15,7 @@ const input = z.object({
   accessToken: z.string().max(4000).optional(),
   refreshToken: z.string().max(4000).optional(),
   tokenHash: z.string().max(400).optional(),
+  otpType: z.enum(OTP_TYPES).catch('invite'),
 })
 
 /**
@@ -29,16 +31,17 @@ export async function setPassword(_prev: SetPasswordState, form: FormData): Prom
     accessToken: form.get('accessToken') || undefined,
     refreshToken: form.get('refreshToken') || undefined,
     tokenHash: form.get('tokenHash') || undefined,
+    otpType: form.get('otpType'),
   })
   if (!p.success) return { error: p.error.issues[0]?.message ?? 'Check the form.' }
   if (p.data.password !== p.data.confirm) return { error: 'The two passwords differ.' }
   const client = supabaseUserClient()
   const session = p.data.tokenHash
-    ? await client.auth.verifyOtp({ token_hash: p.data.tokenHash, type: 'invite' })
+    ? await client.auth.verifyOtp({ token_hash: p.data.tokenHash, type: p.data.otpType })
     : p.data.accessToken && p.data.refreshToken
       ? await client.auth.setSession({ access_token: p.data.accessToken, refresh_token: p.data.refreshToken })
       : null
-  if (!session || session.error || !session.data.user) return { error: 'This link has expired or was already used. Ask the owner to send a new invitation.' }
+  if (!session || session.error || !session.data.user) return { error: 'This link has expired or was already used. Ask the owner to send a new link from Settings → Staff.' }
   const upd = await client.auth.updateUser({ password: p.data.password })
   if (upd.error) return { error: `Password not set: ${upd.error.message}` }
   const s = await resolveProfile(session.data.user.id)

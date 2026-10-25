@@ -4,7 +4,7 @@ import { requirePageAccess } from '@/lib/auth/session'
 import { authMode } from '@/lib/auth/mode'
 import { ROLES, ROLE_LABELS } from '@/lib/auth/rbac'
 import { listStaff } from '@/lib/staff/store'
-import { ActiveForm, InviteForm, RoleForm } from './forms'
+import { ActiveForm, InviteForm, ResendForm, RoleForm } from './forms'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,7 +32,7 @@ export default async function StaffPage() {
       <p className="mb-4 text-sm"><Link href="/settings" className="underline-offset-2 hover:underline">← Settings</Link></p>
       <div className="flex flex-col gap-4">
         <Card>
-          <CardHeader title="Invite someone" meta="Supabase emails them a link to set their password" />
+          <CardHeader title="Invite someone" meta="Supabase emails them a link to set their password. Expired or lost? Use Send new link below." />
           <CardBody><InviteForm roles={roles} /></CardBody>
         </Card>
         <Card>
@@ -50,6 +50,7 @@ export default async function StaffPage() {
                     {s.id !== me.id && (me.role === 'owner' || s.role !== 'owner') ? (
                       <div className="flex flex-wrap items-start gap-2">
                         <RoleForm id={s.id} email={s.email} role={s.role} roles={roles} />
+                        {s.active ? <ResendForm id={s.id} email={s.email} /> : null}
                         <ActiveForm id={s.id} email={s.email} active={s.active} />
                       </div>
                     ) : null}

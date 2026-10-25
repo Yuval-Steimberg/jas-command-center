@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormState, useFormStatus } from 'react-dom'
-import { inviteAction, setActiveAction, setRoleAction, type StaffState } from './actions'
+import { inviteAction, resendAction, setActiveAction, setRoleAction, type StaffState } from './actions'
 
 function Submit({ label, busy }: { label: string; busy: string }) {
   const { pending } = useFormStatus()
@@ -52,6 +52,17 @@ export function ActiveForm({ id, email, active }: { id: string; email: string; a
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="active" value={String(!active)} />
       <Submit label={active ? 'Deactivate' : 'Reactivate'} busy="…" />
+      <Result state={state} />
+    </form>
+  )
+}
+
+export function ResendForm({ id, email }: { id: string; email: string }) {
+  const [state, action] = useFormState<StaffState, FormData>(resendAction, {})
+  return (
+    <form action={action} onSubmit={(e) => { if (!window.confirm(`Email ${email} a new link to set their password?`)) e.preventDefault() }} className="flex flex-col gap-1">
+      <input type="hidden" name="id" value={id} />
+      <Submit label="Send new link" busy="Sending…" />
       <Result state={state} />
     </form>
   )
