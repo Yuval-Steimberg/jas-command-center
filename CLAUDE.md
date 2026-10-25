@@ -231,3 +231,9 @@ Shop sales + shop mode (`docs/CRM_INVENTORY.md`, migration `0006_shop_sales.sql`
   30 per press). `CC_SLUG` also covers the kept 4-digit serials (`jas-0042`) so the adoption sync never adopts our own listing.
 - jas-inventory data: imported once by SQL (project file `jas-inventory-import/import-jas-inventory.sql`), keeping its 4-digit
   serials (JAS-0042). `skuCandidates()` makes scan/lookup try the typed code, the 6-digit CC form and the legacy one.
+
+Shop card terminal (`docs/GROW_TERMINAL.md`, migration `0007_terminal_charges.sql`, `lib/sales/terminal.ts`):
+- Off until `GROW_USER_ID` + `GROW_TERMINAL_PAGE_CODE` + `GROW_TERMINAL_DEVICES` + `GROW_WEBHOOK_SECRET` exist. Pushing an amount
+  records nothing; only Grow's server update (`/api/webhooks/grow?token=`, outside sign-in) records a `card` payment, idempotent
+  by `grow:<transactionId>`, of what Grow says was charged, then calls approveTransaction. Live only: test = real ₪1, refunded.
+- Payload field names are unverified until the first real charge; the raw update is kept on the charge.

@@ -29,7 +29,8 @@ const g = globalThis as unknown as { __ccDevAudit?: AuditEntry[] }
  * `requested` BEFORE calling a source system and the outcome AFTER.
  */
 export async function audit(
-  user: Pick<CurrentUser, 'id' | 'email' | 'role'>,
+  /** A person, or `{ id: 'system', role: 'system' }` for a provider callback (no session). */
+  user: Pick<CurrentUser, 'id' | 'email'> & { role: CurrentUser['role'] | 'system' },
   entry: Omit<AuditEntry, 'id' | 'at' | 'actorId' | 'actorEmail' | 'actorRole' | 'via'> & { via?: AuditEntry['via'] },
 ): Promise<void> {
   const row: AuditEntry = {

@@ -217,6 +217,18 @@ const saleEn = {
   address: 'Address',
   date: 'Date',
   window: 'Time window',
+  terminal: 'Card terminal',
+  terminalCharge: 'Charge on the terminal',
+  terminalDevice: 'Terminal',
+  terminalSend: 'Send to the terminal',
+  terminalWaiting: 'Waiting for the customer to pay on the terminal…',
+  terminalSteps: 'Open the "מסופון סליקה" app on the terminal first. Open the link on this device (not on the terminal) and keep it open until the payment ends.',
+  terminalNoAnswer: 'No answer from the terminal yet.',
+  terminalCancel: 'Stop waiting',
+  terminalCancelConfirm: 'Stop waiting for this charge? Cancel it on the terminal too.',
+  terminalFailed: 'Last attempt failed',
+  terminalApproveFailed: 'Paid and recorded, but Grow did not confirm the approve call',
+  terminalOff: 'Card terminal not connected (missing',
 }
 export type SaleCopy = typeof saleEn
 const saleHe: SaleCopy = {
@@ -271,6 +283,18 @@ const saleHe: SaleCopy = {
   address: 'כתובת',
   date: 'תאריך',
   window: 'חלון זמן',
+  terminal: 'מסופון אשראי',
+  terminalCharge: 'חיוב במסופון',
+  terminalDevice: 'מסופון',
+  terminalSend: 'שליחה למסופון',
+  terminalWaiting: 'ממתין שהלקוח/ה ישלם/תשלם במסופון…',
+  terminalSteps: 'קודם לפתוח במסופון את אפליקציית "מסופון סליקה". את הקישור פותחים במכשיר הזה (לא במסופון) ומשאירים פתוח עד סוף התשלום.',
+  terminalNoAnswer: 'עדיין אין תשובה מהמסופון.',
+  terminalCancel: 'הפסקת המתנה',
+  terminalCancelConfirm: 'להפסיק לחכות לחיוב הזה? צריך לבטל גם במסופון.',
+  terminalFailed: 'הניסיון האחרון נכשל',
+  terminalApproveFailed: 'שולם ונרשם, אבל Grow לא אישר את קריאת האישור',
+  terminalOff: 'המסופון עוד לא מחובר (חסר',
 }
 export const SALE_COPY: Record<Lang, SaleCopy> = { en: saleEn, he: saleHe }
 export const PAYMENT_STATE_HE = { unpaid: 'לא שולם', deposit: 'שולמה מקדמה', paid: 'שולם', overpaid: 'מגיע החזר', nothing_due: 'אין חוב' } as const

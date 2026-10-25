@@ -9,6 +9,7 @@ import { getOpsStore } from '@/lib/ops'
 import { loadOps } from '@/lib/ops/guard'
 import { locationOptions } from '@/lib/ops/views'
 import { saleView } from '@/lib/sales/views'
+import { terminalView } from '@/lib/sales/terminal'
 import { formatDayTime } from '@/lib/format'
 
 export const dynamic = 'force-dynamic'
@@ -18,12 +19,12 @@ export default async function ShopSalePage({ params }: { params: { id: string } 
   const s = (await getSession())!
   const may = (p: Parameters<typeof can>[1]) => can(s.user.role, p, s.overrides)
   const res = await loadOps(async () => {
-    const [v, locations] = await Promise.all([saleView(params.id, { crm: may('crm:read'), pii: may('crm:read_pii') }), getOpsStore().listLocations()])
-    return v ? { v, locations: locationOptions(locations) } : null
+    const [v, locations, terminal] = await Promise.all([saleView(params.id, { crm: may('crm:read'), pii: may('crm:read_pii') }), getOpsStore().listLocations(), terminalView(params.id)])
+    return v ? { v, locations: locationOptions(locations), terminal } : null
   })
   if (res.ok && !res.data) notFound()
   if (!res.ok) return <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p>
-  const { v, locations } = res.data!
+  const { v, locations, terminal } = res.data!
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
@@ -33,7 +34,7 @@ export default async function ShopSalePage({ params }: { params: { id: string } 
         </div>
         {may('inventory:financial') ? <Link href="/shop/sell" className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full border border-line bg-surface px-4 text-sm font-medium hover:bg-sunken"><Plus aria-hidden className="h-4 w-4" />מכירה חדשה</Link> : null}
       </div>
-      <SaleDetail v={v} lang="he" base="/shop" may={{ operate: may('inventory:operate'), money: may('inventory:financial') }} locations={locations} />
+      <SaleDetail v={v} lang="he" base="/shop" may={{ operate: may('inventory:operate'), money: may('inventory:financial') }} locations={locations} terminal={terminal} />
     </div>
   )
 }

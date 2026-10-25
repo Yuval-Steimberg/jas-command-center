@@ -79,6 +79,19 @@ export function env() {
     assistant: { apiKey: read('ANTHROPIC_API_KEY'), model: read('ASSISTANT_MODEL') ?? 'claude-opus-5-5' },
     /** Photo → item fields on intake (same key as the assistant; a smaller model is plenty for one photo). */
     photoAi: { model: read('PHOTO_AI_MODEL') ?? 'claude-sonnet-5-5' },
+    /**
+     * The shop's Grow card terminal (lib/payments/grow-terminal.ts). Off, and saying which variable is
+     * missing, until userId + the terminal's dedicated pageCode + a deviceKey + the webhook secret exist.
+     */
+    growTerminal: {
+      apiUrl: url('GROW_API_URL'),
+      apiPath: read('GROW_API_PATH'),
+      userId: read('GROW_USER_ID'),
+      apiKey: read('GROW_API_KEY'),
+      pageCode: read('GROW_TERMINAL_PAGE_CODE'),
+      devices: read('GROW_TERMINAL_DEVICES'),
+      webhookSecret: read('GROW_WEBHOOK_SECRET'),
+    },
   }
 }
 

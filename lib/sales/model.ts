@@ -134,3 +134,39 @@ export function basketProblem(input: SaleInput): string | null {
   if (input.payment && (!Number.isInteger(input.payment.amountMinor) || input.payment.amountMinor <= 0)) return 'A payment at checkout must be above zero.'
   return null
 }
+
+/**
+ * One push of an amount to the shop's Grow terminal (migration 0007).
+ * sent → paid when Grow's server update says so; sent → failed / cancelled
+ * otherwise. A late "paid" update still records the money, whatever the state:
+ * the customer's card was charged.
+ */
+export const TERMINAL_STATUSES = ['sent', 'paid', 'failed', 'cancelled'] as const
+export type TerminalStatus = (typeof TERMINAL_STATUSES)[number]
+
+export interface TerminalCharge {
+  id: string
+  saleId: string
+  amountMinor: number
+  /** The device name from GROW_TERMINAL_DEVICES (never its key). */
+  device: string
+  status: TerminalStatus
+  /** Opening it pushes the amount to the terminal. */
+  url: string | null
+  processId: string | null
+  transactionId: string | null
+  asmachta: string | null
+  cardSuffix: string | null
+  /** What Grow says was charged; can differ from amountMinor. */
+  paidMinor: number | null
+  paymentId: string | null
+  approvedAt: string | null
+  approveError: string | null
+  error: string | null
+  /** The last server update, as received (minus nothing: Grow sends no card number). */
+  raw: Record<string, string> | null
+  requestId: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
