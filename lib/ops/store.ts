@@ -55,6 +55,8 @@ export interface OpsStore {
   createItem(item: NewItem, movement: Omit<MovementInput, 'type'>): Promise<Item>
   applyItem(id: string, expect: { version?: number; from?: readonly ItemStatus[] }, set: ItemPatch, movement: MovementInput): Promise<Item>
   /** Every item with a photo hash (migration 0006), for the duplicate-photo warning. Paged past the row cap. */
+  /** Whether migration 0008 (renewal level) has run. */
+  renewalLevelReady(): Promise<boolean>
   photoHashes(): Promise<Pick<Item, 'id' | 'sku' | 'title' | 'photoUrl' | 'status' | 'photoHash'>[]>
   movements(itemId: string): Promise<Movement[]>
   recentMovements(limit: number, since?: string): Promise<Movement[]>

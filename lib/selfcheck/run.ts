@@ -27,6 +27,7 @@ import { emailConfigured } from '@/lib/email/send'
 import { env } from '@/lib/env'
 import { addDays, israelDate } from '@/lib/time'
 import { getOpsSnapshot } from '@/lib/ops/snapshot'
+import { getOpsStore } from '@/lib/ops'
 import { syncStatus } from '@/lib/sync/run'
 import { listIntakeCandidates } from '@/lib/integrations/furniture/intake'
 import { listWebsiteOrdersSince } from '@/lib/integrations/website/manage'
@@ -145,6 +146,13 @@ export async function runSelfCheck(now = new Date()) {
         e instanceof OpsSetupError
           ? { section: 'ops', name: 'Card terminal (migration 0007)', state: 'not_configured', latencyMs: null, detail: 'run 0007_terminal_charges.sql' }
           : { section: 'ops', name: 'Card terminal (migration 0007)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) },
+    ),
+    // Renewal level (migration 0008): until it runs, the add-item form's level is not stored.
+    getOpsStore().renewalLevelReady().then(
+      (ready): Probe => (ready
+        ? { section: 'ops', name: 'Item renewal level (migration 0008)', state: 'ok', latencyMs: null, detail: 'column present' }
+        : { section: 'ops', name: 'Item renewal level (migration 0008)', state: 'not_configured', latencyMs: null, detail: 'run 0008_renewal_level.sql (the level is not saved until then)' }),
+      (e): Probe => ({ section: 'ops', name: 'Item renewal level (migration 0008)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) }),
     ),
     // Platform
     getDeployments().then((r) => fromSource('platform', 'Vercel deployments', r, (d) => `${d.length} projects`)),

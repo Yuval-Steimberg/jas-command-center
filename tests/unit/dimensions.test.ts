@@ -30,3 +30,26 @@ describe('photo AI measurements', () => {
     expect(parsePhotoFields('{"title":"x","category":"y","colors":[],"material":"","description":"","suggested_price_ils":null}')?.dimensionsCm).toEqual({ length: null, width: null, height: null, diameter: null })
   })
 })
+
+describe('renewal level and place', () => {
+  it('parses the five levels only and derives condition from them', async () => {
+    const { parseRenewalLevel, CONDITION_OF_RENEWAL, renewalLabel } = await import('@/lib/inventory/renewal')
+    expect(['0', '4', '', 'x', '5', '1.5'].map(parseRenewalLevel)).toEqual([0, 4, null, null, null, null])
+    expect(CONDITION_OF_RENEWAL[3]).toBe('as_new')
+    expect(renewalLabel(2, 'he')).toBe('2 · שיפוץ קל')
+    expect(renewalLabel(null, 'he')).toBeNull()
+  })
+  it('reuses an existing location by name and never invents one for unknown', async () => {
+    const { matchPlace } = await import('@/lib/inventory/places')
+    const locs = [
+      { id: 'a', name: 'מחסן יפו', kind: 'warehouse' },
+      { id: 'b', name: 'מחסן', kind: 'warehouse' },
+      { id: 'c', name: 'חנות', kind: 'shop' },
+      { id: 'd', name: 'כספת ישנה', kind: 'zone', active: false },
+    ]
+    expect(matchPlace('warehouse', locs)?.id).toBe('b')
+    expect(matchPlace('gallery', locs)?.id).toBe('c')
+    expect(matchPlace('safe', locs)).toBeNull()
+    expect(matchPlace('unknown', locs)).toBeNull()
+  })
+})

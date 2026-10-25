@@ -10,6 +10,13 @@ export type ItemStatus = (typeof ITEM_STATUSES)[number]
 export const CONDITIONS = ['as_new', 'good', 'needs_repair', 'scrap_only'] as const
 export type Condition = (typeof CONDITIONS)[number]
 
+/**
+ * How much work went into the piece (migration 0008), the shop's own scale:
+ * 0 garage, 1 as is, 2 light refurbishment, 3 major refurbishment, 4 combination.
+ */
+export const RENEWAL_LEVELS = [0, 1, 2, 3, 4] as const
+export type RenewalLevel = (typeof RENEWAL_LEVELS)[number]
+
 export const REFURB_STATUSES = ['needed', 'in_progress', 'done'] as const
 export type RefurbStatus = (typeof REFURB_STATUSES)[number]
 export const REFURB_LEVELS = ['light', 'medium', 'full'] as const
@@ -73,6 +80,8 @@ export interface Item {
   colors?: string | null
   extraPhotos?: string[]
   photoHash?: string | null
+  /** Migration 0008; undefined until it runs. */
+  renewalLevel?: RenewalLevel | null
   /** False while the asking price is still the AI's estimate. */
   priceApproved?: boolean
   aiPriceMinor?: number | null

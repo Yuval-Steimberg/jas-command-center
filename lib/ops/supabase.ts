@@ -122,6 +122,15 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
       if (!r[0]) throw new ConflictError('item not found')
       return r[0]
     },
+    async renewalLevelReady() {
+      try {
+        await many(db.from('cc_inventory_items').select('renewal_level').limit(1))
+        return true
+      } catch (e) {
+        if (e instanceof OpsSetupError) return false
+        throw e
+      }
+    },
     async photoHashes() {
       type H = Pick<Item, 'id' | 'sku' | 'title' | 'photoUrl' | 'status' | 'photoHash'>
       const out: H[] = []

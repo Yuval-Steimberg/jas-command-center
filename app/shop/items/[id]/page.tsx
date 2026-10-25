@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { renewalLabel } from '@/lib/inventory/renewal'
 import { notFound } from 'next/navigation'
 import { z } from 'zod'
 import { Printer, ShoppingBag } from 'lucide-react'
@@ -72,7 +73,8 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
           <Link href={`/shop/labels?ids=${item.id}`} className="inline-flex h-11 items-center gap-2 self-start rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken"><Printer aria-hidden className="h-4 w-4" />הדפסת תווית</Link>
           <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 border-t border-line/70 pt-3 text-sm">
             {row('מיקום', item.locationId ? labels.get(item.locationId) : null, true)}
-            {row('מצב', item.condition ? CONDITION_LABEL_HE[item.condition] : null)}
+            {row('רמת חידוש', renewalLabel(item.renewalLevel, 'he'))}
+            {item.renewalLevel == null ? row('מצב', item.condition ? CONDITION_LABEL_HE[item.condition] : null) : null}
             {row('קטגוריה', item.category)}
             {row('צבעים', item.colors)}
             {row('חומר', item.material)}
@@ -121,8 +123,7 @@ export default async function ShopItemPage({ params }: { params: { id: string } 
           <div className="mt-2">
             <ItemForm
               lang="he" base="/shop" mode="edit" initial={valuesOf(item)} hidden={hidden}
-              conditions={Object.entries(CONDITION_LABEL_HE).map(([value, label]) => ({ value, label }))}
-              canCost={may('inventory:financial') && item.source !== 'purchase'} quantityEditable={item.websiteProductId == null}
+              quantityEditable={item.websiteProductId == null}
             />
           </div>
         </details>

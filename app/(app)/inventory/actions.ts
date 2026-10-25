@@ -10,6 +10,8 @@ import { getOpsStore, OpsSetupError } from '@/lib/ops'
 import { CONDITIONS, LOCATION_KINDS, REFURB_LEVELS, REFURB_STATUSES, type Condition, type ItemPatch, type RefurbLevel, type RefurbStatus } from '@/lib/ops/types'
 import { isPhotoHash } from '@/lib/inventory/photo-hash'
 import { formatDimensions } from '@/lib/inventory/dimensions'
+import { CONDITION_OF_RENEWAL, parseRenewalLevel } from '@/lib/inventory/renewal'
+import { PLACE_NEW, isPlace, matchPlace } from '@/lib/inventory/places'
 import { openSaleOf } from '@/lib/sales/service'
 import {
   adoptWebsiteProducts, copyDrivePhotosMany, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
@@ -108,7 +110,7 @@ function dimensionsOf(f: FormData): string | null {
   return formatDimensions({ length: g('dimLength'), width: g('dimWidth'), height: g('dimHeight'), diameter: g('dimDiameter'), note: g('dimNote') }) || null
 }
 
-/** Fields both the add and edit forms carry (photos, colours, cost, AI price), validated once. */
+/** Fields both the add and edit forms carry (photos, colours, renewal level, AI price), validated once. */
 async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } | { ok: false; message: string }> {
   const price = shekels(f, 'price')
   if (Number.isNaN(price)) return { ok: false, message: 'The asking price must be an amount in ₪.' }
@@ -117,8 +119,18 @@ async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } |
   const extra = f.getAll('extraPhoto').map((x) => String(x).trim()).filter(Boolean).slice(0, 12)
   if (extra.some((x) => !/^https:\/\//.test(x) || x.length > 2000)) return { ok: false, message: 'Every extra photo must be an https link.' }
   const patch: ItemPatch = {
-    title: str(f, 'title', 200) ?? undefined, description: str(f, 'description'), category: str(f, 'category', 100), condition: condition(f), priceMinor: price, photoUrl: photo,
+    title: str(f, 'title', 200) ?? undefined, description: str(f, 'description'), category: str(f, 'category', 100), priceMinor: price, photoUrl: photo,
     dimensions: dimensionsOf(f), material: str(f, 'material', 200), colors: str(f, 'colors', 200),
+  }
+  if (f.has('condition')) patch.condition = condition(f)
+  // The renewal level replaced condition on the form; condition follows it (the website reads condition).
+  // A blank level leaves both as they were.
+  if (f.has('renewalLevel')) {
+    const level = parseRenewalLevel(f.get('renewalLevel'))
+    if (level != null) {
+      patch.renewalLevel = level
+      patch.condition = CONDITION_OF_RENEWAL[level]
+    }
   }
   if (f.has('extraPhotosSent')) patch.extraPhotos = extra
   const hash = String(f.get('photoHash') ?? '')
@@ -135,6 +147,16 @@ async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } |
   return { ok: true, patch }
 }
 
+/** The add form's place buttons → a location id: the matching location, made on first use; "unknown" = none. */
+async function placeLocation(f: FormData): Promise<string | null> {
+  const place = String(f.get('place') ?? '')
+  if (!isPlace(place) || place === 'unknown') return null
+  const store = getOpsStore()
+  const found = matchPlace(place, await store.listLocations())
+  if (found) return found.id
+  return (await store.saveLocation(PLACE_NEW[place])).id
+}
+
 export async function createItemAction(_p: ActionState, f: FormData): Promise<ActionState> {
   const title = str(f, 'title', 200)
   if (!title) return { ok: false, message: 'Give the item a name.' }
@@ -145,7 +167,7 @@ export async function createItemAction(_p: ActionState, f: FormData): Promise<Ac
   let createdId = ''
   const res = await act(['inventory:write'], 'inventory.create', 'item:new', { title }, async (u) => {
     const item = await createManualItem(
-      { ...fields.patch, title, quantity: qty, kind: qty > 1 ? 'batch' : 'unique', locationId: locationOf(f) },
+      { ...fields.patch, title, quantity: qty, kind: qty > 1 ? 'batch' : 'unique', locationId: locationOf(f) ?? (await placeLocation(f)) },
       actorOf(u),
       str(f, 'note', 500) ?? undefined,
     )

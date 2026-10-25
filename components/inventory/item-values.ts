@@ -13,23 +13,23 @@ export interface ItemFormValues {
   price: string
   priceApproved: boolean
   aiPrice: string
-  condition: string
+  /** Renewal level '0'–'4', or '' when not set. */
+  renewal: string
   quantity: string
-  cost: string
   photoUrl: string
   photoHash: string
   extraPhotos: string[]
 }
-export const EMPTY_ITEM: ItemFormValues = { title: '', category: '', colors: '', material: '', dims: EMPTY_DIMENSIONS, description: '', price: '', priceApproved: true, aiPrice: '', condition: 'good', quantity: '1', cost: '', photoUrl: '', photoHash: '', extraPhotos: [] }
+export const EMPTY_ITEM: ItemFormValues = { title: '', category: '', colors: '', material: '', dims: EMPTY_DIMENSIONS, description: '', price: '', priceApproved: true, aiPrice: '', renewal: '', quantity: '1', photoUrl: '', photoHash: '', extraPhotos: [] }
 
 /** An item's current values as form strings. */
 export function valuesOf(i: {
   title: string; category: string | null; colors?: string | null; material: string | null; dimensions: string | null; description: string | null; priceMinor: number | null
-  priceApproved?: boolean; aiPriceMinor?: number | null; condition: string | null; quantity: number; unitCostMinor?: number | null; photoUrl: string | null; photoHash?: string | null; extraPhotos?: string[]
+  priceApproved?: boolean; aiPriceMinor?: number | null; renewalLevel?: number | null; quantity: number; photoUrl: string | null; photoHash?: string | null; extraPhotos?: string[]
 }): ItemFormValues {
   return {
     title: i.title, category: i.category ?? '', colors: i.colors ?? '', material: i.material ?? '', dims: parseDimensions(i.dimensions), description: i.description ?? '',
     price: minorToShekels(i.priceMinor), priceApproved: i.priceApproved ?? true, aiPrice: i.aiPriceMinor != null ? minorToShekels(i.aiPriceMinor) : '',
-    condition: i.condition ?? '', quantity: String(i.quantity), cost: minorToShekels(i.unitCostMinor ?? null), photoUrl: i.photoUrl ?? '', photoHash: i.photoHash ?? '', extraPhotos: i.extraPhotos ?? [],
+    renewal: i.renewalLevel != null ? String(i.renewalLevel) : '', quantity: String(i.quantity), photoUrl: i.photoUrl ?? '', photoHash: i.photoHash ?? '', extraPhotos: i.extraPhotos ?? [],
   }
 }
