@@ -1,4 +1,5 @@
 import { minorToShekels } from '@/components/sales/copy'
+import { EMPTY_DIMENSIONS, parseDimensions, type Dimensions } from '@/lib/inventory/dimensions'
 
 /** The item form's fields as strings. Not a client module, so server pages can build them. */
 export interface ItemFormValues {
@@ -6,7 +7,8 @@ export interface ItemFormValues {
   category: string
   colors: string
   material: string
-  dimensions: string
+  /** Length / width / height / diameter (cm) + anything an older row said that does not fit them. */
+  dims: Dimensions
   description: string
   price: string
   priceApproved: boolean
@@ -18,7 +20,7 @@ export interface ItemFormValues {
   photoHash: string
   extraPhotos: string[]
 }
-export const EMPTY_ITEM: ItemFormValues = { title: '', category: '', colors: '', material: '', dimensions: '', description: '', price: '', priceApproved: true, aiPrice: '', condition: 'good', quantity: '1', cost: '', photoUrl: '', photoHash: '', extraPhotos: [] }
+export const EMPTY_ITEM: ItemFormValues = { title: '', category: '', colors: '', material: '', dims: EMPTY_DIMENSIONS, description: '', price: '', priceApproved: true, aiPrice: '', condition: 'good', quantity: '1', cost: '', photoUrl: '', photoHash: '', extraPhotos: [] }
 
 /** An item's current values as form strings. */
 export function valuesOf(i: {
@@ -26,7 +28,7 @@ export function valuesOf(i: {
   priceApproved?: boolean; aiPriceMinor?: number | null; condition: string | null; quantity: number; unitCostMinor?: number | null; photoUrl: string | null; photoHash?: string | null; extraPhotos?: string[]
 }): ItemFormValues {
   return {
-    title: i.title, category: i.category ?? '', colors: i.colors ?? '', material: i.material ?? '', dimensions: i.dimensions ?? '', description: i.description ?? '',
+    title: i.title, category: i.category ?? '', colors: i.colors ?? '', material: i.material ?? '', dims: parseDimensions(i.dimensions), description: i.description ?? '',
     price: minorToShekels(i.priceMinor), priceApproved: i.priceApproved ?? true, aiPrice: i.aiPriceMinor != null ? minorToShekels(i.aiPriceMinor) : '',
     condition: i.condition ?? '', quantity: String(i.quantity), cost: minorToShekels(i.unitCostMinor ?? null), photoUrl: i.photoUrl ?? '', photoHash: i.photoHash ?? '', extraPhotos: i.extraPhotos ?? [],
   }

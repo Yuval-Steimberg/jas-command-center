@@ -9,6 +9,8 @@ export interface PhotoFields {
   description: string
   /** Whole shekels; a rough estimate a person always confirms or overrides. */
   suggestedPriceIls: number | null
+  /** Whole cm, estimated from the photo (no tape measure): a person measures before trusting them. */
+  dimensionsCm: { length: number | null; width: number | null; height: number | null; diameter: number | null }
 }
 
 export const PHOTO_PROMPT = [
@@ -20,19 +22,24 @@ export const PHOTO_PROMPT = [
   '- colors: the main colour first, at most three.',
   '- material: the main material, e.g. עץ אלון, עץ מלא, סנדוויץ׳, בד, עור, מתכת, ראטן.',
   '- description: one or two plain sentences a buyer would find useful. No exclamation marks, no emoji, no claims you cannot see (age, brand, provenance).',
+  '- length_cm, width_cm, height_cm, diameter_cm: your best estimate in whole centimetres from the photo and typical sizes of such a piece. Use diameter_cm only for a round piece (round table, lamp shade, mirror), and then leave length_cm/width_cm null. null for any measure that does not apply or that you cannot estimate.',
   '- suggested_price_ils: a realistic second-hand shop price in whole shekels for Tel Aviv, or null if the photo does not show a piece of furniture.',
 ].join('\n')
 
 export const PHOTO_FIELDS_SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'category', 'colors', 'material', 'description', 'suggested_price_ils'],
+  required: ['title', 'category', 'colors', 'material', 'description', 'length_cm', 'width_cm', 'height_cm', 'diameter_cm', 'suggested_price_ils'],
   properties: {
     title: { type: 'string' },
     category: { type: 'string' },
     colors: { type: 'array', items: { type: 'string' } },
     material: { type: 'string' },
     description: { type: 'string' },
+    length_cm: { type: ['integer', 'null'] },
+    width_cm: { type: ['integer', 'null'] },
+    height_cm: { type: ['integer', 'null'] },
+    diameter_cm: { type: ['integer', 'null'] },
     suggested_price_ils: { type: ['integer', 'null'] },
   },
 } as const
@@ -43,8 +50,15 @@ const shape = z.object({
   colors: z.array(z.string()),
   material: z.string(),
   description: z.string(),
+  // Optional so an answer from before these fields existed still parses.
+  length_cm: z.number().nullable().optional(),
+  width_cm: z.number().nullable().optional(),
+  height_cm: z.number().nullable().optional(),
+  diameter_cm: z.number().nullable().optional(),
   suggested_price_ils: z.number().nullable(),
 })
+
+const cm = (n: number | null | undefined) => (n != null && Number.isFinite(n) && n > 0 && n < 10_000 ? Math.round(n) : null)
 
 const clip = (s: string, n: number) => s.replace(/\s+/g, ' ').trim().slice(0, n)
 
@@ -69,5 +83,6 @@ export function parsePhotoFields(text: string): PhotoFields | null {
     material: clip(p.data.material, 200),
     description: clip(p.data.description, 2000),
     suggestedPriceIls: price != null && Number.isFinite(price) && price > 0 && price < 1_000_000 ? Math.round(price) : null,
+    dimensionsCm: { length: cm(p.data.length_cm), width: cm(p.data.width_cm), height: cm(p.data.height_cm), diameter: cm(p.data.diameter_cm) },
   }
 }
