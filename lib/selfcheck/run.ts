@@ -32,6 +32,8 @@ import { listIntakeCandidates } from '@/lib/integrations/furniture/intake'
 import { listWebsiteOrdersSince } from '@/lib/integrations/website/manage'
 import { getSupplierStore } from '@/lib/suppliers/store'
 import { getSalesStore } from '@/lib/sales/store'
+import { getTerminalStore } from '@/lib/sales/terminal-store'
+import { growTerminalSetup } from '@/lib/sales/terminal'
 import { OpsSetupError } from '@/lib/ops/store'
 import { OPEN_PO, isOverdue } from '@/lib/suppliers/model'
 import { searchGiftCards, getGiftCard, getGiftCardHealth } from '@/lib/integrations/gift-cards/adapter'
@@ -130,6 +132,19 @@ export async function runSelfCheck(now = new Date()) {
         e instanceof OpsSetupError
           ? { section: 'ops', name: 'Shop sales (migration 0006)', state: 'not_configured', latencyMs: null, detail: 'run 0006_shop_sales.sql' }
           : { section: 'ops', name: 'Shop sales (migration 0006)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) },
+    ),
+    // Shop card terminal (migration 0007 + the GROW_* keys): the table first, then whether the keys are in.
+    getTerminalStore().forSale('00000000-0000-0000-0000-000000000000').then(
+      (): Probe => {
+        const s = growTerminalSetup()
+        return s.on
+          ? { section: 'ops', name: 'Card terminal (migration 0007)', state: 'ok', latencyMs: null, detail: `table present, ${s.config.devices.length} device(s), ${s.config.apiKey ? 'with' : 'without'} apiKey` }
+          : { section: 'ops', name: 'Card terminal (migration 0007)', state: 'not_configured', latencyMs: null, detail: `table present; needs ${s.missing.join(', ')}` }
+      },
+      (e): Probe =>
+        e instanceof OpsSetupError
+          ? { section: 'ops', name: 'Card terminal (migration 0007)', state: 'not_configured', latencyMs: null, detail: 'run 0007_terminal_charges.sql' }
+          : { section: 'ops', name: 'Card terminal (migration 0007)', state: 'error', latencyMs: null, detail: e instanceof Error ? e.message : String(e) },
     ),
     // Platform
     getDeployments().then((r) => fromSource('platform', 'Vercel deployments', r, (d) => `${d.length} projects`)),
