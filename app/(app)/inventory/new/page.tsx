@@ -23,8 +23,7 @@ export default async function NewItemPage() {
         {!res.ok ? <OpsUnavailable message={res.message} /> : (
           <ItemForm
             lang="en" base="/inventory" mode="create" initial={EMPTY_ITEM}
-            conditions={Object.entries(CONDITION_LABEL).map(([value, label]) => ({ value, label }))}
-            locations={locationOptions(res.data)} canCost={can(s.user.role, 'inventory:financial', s.overrides)}
+            locations={locationOptions(res.data)}
           />
         )}
       </div>

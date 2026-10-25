@@ -14,6 +14,9 @@ import { COPY, type Lang } from '@/components/sales/copy'
 import type { ItemFormValues } from './item-values'
 import type { PhotoFields } from '@/lib/inventory/ai-fields'
 import { DIMENSION_KEYS, DIMENSION_LABELS, type Dimensions } from '@/lib/inventory/dimensions'
+import { RENEWAL_LEVELS } from '@/lib/ops/types'
+import { RENEWAL_LABEL, RENEWAL_LABEL_HE } from '@/lib/inventory/renewal'
+import { DEFAULT_PLACE, PLACES, PLACE_LABEL, PLACE_LABEL_HE, type Place } from '@/lib/inventory/places'
 
 const MAX_EDGE = 1600
 
@@ -51,16 +54,14 @@ const asForm = (blob: Blob) => {
  * upload let the AI suggest the fields (and again on request). Every suggestion is editable, and an
  * AI price stays "not approved" until a person ticks it.
  */
-export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, locations, defaultLocation, canCost, quantityEditable = true }: {
+export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, quantityEditable = true }: {
   lang: Lang
   base: '/inventory' | '/shop'
   mode: 'create' | 'edit'
   initial: ItemFormValues
   hidden?: Record<string, string | number>
-  conditions: { value: string; label: string }[]
+  /** Create only: where the item goes (the four shop places, or any other location). */
   locations?: { id: string; label: string }[]
-  defaultLocation?: string | null
-  canCost: boolean
   quantityEditable?: boolean
 }) {
   const t = COPY[lang]
@@ -75,6 +76,8 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
   const camRef = useRef<HTMLInputElement>(null)
   const galRef = useRef<HTMLInputElement>(null)
   const extraRef = useRef<HTMLInputElement>(null)
+  const [place, setPlace] = useState<Place>(DEFAULT_PLACE)
+  const [otherLocation, setOtherLocation] = useState('')
 
   /**
    * Merge the AI's suggestion. `overwrite` = the person pressed the button and asked for it;
@@ -96,7 +99,8 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
         material: pick(f.material, x.material),
         description: pick(f.description, x.description),
         dims,
-        ...(f.suggestedPriceIls != null ? { aiPrice: String(f.suggestedPriceIls), price: x.price || String(f.suggestedPriceIls), priceApproved: x.price ? x.priceApproved : false } : {}),
+        // The asking price is never written by the AI: it is a suggestion until someone presses "approve".
+        ...(f.suggestedPriceIls != null ? { aiPrice: String(f.suggestedPriceIls) } : {}),
       }
     })
     setNote(DIMENSION_KEYS.some((k) => aiDims[k]) ? `${t.aiDone} ${t.aiDims}` : t.aiDone)
@@ -169,6 +173,10 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
     }
   }
 
+  const chip = (on: boolean) => `inline-flex min-h-11 items-center justify-center rounded-md border px-3 text-center text-sm leading-tight transition-colors duration-150 ${on ? 'border-forest bg-forest font-semibold text-cream' : 'border-line hover:bg-sunken'}`
+  const renewalLabels = lang === 'he' ? RENEWAL_LABEL_HE : RENEWAL_LABEL
+  const placeLabels = lang === 'he' ? PLACE_LABEL_HE : PLACE_LABEL
+  const priceSettled = v.priceApproved && !!v.price && v.price === v.aiPrice
   const pill = 'inline-flex h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-medium hover:bg-sunken disabled:opacity-60'
   const field = (label: string, el: React.ReactNode, wide = false) => (
     <label className={`flex min-w-0 flex-col gap-1 text-sm ${wide ? 'sm:col-span-2' : ''}`}><span className="text-muted">{label}</span>{el}</label>
@@ -265,26 +273,53 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
             </label>
           ) : <input type="hidden" name="dimNote" value="" />}
         </fieldset>
-        {field(t.condition, <select name="condition" value={v.condition} onChange={(e) => set({ condition: e.target.value })} className={input}>{mode === 'edit' ? <option value="">—</option> : null}{conditions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>)}
+        <fieldset className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">
+          <legend className="mb-1 text-muted">{t.renewal}</legend>
+          <input type="hidden" name="renewalLevel" value={v.renewal} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            {RENEWAL_LEVELS.map((n) => (
+              <button key={n} type="button" aria-pressed={v.renewal === String(n)} onClick={() => set({ renewal: v.renewal === String(n) ? '' : String(n) })} className={chip(v.renewal === String(n))}>
+                <span dir="ltr">{n}</span>&nbsp;·&nbsp;{renewalLabels[n]}
+              </button>
+            ))}
+          </div>
+        </fieldset>
         {quantityEditable ? field(t.quantity, <input name="quantity" type="number" min={mode === 'create' ? 1 : 0} max={10000} value={v.quantity} onChange={(e) => set({ quantity: e.target.value })} dir="ltr" className={input} />) : null}
         <div className="flex min-w-0 flex-col gap-1 text-sm">
           <label className="flex flex-col gap-1"><span className="text-muted">{t.askingPrice}</span>
-            <input name="price" value={v.price} onChange={(e) => set({ price: e.target.value })} inputMode="decimal" dir="ltr" className={input} />
+            {/* A price a person types is their price, so it counts as approved. */}
+            <input name="price" value={v.price} onChange={(e) => set({ price: e.target.value, priceApproved: true })} inputMode="decimal" dir="ltr" className={input} />
           </label>
-          {v.aiPrice ? (
-            <label className="flex min-h-11 items-center gap-2">
-              <input type="checkbox" checked={v.priceApproved} onChange={(e) => set({ priceApproved: e.target.checked })} className="h-5 w-5" />
-              <span>{t.approve}</span><span className="text-xs text-muted">· {t.estimate} ₪{v.aiPrice}</span>
-            </label>
+          {v.aiPrice && !priceSettled ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-muted">{t.suggested} <span dir="ltr">₪{v.aiPrice}</span></span>
+              <button type="button" onClick={() => set({ price: v.aiPrice, priceApproved: true })} className={chip(false)}>{t.approvePrice}</button>
+            </div>
           ) : null}
+          {v.aiPrice && priceSettled ? <p className="text-sm text-ok">{t.priceApprovedNote}</p> : null}
+          {!v.priceApproved && v.price ? <p className="text-sm text-warn">{t.priceNotApproved}</p> : null}
         </div>
-        {canCost ? field(t.cost, <input name="cost" value={v.cost} onChange={(e) => set({ cost: e.target.value })} inputMode="decimal" dir="ltr" className={input} />) : null}
-        {locations ? field(t.location, (
-          <select name="locationId" defaultValue={defaultLocation ?? ''} className={input}>
-            <option value="">—</option>
-            {locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-          </select>
-        )) : null}
+        {locations ? (
+          <fieldset className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">
+            <legend className="mb-1 text-muted">{t.location} <span className="text-xs">({t.optional})</span></legend>
+            <input type="hidden" name="place" value={otherLocation ? '' : place} />
+            <input type="hidden" name="locationId" value={otherLocation} />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {PLACES.map((p) => (
+                <button key={p} type="button" aria-pressed={!otherLocation && place === p} onClick={() => { setPlace(p); setOtherLocation('') }} className={chip(!otherLocation && place === p)}>{placeLabels[p]}</button>
+              ))}
+            </div>
+            {locations.length ? (
+              <details className="mt-1" open={!!otherLocation}>
+                <summary className="cursor-pointer text-muted">{t.otherLocation}</summary>
+                <select value={otherLocation} onChange={(e) => setOtherLocation(e.target.value)} aria-label={t.otherLocation} className={`${input} mt-2`}>
+                  <option value="">—</option>
+                  {locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+                </select>
+              </details>
+            ) : null}
+          </fieldset>
+        ) : null}
         {mode === 'create' ? field(t.source, <input name="note" dir="auto" maxLength={500} className={input} />) : null}
         {field(t.description, <textarea name="description" value={v.description} onChange={(e) => set({ description: e.target.value })} dir="auto" rows={3} maxLength={2000} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" />, true)}
       </section>

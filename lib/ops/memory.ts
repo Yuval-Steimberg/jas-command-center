@@ -98,7 +98,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
         furnitureItemId: null, furnitureProjectId: null, furnitureProjectName: null, furnitureApartment: null, websiteProductId: null,
         reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, soldChannel: null, soldAt: null, soldPriceMinor: null,
         buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, purchaseOrderId: null, supplierId: null, unitCostMinor: null,
-        colors: null, extraPhotos: [], photoHash: null, priceApproved: true, aiPriceMinor: null, refurbStatus: null, refurbLevel: null, refurbContactId: null, refurbInstructions: null, createdBy: 'system',
+        colors: null, extraPhotos: [], photoHash: null, priceApproved: true, aiPriceMinor: null, refurbStatus: null, refurbLevel: null, renewalLevel: null, refurbContactId: null, refurbInstructions: null, createdBy: 'system',
         ...input, version: 1, createdAt: t, updatedAt: t,
       } as Item
       d.items.push(item)
@@ -123,6 +123,9 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
         quantityDelta: mv.quantityDelta ?? item.quantity - before.quantity, refKind: mv.refKind ?? null, refId: mv.refId ?? null, note: mv.note ?? null, actorEmail: mv.actorEmail, detail: mv.detail ?? {},
       })
       return copy(item)
+    },
+    async renewalLevelReady() {
+      return true
     },
     async photoHashes() {
       return copy(d.items.filter((i) => i.photoHash).map((i) => ({ id: i.id, sku: i.sku, title: i.title, photoUrl: i.photoUrl, status: i.status, photoHash: i.photoHash })))

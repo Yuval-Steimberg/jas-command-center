@@ -20,8 +20,7 @@ export default async function ShopNewItemPage() {
       {!res.ok ? <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p> : (
         <ItemForm
           lang="he" base="/shop" mode="create" initial={EMPTY_ITEM}
-          conditions={Object.entries(CONDITION_LABEL_HE).map(([value, label]) => ({ value, label }))}
-          locations={locationOptions(res.data)} canCost={can(s.user.role, 'inventory:financial', s.overrides)}
+          locations={locationOptions(res.data)}
         />
       )}
     </div>

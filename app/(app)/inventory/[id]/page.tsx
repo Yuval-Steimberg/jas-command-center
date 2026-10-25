@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { renewalLabel } from '@/lib/inventory/renewal'
 import { notFound, redirect } from 'next/navigation'
 import { z } from 'zod'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
@@ -112,6 +113,7 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
               ) : null}
               <dl className="grid grid-cols-[auto_1fr] content-start gap-x-3 gap-y-1.5 text-sm">
                 <dt className="text-muted">Location</dt><dd>{item.locationId ? labels.get(item.locationId) : '—'}</dd>
+                <dt className="text-muted">Renewal level</dt><dd>{renewalLabel(item.renewalLevel, 'en') ?? '—'}</dd>
                 <dt className="text-muted">Condition</dt><dd>{item.condition ? CONDITION_LABEL[item.condition] : '—'}</dd>
                 <dt className="text-muted">Asking price</dt><dd className="num">{item.priceMinor ? formatAgorot(item.priceMinor) : '—'}</dd>
                 <dt className="text-muted">Dimensions</dt><dd dir="auto">{item.dimensions ?? '—'}</dd>
@@ -268,8 +270,7 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
               <CardBody>
                 <ItemForm
                   lang="en" base="/inventory" mode="edit" initial={valuesOf(item)} hidden={hidden}
-                  conditions={Object.entries(CONDITION_LABEL).map(([value, label]) => ({ value, label }))}
-                  canCost={money && item.source !== 'purchase'} quantityEditable={item.websiteProductId == null}
+                  quantityEditable={item.websiteProductId == null}
                 />
               </CardBody>
             </Card>
