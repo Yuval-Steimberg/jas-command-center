@@ -7,12 +7,13 @@ import { audit } from '@/lib/audit/audit'
 import { env } from '@/lib/env'
 import { authMode } from '@/lib/auth/mode'
 import { ROLES, type Role } from '@/lib/auth/rbac'
-import { refuseInvite, refuseStaffChange } from '@/lib/staff/rules'
-import { invite, listStaff, setActive, setRole } from '@/lib/staff/store'
+import { refuseInvite, refuseResend, refuseStaffChange } from '@/lib/staff/rules'
+import { invite, listStaff, resendAccess, setActive, setRole } from '@/lib/staff/store'
 
 export type StaffState = { ok?: boolean; message?: string }
 
 const role = z.enum(ROLES)
+const setPasswordUrl = () => `${env().cc.appUrl}/login/set-password`
 const fail = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 async function actor() {
@@ -37,7 +38,7 @@ export async function inviteAction(_prev: StaffState, form: FormData): Promise<S
   const detail = { email, role: r }
   await audit(a.user, { action: 'staff.invite', product: null, target: email, outcome: 'requested', detail })
   try {
-    await invite(email, name, r, a.user.id, `${env().cc.appUrl}/login/set-password`)
+    await invite(email, name, r, a.user.id, setPasswordUrl())
     await audit(a.user, { action: 'staff.invite', product: null, target: email, outcome: 'succeeded', detail })
     revalidatePath('/settings/staff')
     return { ok: true, message: `Invitation sent to ${email}. The link lets them set a password.` }
@@ -91,5 +92,25 @@ export async function setActiveAction(_prev: StaffState, form: FormData): Promis
   } catch (e) {
     await audit(a.user, { action, product: null, target: `profile:${id.data}`, outcome: 'failed', detail: { email: target.email, error: fail(e) } })
     return { ok: false, message: `Not changed: ${fail(e)}` }
+  }
+}
+
+export async function resendAction(_prev: StaffState, form: FormData): Promise<StaffState> {
+  const a = await actor()
+  if ('error' in a) return { ok: false, message: a.error }
+  const id = z.string().uuid().safeParse(form.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid person.' }
+  const staff = await listStaff()
+  const refused = refuseResend(a.user, staff, id.data)
+  if (refused) return { ok: false, message: refused }
+  const target = staff.find((s) => s.id === id.data)!
+  await audit(a.user, { action: 'staff.resend_link', product: null, target: `profile:${id.data}`, outcome: 'requested', detail: { email: target.email } })
+  try {
+    const kind = await resendAccess(target.email, setPasswordUrl())
+    await audit(a.user, { action: 'staff.resend_link', product: null, target: `profile:${id.data}`, outcome: 'succeeded', detail: { email: target.email, kind } })
+    return { ok: true, message: kind === 'invite' ? `New invitation sent to ${target.email}.` : `${target.email} had already accepted, so Supabase sent a password-reset link instead.` }
+  } catch (e) {
+    await audit(a.user, { action: 'staff.resend_link', product: null, target: `profile:${id.data}`, outcome: 'failed', detail: { email: target.email, error: fail(e) } })
+    return { ok: false, message: `Not sent: ${fail(e)}` }
   }
 }

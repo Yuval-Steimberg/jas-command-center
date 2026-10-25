@@ -34,3 +34,18 @@ export function refuseInvite(actor: { role: Role }, staff: readonly StaffMember[
   if (staff.some((s) => s.email.toLowerCase() === email.toLowerCase())) return 'That email is already on the staff list. Change their role or reactivate them instead.'
   return null
 }
+
+/**
+ * Sending someone a fresh invitation / set-password link: for a person whose
+ * invitation expired or went to the wrong address, or who forgot their password.
+ * Never for yourself (that is the sign-in page's job), never for a deactivated
+ * person, and an owner's link only from an owner.
+ */
+export function refuseResend(actor: { id: string; role: Role }, staff: readonly StaffMember[], targetId: string): string | null {
+  const target = staff.find((s) => s.id === targetId)
+  if (!target) return 'That person is not on the staff list.'
+  if (target.id === actor.id) return 'You cannot send a link to yourself from here.'
+  if (!target.active) return 'Reactivate them first.'
+  if (actor.role !== 'owner' && target.role === 'owner') return 'Only an owner can send an owner a sign-in link.'
+  return null
+}

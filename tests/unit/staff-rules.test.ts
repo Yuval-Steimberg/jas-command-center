@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { refuseInvite, refuseStaffChange, type StaffMember } from '@/lib/staff/rules'
+import { refuseInvite, refuseResend, refuseStaffChange, type StaffMember } from '@/lib/staff/rules'
 
 const m = (id: string, role: StaffMember['role'], active = true): StaffMember => ({ id, email: `${id}@x.co`, name: id, role, active })
 const staff = [m('own', 'owner'), m('adm', 'admin'), m('ops', 'operations_manager'), m('old', 'viewer', false)]
@@ -22,5 +22,12 @@ describe('staff rules', () => {
   it('refuses a duplicate invite, case-insensitively', () => {
     expect(refuseInvite({ role: 'owner' }, staff, 'OPS@x.co', 'viewer')).toMatch(/already/)
     expect(refuseInvite({ role: 'owner' }, staff, 'new@x.co', 'viewer')).toBeNull()
+  })
+  it('sends a new link only to an active colleague, and an owner only from an owner', () => {
+    expect(refuseResend({ id: 'own', role: 'owner' }, staff, 'ops')).toBeNull()
+    expect(refuseResend({ id: 'own', role: 'owner' }, staff, 'own')).toMatch(/yourself/)
+    expect(refuseResend({ id: 'own', role: 'owner' }, staff, 'old')).toMatch(/Reactivate/)
+    expect(refuseResend({ id: 'adm', role: 'admin' }, staff, 'own')).toMatch(/Only an owner/)
+    expect(refuseResend({ id: 'own', role: 'owner' }, staff, 'nobody')).toMatch(/not on the staff/)
   })
 })

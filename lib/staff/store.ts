@@ -1,5 +1,7 @@
 import 'server-only'
+import { createClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/supabase'
+import { env } from '@/lib/env'
 import { primaryRole, type Role } from '@/lib/auth/rbac'
 import { PROFILE_WITH_ROLES } from '@/lib/auth/profile-query'
 import { dropProfileCache } from '@/lib/auth/session'
@@ -54,4 +56,23 @@ export async function invite(email: string, name: string, role: Role, grantedBy:
     .single()
   if (prof.error) throw new Error(`staff: ${prof.error.message}`)
   await setRole(prof.data.id as string, role, grantedBy)
+}
+
+/**
+ * A new link for someone already on the staff list. Supabase re-sends an
+ * invitation to a person who never accepted one; a person who already did
+ * (Supabase: "already been registered") gets a password-reset email instead.
+ * Both land on /login/set-password. The reset is requested with the IMPLICIT
+ * flow so the link carries its tokens: the default PKCE flow would tie it to a
+ * code verifier stored in the inviter's browser, not the recipient's.
+ */
+export async function resendAccess(email: string, redirectTo: string): Promise<'invite' | 'reset'> {
+  const inv = await supabaseAdmin().auth.admin.inviteUserByEmail(email, { redirectTo })
+  if (!inv.error) return 'invite'
+  if (!/already (been )?registered|already exists/i.test(inv.error.message)) throw new Error(`invite: ${inv.error.message}`)
+  const e = env()
+  const anon = createClient(e.cc.supabaseUrl!, e.cc.supabaseAnonKey!, { auth: { flowType: 'implicit', persistSession: false, autoRefreshToken: false } })
+  const reset = await anon.auth.resetPasswordForEmail(email, { redirectTo })
+  if (reset.error) throw new Error(`reset: ${reset.error.message}`)
+  return 'reset'
 }

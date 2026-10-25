@@ -1,5 +1,6 @@
 import './globals.css'
 import type { Metadata, Viewport } from 'next'
+import { AuthLinkForwarder } from '@/components/auth-link-forwarder'
 
 export const metadata: Metadata = {
   title: 'JAS Command Center',
@@ -16,7 +17,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;600;700;900&display=swap" />
       </head>
-      <body className="min-h-dvh font-sans text-[15px]">{children}</body>
+      <body className="min-h-dvh font-sans text-[15px]"><AuthLinkForwarder />{children}</body>
     </html>
   )
 }
