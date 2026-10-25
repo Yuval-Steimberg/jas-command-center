@@ -12,8 +12,8 @@ update records the payment on the sale. Code: `lib/payments/grow-terminal.ts`
    `notifyUrl` = `/api/webhooks/grow?token=…` and `cField1` = our charge id.
    Grow returns a url. Nothing is recorded as paid.
 2. Seller opens **שליחה למסופון** (that url) on the phone/computer running
-   /shop, NOT on the terminal, and keeps it open. The terminal's "מסופון סליקה"
-   app (or the GROW app on an Android device) must already be open.
+   /shop, NOT on the terminal, and keeps it open. The GROW app on the terminal must
+   already be open on its home screen (a Grow POS terminal: "מסופון סליקה").
 3. Customer pays on the terminal. Grow sends a server update; we record a
    `card` payment of exactly what Grow says was charged (request id
    `grow:<transactionId>`, so a repeated update records once), mark the charge
@@ -33,8 +33,10 @@ the payment is an ordinary `cc_sale_payments` row, read by `saleMoney`.
   website's and gift cards' sales) is answered 200 and ignored.
 - A failed `approveTransaction` is stored on the charge and shown on the sale;
   the payment stands.
-- Grow's GROW app (Android "Touch") caps a physical card tap at ₪300; a POS
-  terminal and digital wallets are not capped.
+- The shop's terminal runs the GROW app (Android flow, needs Grow's "Touch"
+  service). It caps a physical card tap at ₪300; digital wallets are not
+  capped. The sale page says so above ₪300; the seller can charge less than
+  the balance and push the rest as a second charge.
 - Live only: Grow has no sandbox for this flow. The first test is a real ₪1
   charge, refunded in Grow afterwards and recorded as a refund on the sale.
 

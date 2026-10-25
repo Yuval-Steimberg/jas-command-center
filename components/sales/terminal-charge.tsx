@@ -8,11 +8,16 @@ import { terminalCancelAction, terminalChargeAction } from '@/app/(app)/sales/ac
 import { input } from '@/app/(app)/website/forms'
 import type { SaleCopy } from './copy'
 
+/** Grow: on the GROW Android app a physical card tap is capped at ₪300; digital wallets are not. */
+const TAP_CAP = 30000
+
 export interface TerminalChargeState {
   id: string
   status: 'sent' | 'paid' | 'failed' | 'cancelled'
   url: string | null
   amount: string
+  /** Agorot, for the GROW app's card-tap cap. */
+  cents: number
   device: string
   fresh: boolean
   error: string | null
@@ -45,6 +50,7 @@ export function TerminalCharge({ saleId, t, amount, devices, last, requestId }: 
       <div className="flex flex-col gap-2 rounded-md border border-line bg-ground/40 p-2 text-sm">
         <p className="font-medium text-ink">{last.fresh ? t.terminalWaiting : t.terminalNoAnswer} <span className="num" dir="ltr">{last.amount}</span> · <span dir="auto">{last.device}</span></p>
         <p className="text-meta text-muted">{t.terminalSteps}</p>
+        {last.cents > TAP_CAP ? <p className="text-meta text-warn">{t.terminalTapCap}</p> : null}
         <a href={last.url} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-forest px-4 font-semibold text-cream hover:bg-forest/90">
           <CreditCard aria-hidden className="h-4 w-4" />{t.terminalSend}
         </a>
@@ -58,7 +64,7 @@ export function TerminalCharge({ saleId, t, amount, devices, last, requestId }: 
       {last?.status === 'paid' && last.approveError ? <p dir="auto" className="text-warn">{t.terminalApproveFailed}: {last.approveError}</p> : null}
       {amount ? (
         <ActionForm action={terminalChargeAction} hidden={{ saleId, requestId }} label={t.terminalCharge} busy={t.saving} tone="primary" className="grid gap-2 sm:grid-cols-2">
-          <Field label={t.amount}><input name="amount" required inputMode="decimal" dir="ltr" defaultValue={String(amount / 100)} className={input} /></Field>
+          <Field label={t.amount} hint={amount > TAP_CAP ? t.terminalTapCap : undefined}><input name="amount" required inputMode="decimal" dir="ltr" defaultValue={String(amount / 100)} className={input} /></Field>
           {devices.length > 1 ? (
             <Field label={t.terminalDevice}>
               <select name="device" defaultValue={devices[0]} className={input}>{devices.map((d) => <option key={d} value={d}>{d}</option>)}</select>

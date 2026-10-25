@@ -132,7 +132,7 @@ export function SaleDetail({ v, lang, base, may, locations, terminal }: {
 function chargeState(c: Charge | undefined) {
   if (!c) return null
   return {
-    id: c.id, status: c.status, url: c.url, amount: formatAgorot(c.amountMinor), device: c.device,
+    id: c.id, status: c.status, url: c.url, amount: formatAgorot(c.amountMinor), cents: c.amountMinor, device: c.device,
     fresh: Date.now() - Date.parse(c.createdAt) < TERMINAL_WAIT_MS, error: c.error, approveError: c.approveError,
   }
 }
