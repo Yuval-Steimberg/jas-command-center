@@ -3,7 +3,7 @@ import { fakeServer, resetSourceCache } from './fake-server'
 import { getOpsStore } from '@/lib/ops'
 import { emptyData } from '@/lib/ops/memory'
 import { getSalesStore } from '@/lib/sales/store'
-import { saleMoney } from '@/lib/sales/model'
+import { saleMoney, spreadDiscount, discountFromInput } from '@/lib/sales/model'
 import { createShopSale, handOverLine, recordPayment, returnSaleUnits, setLineFulfilment } from '@/lib/sales/service'
 import { moveDelivery } from '@/lib/deliveries/service'
 import { editItem } from '@/lib/inventory/service'
@@ -182,5 +182,52 @@ describe('editing an item', () => {
     expect(edit.detail.changes).toEqual({ priceMinor: { from: 50000, to: 55000 } })
     const cur = (await getOpsStore().getItem(a.id))!
     expect(await editItem(a.id, cur.version, { priceMinor: 55000 }, actor)).toMatchObject({ ok: true, message: 'Nothing changed.' })
+  })
+})
+
+describe('discount and coupon code', () => {
+  it('spreads a sale discount over the lines in whole agorot, never past a line', () => {
+    expect(spreadDiscount([50000, 110000], 16000)).toEqual([5000, 11000])
+    expect(spreadDiscount([100, 100, 100], 100)).toEqual([34, 33, 33])
+    expect(spreadDiscount([1, 0], 1)).toEqual([1, 0])
+    expect(spreadDiscount([500], 0)).toEqual([0])
+    expect(discountFromInput('percent', '10', 35000)).toBe(3500)
+    expect(discountFromInput('amount', '₪ 1,250.5', 0)).toBe(125050)
+    expect(discountFromInput('amount', '', 100)).toBe(0)
+    expect(discountFromInput('percent', '120', 100)).toBeNull()
+    expect(discountFromInput('amount', 'abc', 100)).toBeNull()
+  })
+
+  it('sells at the discounted price: total, sold price, analytics movement, coupon kept as typed', async () => {
+    const a = await item()
+    const b = await item({ title: 'שולחן', priceMinor: 110000 })
+    const r = await createShopSale({ contactId: null, note: null, lines: [line(a.id), line(b.id, { unitPriceMinor: 110000 })], discountMinor: 16000, couponCode: ' SUMMER10 ', payment: { amountMinor: 144000, method: 'cash' } }, 'req-disc-1', actor)
+    expect(r).toMatchObject({ ok: true, message: expect.stringContaining('discount') })
+    if (!r.ok) return
+    expect(r.sale).toMatchObject({ totalMinor: 144000, discountMinor: 16000, couponCode: 'SUMMER10' })
+    const detail = (await getSalesStore().getSale(r.sale.id))!
+    expect(detail.lines.map((l) => l.discountMinor)).toEqual([5000, 11000])
+    expect(saleMoney(detail.sale, detail.lines, detail.payments)).toMatchObject({ totalMinor: 144000, discountMinor: 16000, dueMinor: 144000, balanceMinor: 0, state: 'paid' })
+    expect((await getOpsStore().getItem(a.id))!.soldPriceMinor).toBe(45000)
+    const moves = await getOpsStore().movements(b.id)
+    expect(moves.find((m) => m.type === 'sell')!.detail.priceMinor).toBe(99000)
+  })
+
+  it('a return gives back what was paid for those units, the whole share when the whole line comes back', async () => {
+    const lot = await item({ title: 'כיסאות', quantity: 3, kind: 'batch', priceMinor: 1000 })
+    const r = await createShopSale({ contactId: null, note: null, lines: [line(lot.id, { quantity: 3, unitPriceMinor: 1000 })], discountMinor: 100, payment: null }, 'req-disc-2', actor)
+    if (!r.ok) throw new Error(r.message)
+    const l = (await getSalesStore().getSale(r.sale.id))!.lines[0]!
+    const one = await returnSaleUnits(l.id, 1, 0, null, 'did not fit', actor)
+    expect(one.message).toContain('₪9.67')
+    const two = await returnSaleUnits(l.id, 2, 1, null, 'did not fit', actor)
+    expect(two.message).toContain('₪19.33')
+    const detail = (await getSalesStore().getSale(r.sale.id))!
+    expect(saleMoney(detail.sale, detail.lines, detail.payments)).toMatchObject({ totalMinor: 2900, returnedMinor: 2900, dueMinor: 0 })
+  })
+
+  it('refuses a discount larger than the sale', async () => {
+    const a = await item()
+    expect(await createShopSale({ contactId: null, note: null, lines: [line(a.id)], discountMinor: 50001, payment: null }, 'req-disc-3', actor)).toMatchObject({ ok: false, message: expect.stringContaining('larger') })
   })
 })

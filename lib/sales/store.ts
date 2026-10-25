@@ -7,7 +7,7 @@ import { emptyData, memoryStore, type MemoryData } from '@/lib/ops/memory'
 import { dropsCacheOnWrite } from '@/lib/ops/fresh'
 import { fail, fromRow, toRow, type PgError, type Row } from '@/lib/ops/supabase'
 import type { ItemPatch, ItemStatus } from '@/lib/ops/types'
-import { basketProblem, keptQty, type Fulfilment, type Sale, type SaleInput, type SaleLine, type SalePayment, type PaymentMethod } from './model'
+import { basketProblem, keptQty, spreadDiscount, unitsValue, type Fulfilment, type Sale, type SaleInput, type SaleLine, type SalePayment, type PaymentMethod } from './model'
 
 /** Migration 0006 has not been run. */
 export const salesSetup = () => new OpsSetupError('0006_shop_sales.sql', 'The shop sale tables')
@@ -109,24 +109,26 @@ export function memorySalesStore(d: MemoryData): SalesStore {
         if (l.quantity > it.quantity) throw new ConflictError(`only ${it.quantity} of ${it.sku} left`)
       }
       const t = now()
-      const sale: Sale = { id: crypto.randomUUID(), number: `S-${String(++d.saleSeq).padStart(5, '0')}`, contactId: input.contactId, totalMinor: 0, note: input.note, requestId, createdBy: actor, createdAt: t, updatedAt: t }
+      const shares = spreadDiscount(input.lines.map((l) => l.quantity * l.unitPriceMinor), input.discountMinor ?? 0)
+      const sale: Sale = { id: crypto.randomUUID(), number: `S-${String(++d.saleSeq).padStart(5, '0')}`, contactId: input.contactId, totalMinor: 0, discountMinor: input.discountMinor ?? 0, couponCode: input.couponCode?.trim() || null, note: input.note, requestId, createdBy: actor, createdAt: t, updatedAt: t }
       d.sales.push(sale)
       let pos = 0
-      for (const l of input.lines) {
+      for (const [k, l] of input.lines.entries()) {
         const it = d.items.find((i) => i.id === l.itemId)!
         const line: SaleLine = {
-          id: crypto.randomUUID(), saleId: sale.id, itemId: it.id, position: ++pos, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor, fulfilment: l.fulfilment,
+          id: crypto.randomUUID(), saleId: sale.id, itemId: it.id, position: ++pos, quantity: l.quantity, unitPriceMinor: l.unitPriceMinor, discountMinor: shares[k]!, fulfilment: l.fulfilment,
           address: l.address?.trim() || null, scheduledFor: l.scheduledFor || null, timeWindow: l.timeWindow?.trim() || null, status: 'open', doneAt: null, returnedQty: 0, updatedAt: t,
         }
         d.saleLines.push(line)
-        sale.totalMinor += l.quantity * l.unitPriceMinor
+        const paid = unitsValue(line, l.quantity)
+        sale.totalMinor += paid
         const whole = it.kind === 'unique' || l.quantity === it.quantity
         const set: ItemPatch = whole
-          ? { status: 'sold', soldChannel: 'in_store', soldAt: t, soldPriceMinor: l.quantity * l.unitPriceMinor, buyerContactId: sale.contactId, reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, ...(it.kind === 'batch' ? { quantity: 0 } : {}) }
+          ? { status: 'sold', soldChannel: 'in_store', soldAt: t, soldPriceMinor: paid, buyerContactId: sale.contactId, reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, ...(it.kind === 'batch' ? { quantity: 0 } : {}) }
           : { quantity: it.quantity - l.quantity }
         await items.applyItem(it.id, { from: SELLABLE }, set, {
           type: 'sell', refKind: 'sale_line', refId: line.id, actorEmail: actor, quantityDelta: -l.quantity, note: sale.number,
-          detail: { channel: 'in_store', priceMinor: l.quantity * l.unitPriceMinor, units: l.quantity, saleId: sale.id, saleNumber: sale.number },
+          detail: { channel: 'in_store', priceMinor: paid, units: l.quantity, saleId: sale.id, saleNumber: sale.number },
         })
         if (l.fulfilment === 'delivery') {
           await items.createDelivery({ itemId: it.id, contactId: sale.contactId, address: line.address, scheduledFor: line.scheduledFor, timeWindow: line.timeWindow, note: sale.number, createdBy: actor, saleLineId: line.id })
@@ -164,7 +166,7 @@ export function memorySalesStore(d: MemoryData): SalesStore {
         : { quantity: it.quantity + units }
       await items.applyItem(it.id, {}, set, {
         type: 'return', refKind: 'sale_line_return', refId: `${l.id}:${l.returnedQty + units}`, actorEmail: actor, quantityDelta: units, note: reason,
-        detail: { channel: 'in_store', priceMinor: units * l.unitPriceMinor, units, saleId: sale.id, saleNumber: sale.number },
+        detail: { channel: 'in_store', priceMinor: unitsValue(l, l.returnedQty + units) - unitsValue(l, l.returnedQty), units, saleId: sale.id, saleNumber: sale.number },
       })
       l.returnedQty += units
       if (l.returnedQty === l.quantity) {
@@ -228,15 +230,23 @@ export function supabaseSalesStore(db: SupabaseClient): SalesStore {
       if (before[0]) return { sale: before[0], replay: true }
       const problem = basketProblem(input)
       if (problem) throw new ConflictError(problem)
+      // Before 0009 the SQL would ignore a discount and sell at full price: refuse instead.
+      const discounted = (input.discountMinor ?? 0) > 0 || !!input.couponCode?.trim()
+      if (discounted) {
+        const { error } = await db.from('cc_sales').select('discount_minor, coupon_code').limit(1)
+        if (error) fail(error, () => new OpsSetupError('0009_sale_discount.sql', 'Discounts and coupon codes on a sale'))
+      }
+      const shares = spreadDiscount(input.lines.map((l) => l.quantity * l.unitPriceMinor), input.discountMinor ?? 0)
       const r = await rows<Sale>(
         db.rpc('cc_sale_create', {
           p_header: {
             contact_id: input.contactId,
             note: input.note,
+            ...(discounted ? { coupon_code: input.couponCode?.trim() || null } : {}),
             ...(input.payment ? { payment: { amount_minor: input.payment.amountMinor, method: input.payment.method, note: input.payment.note ?? null } } : {}),
           },
-          p_lines: input.lines.map((l) => ({
-            item_id: l.itemId, version: l.version ?? null, quantity: l.quantity, unit_price_minor: l.unitPriceMinor, fulfilment: l.fulfilment,
+          p_lines: input.lines.map((l, k) => ({
+            item_id: l.itemId, version: l.version ?? null, quantity: l.quantity, unit_price_minor: l.unitPriceMinor, ...(shares[k] ? { discount_minor: shares[k] } : {}), fulfilment: l.fulfilment,
             address: l.address?.trim() || null, scheduled_for: l.scheduledFor || null, time_window: l.timeWindow?.trim() || null,
           })),
           p_request: requestId,

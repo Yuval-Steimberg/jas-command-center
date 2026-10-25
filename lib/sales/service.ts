@@ -5,7 +5,7 @@ import { touchContact } from '@/lib/crm/service'
 import { markDelivered, shiftWebsiteStock, undoWebsiteShift, type Actor } from '@/lib/inventory/service'
 import { formatAgorot } from '@/lib/money'
 import { getSalesStore, type SaleDetail } from './store'
-import { basketProblem, keptQty, type Fulfilment, type PaymentMethod, type Sale, type SaleInput, type SaleLine } from './model'
+import { basketProblem, keptQty, unitsValue, type Fulfilment, type PaymentMethod, type Sale, type SaleInput, type SaleLine } from './model'
 
 /**
  * Shop sales across systems. The order of steps follows the inventory rule
@@ -70,7 +70,7 @@ export async function createShopSale(input: SaleInput, requestId: string, actor:
     }
   }
   const deliveries = input.lines.filter((l) => l.fulfilment === 'delivery').length
-  return { ok: true, sale: res.sale, message: `Sold: ${res.sale.number}, ${formatAgorot(res.sale.totalMinor)}.${deliveries ? ` ${deliveries} ${deliveries === 1 ? 'delivery' : 'deliveries'} planned.` : ''}`, warning }
+  return { ok: true, sale: res.sale, message: `Sold: ${res.sale.number}, ${formatAgorot(res.sale.totalMinor)}${res.sale.discountMinor ? ` after a ${formatAgorot(res.sale.discountMinor)} discount` : ''}.${deliveries ? ` ${deliveries} ${deliveries === 1 ? 'delivery' : 'deliveries'} planned.` : ''}`, warning }
 }
 
 /**
@@ -153,7 +153,7 @@ export async function returnSaleUnits(lineId: string, units: number, expectRetur
     const s = await shiftWebsiteStock(item.websiteProductId, units)
     if (!s.ok) warning = `Back in stock here, but the website stock was not raised by ${units} (${s.message}). Set it on the website product page.`
   }
-  const refund = units * line.unitPriceMinor
+  const refund = unitsValue(line, line.returnedQty + units) - unitsValue(line, line.returnedQty)
   return { ok: true, message: `${units} back in stock. If the customer paid, refund ${formatAgorot(refund)} and record it as a refund on this sale.${updated.status === 'returned' ? '' : ` ${keptQty(updated)} still with the customer.`}`, warning }
 }
 
