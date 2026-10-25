@@ -33,7 +33,7 @@ const MOVE_LABEL: Record<string, string> = {
   sell: 'Sold', deliver: 'Delivered', return: 'Returned to stock', donate: 'Donated', recycle: 'Sent to recycling', dispose: 'Disposed', adjust: 'Quantity changed', conflict: 'Needs checking',
 }
 
-export default async function ItemPage({ params }: { params: { id: string } }) {
+export default async function ItemPage({ params, searchParams }: { params: { id: string }; searchParams?: { website?: string } }) {
   await requirePageAccess('inventory:read')
   if (!z.string().uuid().safeParse(params.id).success) notFound()
   const s = (await getSession())!
@@ -92,6 +92,11 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
         description={<span className="flex flex-wrap items-center gap-2"><ItemStatusChip status={item.status} /><span>{item.quantity > 1 ? `${item.quantity} units · ` : ''}{daysHeld(item)} days with us</span></span>}
         actions={<div className="flex flex-wrap gap-2"><Link href="/inventory" className={btn}>All items</Link><Link href={`/inventory/labels?ids=${item.id}`} className={btn}>Print label</Link></div>}
       />
+      {searchParams?.website ? (
+        <p role="status" dir="auto" className={`mb-4 rounded-md border p-2 text-sm ${searchParams.website === 'ok' ? 'border-ok/40 text-ok' : 'border-warn/50 bg-warn/5 text-warn'}`}>
+          {searchParams.website === 'ok' ? 'On the website shop now.' : `Saved, but not put on the website: ${searchParams.website}`}
+        </p>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         <div className="flex min-w-0 flex-col gap-4">
           <Card>
@@ -113,6 +118,9 @@ export default async function ItemPage({ params }: { params: { id: string } }) {
               ) : null}
               <dl className="grid grid-cols-[auto_1fr] content-start gap-x-3 gap-y-1.5 text-sm">
                 <dt className="text-muted">Location</dt><dd>{item.locationId ? labels.get(item.locationId) : '—'}</dd>
+                {item.origin ? <><dt className="text-muted">Came from</dt><dd dir="auto">{item.origin}</dd></> : null}
+                {item.notes ? <><dt className="text-muted">Notes</dt><dd dir="auto" className="whitespace-pre-wrap">{item.notes}</dd></> : null}
+                {item.beforePhotoUrl ? <><dt className="text-muted">Before photo</dt><dd><a href={item.beforePhotoUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">open</a></dd></> : null}
                 <dt className="text-muted">Renewal level</dt><dd>{renewalLabel(item.renewalLevel, 'en') ?? '—'}</dd>
                 <dt className="text-muted">Condition</dt><dd>{item.condition ? CONDITION_LABEL[item.condition] : '—'}</dd>
                 <dt className="text-muted">Asking price</dt><dd className="num">{item.priceMinor ? formatAgorot(item.priceMinor) : '—'}</dd>

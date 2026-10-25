@@ -17,6 +17,7 @@ import { DIMENSION_KEYS, DIMENSION_LABELS, type Dimensions } from '@/lib/invento
 import { RENEWAL_LEVELS } from '@/lib/ops/types'
 import { RENEWAL_LABEL, RENEWAL_LABEL_HE } from '@/lib/inventory/renewal'
 import { DEFAULT_PLACE, PLACES, PLACE_LABEL, PLACE_LABEL_HE, type Place } from '@/lib/inventory/places'
+import { ITEM_CATEGORIES } from '@/lib/inventory/categories'
 
 const MAX_EDGE = 1600
 
@@ -54,7 +55,7 @@ const asForm = (blob: Blob) => {
  * upload let the AI suggest the fields (and again on request). Every suggestion is editable, and an
  * AI price stays "not approved" until a person ticks it.
  */
-export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, quantityEditable = true }: {
+export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, canWebsite = false, quantityEditable = true }: {
   lang: Lang
   base: '/inventory' | '/shop'
   mode: 'create' | 'edit'
@@ -62,6 +63,8 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, qu
   hidden?: Record<string, string | number>
   /** Create only: where the item goes (the four shop places, or any other location). */
   locations?: { id: string; label: string }[]
+  /** Create only: the role may put the item on the website (inventory:write + website:write). */
+  canWebsite?: boolean
   quantityEditable?: boolean
 }) {
   const t = COPY[lang]
@@ -77,7 +80,9 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, qu
   const galRef = useRef<HTMLInputElement>(null)
   const extraRef = useRef<HTMLInputElement>(null)
   const [place, setPlace] = useState<Place>(DEFAULT_PLACE)
-  const [otherLocation, setOtherLocation] = useState('')
+  const [placeOther, setPlaceOther] = useState('')
+  const [onWebsite, setOnWebsite] = useState(false)
+  const beforeRef = useRef<HTMLInputElement>(null)
 
   /**
    * Merge the AI's suggestion. `overwrite` = the person pressed the button and asked for it;
@@ -152,6 +157,24 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, qu
     setError('')
     setNote('')
     await describe(blobRef.current, true)
+  }
+
+  async function onBefore(files: FileList | null) {
+    const file = files?.[0]
+    if (!file) return
+    setBusy('extra')
+    setError('')
+    try {
+      const { blob } = await prepare(file)
+      const up = await uploadItemPhotoAction(asForm(blob))
+      if (!up.ok || !up.url) throw new Error(up.message ?? 'Upload failed')
+      set({ beforePhotoUrl: up.url })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy('')
+      if (beforeRef.current) beforeRef.current.value = ''
+    }
   }
 
   async function onExtra(files: FileList | null) {
@@ -249,13 +272,37 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, qu
             ) : null}
           </div>
         </div>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted">{t.beforePhoto}</p>
+          <input type="hidden" name="beforePhotoUrl" value={v.beforePhotoUrl} />
+          <input ref={beforeRef} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void onBefore(e.target.files)} />
+          {v.beforePhotoUrl ? (
+            <span className="relative self-start">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={v.beforePhotoUrl} alt={t.beforePhoto} className="h-20 w-20 rounded-md border border-line object-cover" />
+              <button type="button" data-compact aria-label={t.remove} onClick={() => set({ beforePhotoUrl: '' })} className="absolute -end-2 -top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface"><X aria-hidden className="h-4 w-4" /></button>
+            </span>
+          ) : (
+            <button type="button" disabled={!!busy} onClick={() => beforeRef.current?.click()} className="grid h-20 w-20 place-items-center rounded-md border border-dashed border-line text-muted hover:bg-sunken" aria-label={t.beforePhoto}><ImagePlus aria-hidden className="h-5 w-5" /></button>
+          )}
+        </div>
         {error ? <p role="status" dir="auto" className="text-sm text-bad">{error}</p> : null}
         {note ? <p role="status" className="text-sm text-ok">{note}</p> : null}
       </section>
 
       <section className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2">
         {field(t.title, <input name="title" required value={v.title} onChange={(e) => set({ title: e.target.value })} dir="auto" maxLength={200} className={input} />, true)}
-        {field(t.category, <input name="category" value={v.category} onChange={(e) => set({ category: e.target.value })} dir="auto" maxLength={100} className={input} />)}
+        {field(t.category, (
+          <>
+            {/* An older item's category off the list stays selectable until someone picks a new one. */}
+            <input type="hidden" name="categoryWas" value={initial.category} />
+            <select name="category" value={v.category} onChange={(e) => set({ category: e.target.value })} className={input}>
+              <option value="">—</option>
+              {initial.category && !(ITEM_CATEGORIES as readonly string[]).includes(initial.category) ? <option value={initial.category}>{initial.category}</option> : null}
+              {ITEM_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </>
+        ))}
         {field(t.colors, <input name="colors" value={v.colors} onChange={(e) => set({ colors: e.target.value })} dir="auto" maxLength={200} className={input} />)}
         {field(t.material, <input name="material" value={v.material} onChange={(e) => set({ material: e.target.value })} dir="auto" maxLength={200} className={input} />)}
         <fieldset className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">
@@ -301,27 +348,35 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, qu
         </div>
         {locations ? (
           <fieldset className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">
-            <legend className="mb-1 text-muted">{t.location} <span className="text-xs">({t.optional})</span></legend>
-            <input type="hidden" name="place" value={otherLocation ? '' : place} />
-            <input type="hidden" name="locationId" value={otherLocation} />
+            <legend className="mb-1 text-muted">{t.location}</legend>
+            <input type="hidden" name="place" value={place} />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {PLACES.map((p) => (
-                <button key={p} type="button" aria-pressed={!otherLocation && place === p} onClick={() => { setPlace(p); setOtherLocation('') }} className={chip(!otherLocation && place === p)}>{placeLabels[p]}</button>
+                <button key={p} type="button" aria-pressed={place === p} onClick={() => setPlace(p)} className={chip(place === p)}>{placeLabels[p]}</button>
               ))}
             </div>
-            {locations.length ? (
-              <details className="mt-1" open={!!otherLocation}>
-                <summary className="cursor-pointer text-muted">{t.otherLocation}</summary>
-                <select value={otherLocation} onChange={(e) => setOtherLocation(e.target.value)} aria-label={t.otherLocation} className={`${input} mt-2`}>
-                  <option value="">—</option>
-                  {locations.map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
-                </select>
-              </details>
+            {place === 'other' ? (
+              <>
+                <input name="placeOther" value={placeOther} onChange={(e) => setPlaceOther(e.target.value)} list="item-form-locations" required dir="auto" maxLength={100} aria-label={t.otherLocation} placeholder={t.otherLocation} className={`${input} mt-1`} />
+                <datalist id="item-form-locations">{locations.map((l) => <option key={l.id} value={l.label} />)}</datalist>
+              </>
             ) : null}
           </fieldset>
         ) : null}
-        {mode === 'create' ? field(t.source, <input name="note" dir="auto" maxLength={500} className={input} />) : null}
+        {field(t.origin, <input name="origin" value={v.origin} onChange={(e) => set({ origin: e.target.value })} dir="auto" maxLength={500} placeholder={t.optional} className={input} />, true)}
+        {mode === 'create' && canWebsite ? (
+          <fieldset className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">
+            <legend className="mb-1 text-muted">{t.onWebsite}</legend>
+            <input type="hidden" name="onWebsite" value={onWebsite ? 'yes' : 'no'} />
+            <div className="grid grid-cols-2 gap-2 sm:max-w-sm">
+              <button type="button" aria-pressed={onWebsite} onClick={() => setOnWebsite(true)} className={chip(onWebsite)}>{t.yes}</button>
+              <button type="button" aria-pressed={!onWebsite} onClick={() => setOnWebsite(false)} className={chip(!onWebsite)}>{t.no}</button>
+            </div>
+            {onWebsite ? <p className="text-xs text-muted">{t.onWebsiteHint}</p> : null}
+          </fieldset>
+        ) : null}
         {field(t.description, <textarea name="description" value={v.description} onChange={(e) => set({ description: e.target.value })} dir="auto" rows={3} maxLength={2000} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" />, true)}
+        {field(t.notes, <textarea name="notes" value={v.notes} onChange={(e) => set({ notes: e.target.value })} dir="auto" rows={2} maxLength={2000} className="w-full rounded-md border border-line bg-surface px-3 py-2 text-sm" />, true)}
       </section>
 
       <div className="flex flex-col gap-2 [&_button]:h-12 [&_button]:min-w-48 [&_button]:text-base">

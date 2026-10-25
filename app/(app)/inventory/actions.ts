@@ -11,10 +11,11 @@ import { CONDITIONS, LOCATION_KINDS, REFURB_LEVELS, REFURB_STATUSES, type Condit
 import { isPhotoHash } from '@/lib/inventory/photo-hash'
 import { formatDimensions } from '@/lib/inventory/dimensions'
 import { CONDITION_OF_RENEWAL, parseRenewalLevel } from '@/lib/inventory/renewal'
-import { PLACE_NEW, isPlace, matchPlace } from '@/lib/inventory/places'
+import { PLACE_NEW, isPlace, matchNamed, matchPlace } from '@/lib/inventory/places'
+import { ITEM_CATEGORIES } from '@/lib/inventory/categories'
 import { openSaleOf } from '@/lib/sales/service'
 import {
-  adoptWebsiteProducts, copyDrivePhotosMany, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
+  adoptWebsiteProducts, copyDrivePhotosMany, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished, setShownOnWebsite,
   type Actor, type OpResult,
 } from '@/lib/inventory/service'
 import { formatSku, skuCandidates } from '@/lib/inventory/model'
@@ -116,10 +117,15 @@ async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } |
   if (Number.isNaN(price)) return { ok: false, message: 'The asking price must be an amount in ₪.' }
   const photo = str(f, 'photoUrl', 2000)
   if (photo && !/^https:\/\//.test(photo)) return { ok: false, message: 'The photo must be an https link.' }
+  const before = str(f, 'beforePhotoUrl', 2000)
+  if (before && !/^https:\/\//.test(before)) return { ok: false, message: 'The "before" photo must be an https link.' }
+  const category = str(f, 'category', 100)
+  // The list, or the category an older item already had (shown as an extra option until someone picks from the list).
+  if (category && !(ITEM_CATEGORIES as readonly string[]).includes(category) && category !== String(f.get('categoryWas') ?? '')) return { ok: false, message: 'Pick a category from the list.' }
   const extra = f.getAll('extraPhoto').map((x) => String(x).trim()).filter(Boolean).slice(0, 12)
   if (extra.some((x) => !/^https:\/\//.test(x) || x.length > 2000)) return { ok: false, message: 'Every extra photo must be an https link.' }
   const patch: ItemPatch = {
-    title: str(f, 'title', 200) ?? undefined, description: str(f, 'description'), category: str(f, 'category', 100), priceMinor: price, photoUrl: photo,
+    title: str(f, 'title', 200) ?? undefined, description: str(f, 'description'), category, priceMinor: price, photoUrl: photo,
     dimensions: dimensionsOf(f), material: str(f, 'material', 200), colors: str(f, 'colors', 200),
   }
   if (f.has('condition')) patch.condition = condition(f)
@@ -133,6 +139,9 @@ async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } |
     }
   }
   if (f.has('extraPhotosSent')) patch.extraPhotos = extra
+  if (f.has('beforePhotoUrl')) patch.beforePhotoUrl = before
+  if (f.has('origin')) patch.origin = str(f, 'origin', 500)
+  if (f.has('notes')) patch.notes = str(f, 'notes', 2000)
   const hash = String(f.get('photoHash') ?? '')
   if (f.has('photoHash')) patch.photoHash = isPhotoHash(hash) ? hash : null
   if (f.has('priceApproved')) patch.priceApproved = f.get('priceApproved') !== 'false'
@@ -147,14 +156,19 @@ async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } |
   return { ok: true, patch }
 }
 
-/** The add form's place buttons → a location id: the matching location, made on first use; "unknown" = none. */
+/** The add form's place buttons → a location id: the matching location, made on first use. "אחר" names one. */
 async function placeLocation(f: FormData): Promise<string | null> {
   const place = String(f.get('place') ?? '')
-  if (!isPlace(place) || place === 'unknown') return null
+  if (!isPlace(place)) return null
   const store = getOpsStore()
-  const found = matchPlace(place, await store.listLocations())
-  if (found) return found.id
-  return (await store.saveLocation(PLACE_NEW[place])).id
+  const locations = await store.listLocations()
+  if (place === 'other') {
+    const name = str(f, 'placeOther', 100)
+    if (!name) return null
+    return (matchNamed(name, locations) ?? (await store.saveLocation({ name, kind: 'zone' }))).id
+  }
+  const found = matchPlace(place, locations)
+  return found ? found.id : (await store.saveLocation(PLACE_NEW[place])).id
 }
 
 export async function createItemAction(_p: ActionState, f: FormData): Promise<ActionState> {
@@ -169,13 +183,30 @@ export async function createItemAction(_p: ActionState, f: FormData): Promise<Ac
     const item = await createManualItem(
       { ...fields.patch, title, quantity: qty, kind: qty > 1 ? 'batch' : 'unique', locationId: locationOf(f) ?? (await placeLocation(f)) },
       actorOf(u),
-      str(f, 'note', 500) ?? undefined,
+      // Where it came from also goes on the intake entry, as it always did.
+      str(f, 'origin', 500) ?? str(f, 'note', 500) ?? undefined,
     )
     createdId = item.id
     return { ok: true, message: `Created ${item.sku}.` }
   }, ['/inventory', '/shop'])
-  if (res.ok && createdId) redirect(f.get('base') === '/shop' ? `/shop/items/${createdId}` : `/inventory/${createdId}`)
-  return res
+  if (!res.ok || !createdId) return res
+  // "Shown on the website: yes" puts it there right away. The item exists either way; the card says how the website step went.
+  let website = ''
+  if (f.get('onWebsite') === 'yes') {
+    const w = await websiteShown(createdId, true)
+    website = `?website=${w.ok ? 'ok' : encodeURIComponent((w.message ?? 'failed').slice(0, 300))}`
+  }
+  redirect(`${f.get('base') === '/shop' ? `/shop/items/${createdId}` : `/inventory/${createdId}`}${website}`)
+}
+
+const websiteShown = (id: string, show: boolean) =>
+  act(['inventory:write', 'website:write'], show ? 'inventory.website_show' : 'inventory.website_hide', `item:${id}`, {}, (u) => setShownOnWebsite(id, show, actorOf(u)), [`/inventory/${id}`, `/shop/items/${id}`, '/inventory', '/shop', '/website/products'])
+
+/** The item card's "shown on the website" yes/no. */
+export async function websiteShownAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const id = uuid.safeParse(f.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid item.' }
+  return websiteShown(id.data, f.get('show') === 'true')
 }
 
 export async function editItemAction(_p: ActionState, f: FormData): Promise<ActionState> {

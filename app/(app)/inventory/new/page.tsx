@@ -23,7 +23,7 @@ export default async function NewItemPage() {
         {!res.ok ? <OpsUnavailable message={res.message} /> : (
           <ItemForm
             lang="en" base="/inventory" mode="create" initial={EMPTY_ITEM}
-            locations={locationOptions(res.data)}
+            locations={locationOptions(res.data)} canWebsite={can(s.user.role, 'website:write', s.overrides)}
           />
         )}
       </div>

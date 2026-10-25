@@ -39,17 +39,22 @@ describe('renewal level and place', () => {
     expect(renewalLabel(2, 'he')).toBe('2 · שיפוץ קל')
     expect(renewalLabel(null, 'he')).toBeNull()
   })
-  it('reuses an existing location by name and never invents one for unknown', async () => {
-    const { matchPlace } = await import('@/lib/inventory/places')
+  it('reuses an existing location by name and matches a typed one exactly', async () => {
+    const { matchPlace, matchNamed } = await import('@/lib/inventory/places')
     const locs = [
       { id: 'a', name: 'מחסן יפו', kind: 'warehouse' },
       { id: 'b', name: 'מחסן', kind: 'warehouse' },
-      { id: 'c', name: 'חנות', kind: 'shop' },
-      { id: 'd', name: 'כספת ישנה', kind: 'zone', active: false },
+      { id: 'c', name: 'חנות גלריה', kind: 'shop' },
+      { id: 'd', name: 'בית מלאכה ישן', kind: 'zone', active: false },
     ]
     expect(matchPlace('warehouse', locs)?.id).toBe('b')
-    expect(matchPlace('gallery', locs)?.id).toBe('c')
-    expect(matchPlace('safe', locs)).toBeNull()
-    expect(matchPlace('unknown', locs)).toBeNull()
+    expect(matchPlace('shop', locs)?.id).toBe('c')
+    expect(matchPlace('workshop', locs)).toBeNull()
+    expect(matchNamed('  מחסן  יפו ', locs)?.id).toBe('a')
+    expect(matchNamed('קומה 2', locs)).toBeNull()
+  })
+  it('keeps categories on the list', async () => {
+    const { toItemCategory } = await import('@/lib/inventory/categories')
+    expect(['כורסא', 'ספה', 'שולחן קפה', 'מקרר', ''].map(toItemCategory)).toEqual(['כורסה', 'ספה', 'שולחן סלון', null, null])
   })
 })

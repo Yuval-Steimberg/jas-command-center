@@ -452,6 +452,28 @@ export async function setListingPublished(id: string, published: boolean, actor:
   }
 }
 
+/**
+ * "Shown on the website" yes/no, the item card's one switch. Yes: an item in
+ * storage is listed and published (in the website category of the same name);
+ * a listed but hidden one is published again. No: the listing is unpublished,
+ * never deleted (orders point at products) and its stock is left alone.
+ * Both directions reuse listOnWebsite / setListingPublished, so the website
+ * and the item's history agree.
+ */
+export async function setShownOnWebsite(id: string, show: boolean, actor: Actor): Promise<OpResult> {
+  const item = await getOpsStore().getItem(id)
+  if (!item) return { ok: false, message: 'Item not found.' }
+  const linkedLive = item.websiteProductId != null && (item.status === 'listed' || item.status === 'reserved')
+  if (!show) return linkedLive ? setListingPublished(id, false, actor) : { ok: false, message: 'It is not on the website.' }
+  if (linkedLive) return setListingPublished(id, true, actor)
+  if (!OPS.list.includes(item.status as 'in_storage')) return { ok: false, message: `Only an item in storage can go on the website; this one is ${item.status.replace('_', ' ')}.` }
+  const meta = await getWebsiteProductMeta()
+  if (meta.state !== 'ok') return { ok: false, message: `The website could not be read (${meta.state === 'error' ? meta.error : 'not connected'}).` }
+  const copied = await copyDrivePhotos(item, actor)
+  if (!copied.ok) return { ok: false, message: copied.message }
+  return listOnWebsite(id, copied.item.version, { categoryId: websiteCategoryFor(copied.item.category, meta.data.categories), publish: true }, actor)
+}
+
 // ── Reservation ───────────────────────────────────────────────────────────
 export async function reserveItem(id: string, version: number, contactId: string, days: number, note: string | null, actor: Actor): Promise<OpResult> {
   const store = getOpsStore()

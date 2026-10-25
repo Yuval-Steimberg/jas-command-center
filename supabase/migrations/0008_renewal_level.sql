@@ -3,9 +3,14 @@
 -- 3 major refurbishment, 4 combination. Replaces "condition" on the item form;
 -- `condition` stays (the website's condition and supplier receiving read it)
 -- and the form derives it from the level (lib/inventory/renewal.ts).
+-- Also the item card's own fields: a "before" photo (the piece before renewal),
+-- where it came from, and free notes.
 -- Idempotent: safe to run again.
 
 alter table cc_inventory_items add column if not exists renewal_level smallint check (renewal_level between 0 and 4);
+alter table cc_inventory_items add column if not exists before_photo_url text;
+alter table cc_inventory_items add column if not exists origin text;
+alter table cc_inventory_items add column if not exists notes text;
 
 -- Existing items keep renewal_level NULL (shown as "—" until someone sets it):
 -- their old condition says what state a piece is in, not how much work went
@@ -14,7 +19,7 @@ alter table cc_inventory_items add column if not exists renewal_level smallint c
 
 -- cc_inventory_create populates the whole record from JSON, so it picks the new
 -- column up by itself. cc_inventory_apply lists its columns: same function as
--- 0006 plus renewal_level.
+-- 0006 plus the four new columns.
 create or replace function cc_inventory_apply(p_item uuid, p_expect_version integer, p_from text[], p_set jsonb, p_movement jsonb)
 returns setof cc_inventory_items language plpgsql as $$
 declare
@@ -50,7 +55,7 @@ begin
     unit_cost_minor = n.unit_cost_minor, colors = n.colors, extra_photos = coalesce(n.extra_photos, '{}'), photo_hash = n.photo_hash,
     price_approved = coalesce(n.price_approved, true), ai_price_minor = n.ai_price_minor,
     refurb_status = n.refurb_status, refurb_level = n.refurb_level, refurb_contact_id = n.refurb_contact_id, refurb_instructions = n.refurb_instructions,
-    renewal_level = n.renewal_level,
+    renewal_level = n.renewal_level, before_photo_url = n.before_photo_url, origin = n.origin, notes = n.notes,
     version = r.version + 1, updated_at = now()
   where id = p_item
   returning * into n;

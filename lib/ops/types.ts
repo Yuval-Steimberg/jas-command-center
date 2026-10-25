@@ -82,6 +82,10 @@ export interface Item {
   photoHash?: string | null
   /** Migration 0008; undefined until it runs. */
   renewalLevel?: RenewalLevel | null
+  beforePhotoUrl?: string | null
+  /** Where the piece came from (free text). */
+  origin?: string | null
+  notes?: string | null
   /** False while the asking price is still the AI's estimate. */
   priceApproved?: boolean
   aiPriceMinor?: number | null
