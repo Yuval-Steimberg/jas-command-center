@@ -12,6 +12,8 @@ import type { ActionState } from '@/lib/ops/act'
 import { HASH_H, HASH_W, differenceHash, toGrey } from '@/lib/inventory/photo-hash'
 import { COPY, type Lang } from '@/components/sales/copy'
 import type { ItemFormValues } from './item-values'
+import type { PhotoFields } from '@/lib/inventory/ai-fields'
+import { DIMENSION_KEYS, DIMENSION_LABELS, type Dimensions } from '@/lib/inventory/dimensions'
 
 const MAX_EDGE = 1600
 
@@ -46,7 +48,7 @@ const asForm = (blob: Blob) => {
 /**
  * Add or edit an item from its photo: take or pick a photo (resized on the
  * phone), upload it, warn if it looks like an item we already have, and on
- * request let the AI suggest the fields. Every suggestion is editable, and an
+ * upload let the AI suggest the fields (and again on request). Every suggestion is editable, and an
  * AI price stays "not approved" until a person ticks it.
  */
 export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, locations, defaultLocation, canCost, quantityEditable = true }: {
@@ -74,6 +76,46 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
   const galRef = useRef<HTMLInputElement>(null)
   const extraRef = useRef<HTMLInputElement>(null)
 
+  /**
+   * Merge the AI's suggestion. `overwrite` = the person pressed the button and asked for it;
+   * the automatic fill after an upload only fills what is still empty, so it never
+   * replaces something a person already typed.
+   */
+  function applyAi(f: PhotoFields, overwrite: boolean) {
+    const pick = (ai: string, cur: string) => (overwrite ? ai || cur : cur.trim() ? cur : ai)
+    const cm = f.dimensionsCm
+    const aiDims: Record<keyof typeof cm, string> = { length: cm.length != null ? String(cm.length) : '', width: cm.width != null ? String(cm.width) : '', height: cm.height != null ? String(cm.height) : '', diameter: cm.diameter != null ? String(cm.diameter) : '' }
+    setV((x) => {
+      const dims: Dimensions = { ...x.dims }
+      for (const k of DIMENSION_KEYS) dims[k] = pick(aiDims[k], x.dims[k])
+      return {
+        ...x,
+        title: pick(f.title, x.title),
+        category: pick(f.category, x.category),
+        colors: pick(f.colors.join(', '), x.colors),
+        material: pick(f.material, x.material),
+        description: pick(f.description, x.description),
+        dims,
+        ...(f.suggestedPriceIls != null ? { aiPrice: String(f.suggestedPriceIls), price: x.price || String(f.suggestedPriceIls), priceApproved: x.price ? x.priceApproved : false } : {}),
+      }
+    })
+    setNote(DIMENSION_KEYS.some((k) => aiDims[k]) ? `${t.aiDone} ${t.aiDims}` : t.aiDone)
+  }
+
+  async function describe(blob: Blob, overwrite: boolean) {
+    setBusy('ai')
+    try {
+      const r = await describeItemPhotoAction(asForm(blob))
+      if (!r.ok || !r.fields) throw new Error(r.message ?? 'The AI could not read the photo.')
+      if (blobRef.current === blob) applyAi(r.fields, overwrite)
+    } catch (e) {
+      // Shown, never swallowed: an empty form with no reason is what this replaced.
+      setError(`${t.aiFailed} ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setBusy('')
+    }
+  }
+
   async function onPhoto(files: FileList | null) {
     const file = files?.[0]
     if (!file) return
@@ -81,44 +123,31 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
     setError('')
     setNote('')
     setSimilar([])
+    let blob: Blob | null = null
     try {
-      const { blob, hash } = await prepare(file)
+      const prepared = await prepare(file)
+      blob = prepared.blob
       blobRef.current = blob
-      const [up, sim] = await Promise.all([uploadItemPhotoAction(asForm(blob)), similarPhotosAction(hash)])
+      const [up, sim] = await Promise.all([uploadItemPhotoAction(asForm(blob)), similarPhotosAction(prepared.hash)])
       if (!up.ok || !up.url) throw new Error(up.message ?? 'Upload failed')
-      set({ photoUrl: up.url, photoHash: hash })
+      set({ photoUrl: up.url, photoHash: prepared.hash })
       setSimilar(sim.items.filter((s) => !hidden.id || s.id !== hidden.id))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
+      blob = null
     } finally {
       setBusy('')
       for (const r of [camRef, galRef]) if (r.current) r.current.value = ''
     }
+    // Fill the fields from the photo straight away, as intake always did; the button repeats it on demand.
+    if (blob) await describe(blob, false)
   }
 
   async function fillFromPhoto() {
     if (!blobRef.current) return
-    setBusy('ai')
     setError('')
-    try {
-      const r = await describeItemPhotoAction(asForm(blobRef.current))
-      if (!r.ok || !r.fields) throw new Error(r.message ?? 'The AI could not read the photo.')
-      const f = r.fields
-      setV((x) => ({
-        ...x,
-        title: f.title || x.title,
-        category: f.category || x.category,
-        colors: f.colors.length ? f.colors.join(', ') : x.colors,
-        material: f.material || x.material,
-        description: f.description || x.description,
-        ...(f.suggestedPriceIls != null ? { aiPrice: String(f.suggestedPriceIls), price: x.price || String(f.suggestedPriceIls), priceApproved: x.price ? x.priceApproved : false } : {}),
-      }))
-      setNote(t.aiDone)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy('')
-    }
+    setNote('')
+    await describe(blobRef.current, true)
   }
 
   async function onExtra(files: FileList | null) {
@@ -221,7 +250,21 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, conditions, l
         {field(t.category, <input name="category" value={v.category} onChange={(e) => set({ category: e.target.value })} dir="auto" maxLength={100} className={input} />)}
         {field(t.colors, <input name="colors" value={v.colors} onChange={(e) => set({ colors: e.target.value })} dir="auto" maxLength={200} className={input} />)}
         {field(t.material, <input name="material" value={v.material} onChange={(e) => set({ material: e.target.value })} dir="auto" maxLength={200} className={input} />)}
-        {field(t.dimensions, <input name="dimensions" value={v.dimensions} onChange={(e) => set({ dimensions: e.target.value })} dir="auto" maxLength={200} className={input} />)}
+        <fieldset className="flex min-w-0 flex-col gap-1 text-sm sm:col-span-2">
+          <legend className="mb-1 text-muted">{t.dimensions} ({t.dimsUnit})</legend>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {DIMENSION_KEYS.map((k) => (
+              <label key={k} className="flex min-w-0 flex-col gap-1"><span className="text-muted">{DIMENSION_LABELS[k][lang]}</span>
+                <input name={`dim${k.charAt(0).toUpperCase()}${k.slice(1)}`} value={v.dims[k]} onChange={(e) => set({ dims: { ...v.dims, [k]: e.target.value } })} inputMode="decimal" dir="ltr" maxLength={8} className={input} />
+              </label>
+            ))}
+          </div>
+          {v.dims.note ? (
+            <label className="mt-1 flex min-w-0 flex-col gap-1"><span className="text-muted">{t.dimsNote}</span>
+              <input name="dimNote" value={v.dims.note} onChange={(e) => set({ dims: { ...v.dims, note: e.target.value } })} dir="auto" maxLength={200} className={input} />
+            </label>
+          ) : <input type="hidden" name="dimNote" value="" />}
+        </fieldset>
         {field(t.condition, <select name="condition" value={v.condition} onChange={(e) => set({ condition: e.target.value })} className={input}>{mode === 'edit' ? <option value="">—</option> : null}{conditions.map((c) => <option key={c.value} value={c.value}>{c.label}</option>)}</select>)}
         {quantityEditable ? field(t.quantity, <input name="quantity" type="number" min={mode === 'create' ? 1 : 0} max={10000} value={v.quantity} onChange={(e) => set({ quantity: e.target.value })} dir="ltr" className={input} />) : null}
         <div className="flex min-w-0 flex-col gap-1 text-sm">

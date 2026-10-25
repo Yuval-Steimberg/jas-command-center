@@ -9,6 +9,7 @@ import { runAct, formStr, formShekels, errText, type ActionState, type ActResult
 import { getOpsStore, OpsSetupError } from '@/lib/ops'
 import { CONDITIONS, LOCATION_KINDS, REFURB_LEVELS, REFURB_STATUSES, type Condition, type ItemPatch, type RefurbLevel, type RefurbStatus } from '@/lib/ops/types'
 import { isPhotoHash } from '@/lib/inventory/photo-hash'
+import { formatDimensions } from '@/lib/inventory/dimensions'
 import { openSaleOf } from '@/lib/sales/service'
 import {
   adoptWebsiteProducts, copyDrivePhotosMany, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished,
@@ -100,6 +101,13 @@ export async function hideWebsiteAction(_p: ActionState, f: FormData): Promise<A
   }, ['/inventory', '/inventory/online', '/website/products'])
 }
 
+/** The form's four measurements (+ an older free-text note) as the one text column; a plain `dimensions` field still works. */
+function dimensionsOf(f: FormData): string | null {
+  if (!f.has('dimLength')) return str(f, 'dimensions', 200)
+  const g = (k: string) => String(f.get(k) ?? '')
+  return formatDimensions({ length: g('dimLength'), width: g('dimWidth'), height: g('dimHeight'), diameter: g('dimDiameter'), note: g('dimNote') }) || null
+}
+
 /** Fields both the add and edit forms carry (photos, colours, cost, AI price), validated once. */
 async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } | { ok: false; message: string }> {
   const price = shekels(f, 'price')
@@ -110,7 +118,7 @@ async function itemFields(f: FormData): Promise<{ ok: true; patch: ItemPatch } |
   if (extra.some((x) => !/^https:\/\//.test(x) || x.length > 2000)) return { ok: false, message: 'Every extra photo must be an https link.' }
   const patch: ItemPatch = {
     title: str(f, 'title', 200) ?? undefined, description: str(f, 'description'), category: str(f, 'category', 100), condition: condition(f), priceMinor: price, photoUrl: photo,
-    dimensions: str(f, 'dimensions', 200), material: str(f, 'material', 200), colors: str(f, 'colors', 200),
+    dimensions: dimensionsOf(f), material: str(f, 'material', 200), colors: str(f, 'colors', 200),
   }
   if (f.has('extraPhotosSent')) patch.extraPhotos = extra
   const hash = String(f.get('photoHash') ?? '')
