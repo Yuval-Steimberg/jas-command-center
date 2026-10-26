@@ -13,6 +13,8 @@ import { previousPeriod, rangeFor } from '@/lib/time'
 import { Thumb } from '@/components/shop/bits'
 import { formatAgorot } from '@/lib/money'
 import { formatDay } from '@/lib/format'
+import { matchPlace } from '@/lib/inventory/places'
+import { stockAndSales, type Breakdown } from '@/lib/inventory/breakdown'
 
 export const dynamic = 'force-dynamic'
 
@@ -134,17 +136,23 @@ async function Today({ money, crm, pii }: { money: boolean; crm: boolean; pii: b
   )
 }
 
-/** This month's shop sales and the stock by category, straight from the analytics definitions (same numbers as /analytics). */
+/**
+ * This month's shop sales, and stock by category, renewal level and colour: the
+ * same definition as /analytics and the full table on /shop/items
+ * (`lib/inventory/breakdown.ts`), so the three never disagree. Every group is
+ * shown, none cut off.
+ */
 async function ByCategory({ money }: { money: boolean }) {
   const range = rangeFor('mtd')
   const prev = previousPeriod(range)
-  const sec = inventorySection(await readOps(prev.from), range, prev)
-  if (sec.sources[0]?.state !== 'ok') return <Problem what="נתוני המכירות" message={sec.sources[0]?.detail ?? ''} />
+  const ops = await readOps(prev.from)
+  const sec = inventorySection(ops, range, prev)
+  if (ops.state !== 'ok') return <Problem what="נתוני המכירות" message={ops.detail} />
   const metric = (id: string) => sec.metrics.find((m) => m.id === id)?.value ?? null
-  const table = (id: string) => sec.tables.find((t) => t.id === id)?.rows ?? []
-  const stock = table('inv.categories').map((r) => ({ label: String(r.category), value: Number(r.available) || 0 })).filter((r) => r.value > 0).slice(0, 8)
-  const sold = table('inv.inStoreByCategory').map((r) => ({ label: String(r.category), value: Number(r.value) || 0, units: Number(r.units) || 0 })).slice(0, 8)
-  const label = (c: string) => (c === 'Uncategorised' ? 'ללא קטגוריה' : c)
+  const shop = matchPlace('shop', ops.data.locations ?? [])
+  const rows = (by: Breakdown) => stockAndSales(ops.data.items, ops.data.movements, by, range, new Set(shop ? [shop.id] : []))
+  const stockBars = (by: Breakdown) => rows(by).filter((r) => r.stock > 0).map((r) => ({ label: r.group, value: r.stock, shown: String(r.stock) }))
+  const sold = rows('category').filter((r) => r.shopValueMinor > 0).sort((a, b) => b.shopValueMinor - a.shopValueMinor)
   const units = metric('inv.inStoreSales')
   const net = metric('inv.inStoreNet')
   return (
@@ -153,8 +161,14 @@ async function ByCategory({ money }: { money: boolean }) {
         <Stat label="נמכר החודש בחנות" value={units == null ? '—' : String(units)} sub={money && net != null ? `${formatAgorot(net, { whole: true })} אחרי החזרות` : undefined} href={money ? '/shop/sales' : undefined} />
         <Stat label="נמכר באתר החודש" value={metric('inv.soldOnline') == null ? '—' : String(metric('inv.soldOnline'))} sub="הכסף נספר באתר" />
       </section>
-      <Bars title="מלאי לפי קטגוריה" rows={stock.map((r) => ({ label: label(r.label), value: r.value, shown: String(r.value) }))} empty="אין פריטים במלאי." />
-      {money ? <Bars title="מכירות החודש לפי קטגוריה" rows={sold.map((r) => ({ label: label(r.label), value: r.value, shown: formatAgorot(r.value, { whole: true }) }))} empty="עוד לא נמכר כלום החודש." /> : null}
+      {money ? <Bars title="מכירות החודש לפי קטגוריה" rows={sold.map((r) => ({ label: r.group, value: r.shopValueMinor, shown: formatAgorot(r.shopValueMinor, { whole: true }) }))} empty="עוד לא נמכר כלום החודש." /> : null}
+      <Bars title="מלאי לפי קטגוריה" rows={stockBars('category')} empty="אין פריטים במלאי." />
+      <Bars title="מלאי לפי רמת חידוש" rows={stockBars('renewal')} empty="אין פריטים במלאי." />
+      <Bars title="מלאי לפי צבע" rows={stockBars('colour')} empty="אין פריטים במלאי." />
+      <Link href="/shop/items?by=category&days=30#by-group" className="flex min-h-11 items-center justify-between rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink hover:bg-sunken">
+        טבלה מלאה: מלאי, בחנות ומכירות לפי קטגוריה, צבע ורמת חידוש
+        <ChevronLeft aria-hidden className="h-5 w-5 shrink-0 text-faint" />
+      </Link>
     </>
   )
 }
