@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useFormState } from 'react-dom'
 import { Check, Plus, Search, UserPlus, X } from 'lucide-react'
 import { Submit, input } from '@/app/(app)/website/forms'
@@ -9,7 +9,8 @@ import { createSaleAction } from '@/app/(app)/sales/actions'
 import type { ActionState } from '@/lib/ops/act'
 import { formatAgorot } from '@/lib/money'
 import { MAX_COUPON, METHOD_LABEL, PAYMENT_METHODS, discountFromInput, type Fulfilment, type PaymentMethod } from '@/lib/sales/model'
-import { COPY, METHOD_LABEL_HE, minorToShekels, shekelsToMinor, type Lang } from './copy'
+import { COPY, SALE_COPY, METHOD_LABEL_HE, minorToShekels, shekelsToMinor, type Lang } from './copy'
+import { closeTerminalTab, openTerminalTab } from './terminal-tab'
 
 export interface CheckoutItem {
   id: string
@@ -44,8 +45,12 @@ const norm = (s: string | null | undefined) => (s ?? '').toLowerCase().replace(/
  * line, say how each line leaves the shop, pick or add the customer and
  * record what was paid now. The server re-checks every item under a lock and
  * sells the whole basket or none of it.
+ *
+ * With the card terminal connected, "card" means the terminal: the sale is
+ * created and the amount is pushed to the terminal in the same tap, and the
+ * payment is recorded when Grow reports it (never by this form).
  */
-export function Checkout({ items, contacts, allowNewContact, lang, base, preselect, requestId }: {
+export function Checkout({ items, contacts, allowNewContact, lang, base, preselect, requestId, terminalDevices = [] }: {
   items: CheckoutItem[]
   contacts: { id: string; label: string }[]
   allowNewContact: boolean
@@ -53,8 +58,11 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
   base: '/sales' | '/shop'
   preselect: string[]
   requestId: string
+  /** The card terminal's device names; empty = not connected. */
+  terminalDevices?: string[]
 }) {
   const t = COPY[lang]
+  const ts = SALE_COPY[lang]
   const methodLabel = lang === 'he' ? METHOD_LABEL_HE : METHOD_LABEL
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
   const lineFor = (i: CheckoutItem): Line => ({ itemId: i.id, qty: 1, price: minorToShekels(i.priceMinor), fulfilment: 'pickup', address: '', date: '', window: '' })
@@ -65,12 +73,18 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
   const [ncOpen, setNcOpen] = useState(false)
   const [payMode, setPayMode] = useState<'none' | 'all' | 'part'>('all')
   const [payAmount, setPayAmount] = useState('')
-  const [method, setMethod] = useState<PaymentMethod>('cash')
+  const terminalOn = terminalDevices.length > 0
+  const [method, setMethod] = useState<PaymentMethod>(terminalOn ? 'card' : 'cash')
+  const [device, setDevice] = useState(terminalDevices[0] ?? '')
   const [note, setNote] = useState('')
   const [coupon, setCoupon] = useState('')
   const [discKind, setDiscKind] = useState<'amount' | 'percent'>('amount')
   const [discValue, setDiscValue] = useState('')
   const [state, run] = useFormState<ActionState, FormData>(createSaleAction, {})
+  // A refused sale never reaches the terminal: close the tab the tap opened for it.
+  useEffect(() => {
+    if (state.ok === false) closeTerminalTab()
+  }, [state])
 
   const inBasket = new Set(lines.map((l) => l.itemId))
   const words = norm(q).split(/\s+/).filter(Boolean)
@@ -80,6 +94,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
   const discountMinor = discountFromInput(discKind, discValue, grossMinor)
   const totalMinor = grossMinor - Math.min(discountMinor ?? 0, grossMinor)
   const paidMinor = payMode === 'all' ? totalMinor : payMode === 'part' ? (shekelsToMinor(payAmount) ?? 0) : 0
+  const toTerminal = terminalOn && method === 'card' && paidMinor > 0
   const set = (i: number, patch: Partial<Line>) => setLines((ls) => ls.map((l, k) => (k === i ? { ...l, ...patch } : l)))
   const lastDelivery = [...lines].reverse().find((l) => l.fulfilment === 'delivery' && l.address)
 
@@ -106,7 +121,8 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
     }),
     discountMinor: discountMinor ?? 0,
     couponCode: coupon.trim() || null,
-    payment: paidMinor > 0 ? { amountMinor: paidMinor, method, note: null } : null,
+    payment: paidMinor > 0 && !toTerminal ? { amountMinor: paidMinor, method, note: null } : null,
+    terminal: toTerminal ? { amountMinor: paidMinor, device: device || null } : null,
   })
 
   const seg = (on: boolean) => `h-11 flex-1 rounded-full border px-3 text-sm font-medium transition-colors duration-150 ${on ? 'border-forest bg-forest text-cream' : 'border-line hover:bg-sunken'}`
@@ -142,7 +158,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
         )}
       </section>
 
-      <form action={run} className="flex min-w-0 flex-col gap-3">
+      <form action={run} onSubmit={() => { if (toTerminal) openTerminalTab(ts.terminalOpening) }} className="flex min-w-0 flex-col gap-3">
         <input type="hidden" name="basket" value={basket} />
         <input type="hidden" name="base" value={base} />
         <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
@@ -244,12 +260,18 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
                 <div className="grid grid-cols-3 gap-2">
                   {PAYMENT_METHODS.map((k) => (
                     <button key={k} type="button" aria-pressed={method === k} onClick={() => setMethod(k)} className={`inline-flex min-h-11 items-center justify-center gap-1 rounded-md border px-2 text-center text-sm leading-tight transition-colors duration-150 ${method === k ? 'border-forest bg-forest font-semibold text-cream' : 'border-line hover:bg-sunken'}`}>
-                      {method === k ? <Check aria-hidden className="h-4 w-4 shrink-0" /> : null}{methodLabel[k]}
+                      {method === k ? <Check aria-hidden className="h-4 w-4 shrink-0" /> : null}{k === 'card' && terminalOn ? ts.terminalMethod : methodLabel[k]}
                     </button>
                   ))}
                 </div>
               </fieldset>
             ) : null}
+            {toTerminal && terminalDevices.length > 1 ? (
+              <label className="flex flex-col gap-1 text-sm"><span className="text-muted">{ts.terminalDevice}</span>
+                <select value={device} onChange={(e) => setDevice(e.target.value)} className={input}>{terminalDevices.map((d) => <option key={d} value={d}>{d}</option>)}</select>
+              </label>
+            ) : null}
+            {toTerminal ? <p className="text-sm text-muted sm:col-span-2">{ts.terminalAuto}{paidMinor > 30000 ? ` ${ts.terminalTapCap}` : ''}</p> : null}
           </div>
           <label className="flex flex-col gap-1 text-sm"><span className="text-muted">{t.note}</span><input value={note} onChange={(e) => setNote(e.target.value)} dir="auto" maxLength={1000} className={input} /></label>
         </section>
@@ -264,7 +286,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
             </div>
           </dl>
           {problem && lines.length ? <p role="status" className="text-sm font-medium text-warn">{problem}</p> : null}
-          {problem ? <button type="button" disabled className="h-12 rounded-full bg-sunken px-4 text-base font-semibold text-muted">{t.sell}</button> : <BigSubmit label={t.sell} busy={t.selling} />}
+          {problem ? <button type="button" disabled className="h-12 rounded-full bg-sunken px-4 text-base font-semibold text-muted">{t.sell}</button> : <BigSubmit label={toTerminal ? ts.sellToTerminal : t.sell} busy={t.selling} />}
           <Outcome state={state} />
         </section>
       </form>

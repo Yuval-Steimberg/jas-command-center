@@ -237,3 +237,6 @@ Shop card terminal (`docs/GROW_TERMINAL.md`, migration `0007_terminal_charges.sq
   records nothing; only Grow's server update (`/api/webhooks/grow?token=`, outside sign-in) records a `card` payment, idempotent
   by `grow:<transactionId>`, of what Grow says was charged, then calls approveTransaction. Live only: test = real ₪1, refunded.
 - Payload field names are unverified until the first real charge; the raw update is kept on the charge.
+- One tap: with the terminal on, checkout's "card" = the terminal (`basket.terminal`, never with `payment`). The sell tap opens a named
+  tab (`components/sales/terminal-tab.ts`, a browser only allows tabs from a tap); the sale page fills it with Grow's link. After a
+  full reload the handle is gone and the sale page's manual button remains.

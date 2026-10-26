@@ -307,6 +307,11 @@ const saleEn = {
   terminalFailed: 'Last attempt failed',
   terminalApproveFailed: 'Paid and recorded, but Grow did not confirm the approve call',
   terminalOff: 'Card terminal not connected (missing',
+  terminalMethod: 'Card · terminal',
+  terminalAuto: 'Pressing sell sends the amount to the terminal. The payment is recorded when the customer pays there.',
+  sellToTerminal: 'Sell and send to the terminal',
+  terminalOpening: 'Sending the amount to the terminal… Keep this tab open until the payment ends.',
+  terminalSentAuto: 'Sent to the terminal in the other tab. Keep it open until the customer pays.',
 }
 export type SaleCopy = typeof saleEn
 const saleHe: SaleCopy = {
@@ -377,6 +382,11 @@ const saleHe: SaleCopy = {
   terminalFailed: 'הניסיון האחרון נכשל',
   terminalApproveFailed: 'שולם ונרשם, אבל Grow לא אישר את קריאת האישור',
   terminalOff: 'המסופון עוד לא מחובר (חסר',
+  terminalMethod: 'אשראי · מסופון',
+  terminalAuto: 'בלחיצה על מכירה הסכום נשלח למסופון. התשלום נרשם כשהלקוח/ה משלם/ת שם.',
+  sellToTerminal: 'מכירה ושליחה למסופון',
+  terminalOpening: 'שולח את הסכום למסופון… להשאיר את הלשונית הזו פתוחה עד סוף התשלום.',
+  terminalSentAuto: 'נשלח למסופון בלשונית השנייה. להשאיר אותה פתוחה עד שהלקוח/ה משלם/ת.',
 }
 export const SALE_COPY: Record<Lang, SaleCopy> = { en: saleEn, he: saleHe }
 export const PAYMENT_STATE_HE = { unpaid: 'לא שולם', deposit: 'שולמה מקדמה', paid: 'שולם', overpaid: 'מגיע החזר', nothing_due: 'אין חוב' } as const

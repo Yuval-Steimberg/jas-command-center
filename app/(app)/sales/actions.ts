@@ -55,6 +55,8 @@ const basket = z.object({
   discountMinor: z.number().int().min(0).max(100_000_000).optional(),
   couponCode: z.string().max(MAX_COUPON).nullable().optional(),
   payment: z.object({ amountMinor: z.number().int().min(1).max(100_000_000), method: z.enum(PAYMENT_METHODS), note: z.string().max(300).nullable().optional() }).nullable(),
+  /** Pay on the card terminal: the sale is created, then this amount is pushed to the terminal. Never with `payment`. */
+  terminal: z.object({ amountMinor: z.number().int().min(1).max(100_000_000), device: z.string().max(100).nullable() }).nullable().optional(),
 })
 
 /** Checkout: the basket arrives as one JSON field built by the checkout screen. */
@@ -67,6 +69,7 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
   }
   const problem = basketProblem(parsed)
   if (problem) return { ok: false, message: problem }
+  if (parsed.terminal && parsed.payment) return { ok: false, message: 'Pick one way to pay.' }
   let saleId = ''
   const res = await runAct('inventory', ['inventory:financial'], 'sale.create', `sale:${parsed.requestId}`, { lines: parsed.lines.length, totalMinor: parsed.lines.reduce((a, l) => a + l.quantity * l.unitPriceMinor, 0) - (parsed.discountMinor ?? 0), discountMinor: parsed.discountMinor ?? 0, couponCode: parsed.couponCode?.trim() || null, paidMinor: parsed.payment?.amountMinor ?? 0 }, async (u) => {
     let contactId = parsed.contactId
@@ -83,6 +86,13 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
     if (r.ok) saleId = r.sale.id
     return r
   }, SALE_PATHS)
+  if (res.ok && saleId && parsed.terminal) {
+    // The sale stands either way; a refused push shows on the sale page with its retry form.
+    const t = parsed.terminal
+    await runAct('inventory', ['inventory:financial'], 'sale.terminal_charge', `sale:${saleId}`, { amountMinor: t.amountMinor, device: t.device, via: 'checkout' }, (u) =>
+      startTerminalCharge(saleId, t.amountMinor, t.device, `${parsed.requestId}:terminal`, actorOf(u)),
+    SALE_PATHS)
+  }
   if (res.ok && saleId) redirect(`${base(f)}/sales/${saleId}`.replace('/sales/sales/', '/sales/'))
   return res
 }
