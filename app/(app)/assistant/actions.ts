@@ -1,6 +1,6 @@
 'use server'
 
-import Anthropic from '@anthropic-ai/sdk'
+import { anthropicClient } from '@/lib/anthropic'
 import { z } from 'zod'
 import { getSession, requirePermission } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
@@ -29,14 +29,14 @@ export async function askAction(raw: { question: string; history: unknown }): Pr
   const session = await getSession()
   if (!session) return { ok: false, message: 'Your session expired. Sign in again.' }
 
-  const { apiKey, model } = env().assistant
+  const { apiKey, workspaceId, model } = env().assistant
   if (!apiKey) return { ok: false, message: 'The assistant is not configured: ANTHROPIC_API_KEY is not set on this deployment.' }
 
   const parsed = input.safeParse(raw)
   if (!parsed.success) return { ok: false, message: parsed.error.issues[0]?.message ?? 'Invalid question.' }
   if (!allowAttempt(`assistant:${user.id}`, Date.now(), LIMIT, WINDOW_MS)) return { ok: false, message: 'Too many questions in a short time. Wait a few minutes and try again.' }
 
-  const client = new Anthropic({ apiKey, timeout: 40_000, maxRetries: 1 })
+  const client = anthropicClient({ apiKey, workspaceId, timeout: 40_000 })
   try {
     return await ask(parsed.data.question, parsed.data.history, {
       create: (params) => client.beta.messages.create(params),
