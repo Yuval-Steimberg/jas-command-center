@@ -1,5 +1,5 @@
 import type { Contact, Deal, Item, Location, Movement } from '@/lib/ops/types'
-import { BREAKDOWNS, BREAKDOWN_LABEL, stockAndSales } from '@/lib/inventory/breakdown'
+import { BREAKDOWNS, BREAKDOWN_LABEL, groupOf, stockAndSales } from '@/lib/inventory/breakdown'
 import { matchPlace } from '@/lib/inventory/places'
 import { AVAILABLE } from '@/lib/inventory/model'
 import { OPEN_STAGES } from '@/lib/crm/model'
@@ -97,7 +97,7 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
     const sales = new Map<string, { units: number; value: number; margin: number | null }>()
     for (const x of moves(range, inStore) ?? []) {
       const it = byId.get(x.itemId)
-      const k = it?.category?.trim() || 'Uncategorised'
+      const k = groupOf(it, 'category')
       const c = sales.get(k) ?? { units: 0, value: 0, margin: null }
       c.units += units(x)
       c.value += Number(x.detail.priceMinor) || 0
