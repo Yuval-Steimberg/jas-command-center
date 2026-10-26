@@ -102,6 +102,8 @@ export function env() {
       pageCode: read('GROW_TERMINAL_PAGE_CODE'),
       devices: read('GROW_TERMINAL_DEVICES'),
       webhookSecret: read('GROW_WEBHOOK_SECRET'),
+      /** Sent to Grow for a customer without a mobile on file; defaults to the shop's number. */
+      phone: read('GROW_TERMINAL_PHONE'),
     },
   }
 }

@@ -33,6 +33,8 @@ export interface GrowTerminalConfig {
   pageCode: string
   devices: TerminalDevice[]
   webhookSecret: string
+  /** Grow refuses a charge without a valid phone; a walk-in has none, so the shop's own number stands in. */
+  fallbackPhone: string
 }
 
 export type TerminalSetup = { on: true; config: GrowTerminalConfig } | { on: false; missing: string[] }
@@ -66,6 +68,7 @@ export function terminalSetup(e: {
   pageCode?: string
   devices?: string
   webhookSecret?: string
+  phone?: string
 }): TerminalSetup {
   const devices = parseDevices(e.devices)
   const missing: string[] = []
@@ -85,6 +88,7 @@ export function terminalSetup(e: {
       pageCode: e.pageCode!,
       devices,
       webhookSecret: e.webhookSecret!,
+      fallbackPhone: israeliMobile(e.phone) ?? SHOP_PHONE,
     },
   }
 }
@@ -94,6 +98,21 @@ export const growSum = (minor: number) => (minor / 100).toFixed(2)
 
 /** A walk-in has no name on file; Grow refuses an empty fullName (gift_card_system gotcha #8b). */
 export const WALK_IN_NAME = 'לקוח מזדמן'
+/** The shop's phone (058-787-6549), sent for a customer with no valid mobile on file. */
+export const SHOP_PHONE = '0587876549'
+
+/** "+972 58-787-6549" → "0587876549"; null unless it is an Israeli mobile, the only form Grow accepts. */
+export function israeliMobile(raw: string | null | undefined): string | null {
+  let d = (raw ?? '').replace(/\D/g, '')
+  if (d.startsWith('972')) d = `0${d.slice(3)}`
+  return /^05\d{8}$/.test(d) ? d : null
+}
+
+/** Grow wants a first and last name; anything less becomes the walk-in name. */
+const fullNameFor = (name: string | null) => {
+  const n = (name ?? '').trim().replace(/\s+/g, ' ')
+  return n.split(' ').length >= 2 ? n.slice(0, 100) : WALK_IN_NAME
+}
 
 export function createProcessForm(
   c: GrowTerminalConfig,
@@ -110,8 +129,8 @@ export function createProcessForm(
   f.set('notifyUrl', p.notifyUrl)
   // Echoed back on the server update, so the update names the exact charge.
   f.set('cField1', p.chargeId)
-  f.set('pageField[fullName]', p.fullName?.trim() || WALK_IN_NAME)
-  if (p.phone) f.set('pageField[phone]', p.phone)
+  f.set('pageField[fullName]', fullNameFor(p.fullName))
+  f.set('pageField[phone]', israeliMobile(p.phone) ?? c.fallbackPhone)
   return f
 }
 
