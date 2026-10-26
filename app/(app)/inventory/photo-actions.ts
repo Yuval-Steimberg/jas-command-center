@@ -3,7 +3,7 @@
 import { requirePermission } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
 import { getOpsStore } from '@/lib/ops'
-import { describePhoto, type PhotoFields } from '@/lib/inventory/ai'
+import { describePhoto, type PhotoAiError, type PhotoFields } from '@/lib/inventory/ai'
 import { MAX_PHOTO_BYTES, PHOTO_TYPES, uploadInventoryPhoto } from '@/lib/inventory/photos'
 import { isPhotoHash, similarPhotos } from '@/lib/inventory/photo-hash'
 
@@ -45,15 +45,15 @@ export async function uploadItemPhotoAction(form: FormData): Promise<{ ok: boole
 }
 
 /** Audited as a request + outcome: the photo is sent to the model provider. */
-export async function describeItemPhotoAction(form: FormData): Promise<{ ok: boolean; fields?: PhotoFields; message?: string }> {
+export async function describeItemPhotoAction(form: FormData): Promise<{ ok: boolean; fields?: PhotoFields; code?: PhotoAiError; message?: string }> {
   const u = await user()
   if (!u) return { ok: false, message: 'Your role cannot add items.' }
   const f = fileOf(form)
   if (!f.ok) return f
   await audit(u, { action: 'inventory.photo.describe', product: 'inventory', target: 'photo', outcome: 'requested', detail: { bytes: f.file.size } })
   const r = await describePhoto(await f.file.arrayBuffer(), f.type)
-  await audit(u, { action: 'inventory.photo.describe', product: 'inventory', target: 'photo', outcome: r.ok ? 'succeeded' : 'failed', detail: r.ok ? { category: r.fields.category } : { error: r.message } })
-  return r.ok ? { ok: true, fields: r.fields } : { ok: false, message: r.message }
+  await audit(u, { action: 'inventory.photo.describe', product: 'inventory', target: 'photo', outcome: r.ok ? 'succeeded' : 'failed', detail: r.ok ? { category: r.fields.category } : { code: r.code, error: r.message.slice(0, 500) } })
+  return r.ok ? { ok: true, fields: r.fields } : { ok: false, code: r.code }
 }
 
 export interface SimilarItem {

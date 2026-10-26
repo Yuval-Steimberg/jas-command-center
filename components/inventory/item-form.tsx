@@ -115,11 +115,14 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
     setBusy('ai')
     try {
       const r = await describeItemPhotoAction(asForm(blob))
-      if (!r.ok || !r.fields) throw new Error(r.message ?? 'The AI could not read the photo.')
-      if (blobRef.current === blob) applyAi(r.fields, overwrite)
-    } catch (e) {
-      // Shown, never swallowed: an empty form with no reason is what this replaced.
-      setError(`${t.aiFailed} ${e instanceof Error ? e.message : String(e)}`)
+      if (r.ok && r.fields) {
+        if (blobRef.current === blob) applyAi(r.fields, overwrite)
+      } else {
+        // Shown, never swallowed: an empty form with no reason is what this replaced. Never the raw API body.
+        setError(`${t.aiFailed} ${r.code ? t.aiErrors[r.code] : (r.message ?? t.aiErrors.service)} ${t.aiByHand}`)
+      }
+    } catch {
+      setError(`${t.aiFailed} ${t.aiErrors.unreachable} ${t.aiByHand}`)
     } finally {
       setBusy('')
     }

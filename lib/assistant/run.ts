@@ -220,6 +220,7 @@ export async function ask(question: string, history: Turn[], deps: AskDeps): Pro
 
 /** Plain-language errors for the person asking; the detail goes to the audit log, never a key. */
 export function describeApiError(e: unknown): string {
+  if (e instanceof Anthropic.BadRequestError && /workspace/i.test(e.message)) return 'The assistant\'s API key is not scoped to a workspace. Replace ANTHROPIC_API_KEY with a key created inside a workspace, or set ANTHROPIC_WORKSPACE_ID, then redeploy.'
   if (e instanceof Anthropic.AuthenticationError || e instanceof Anthropic.PermissionDeniedError) return 'The assistant\'s API key was rejected. Check ANTHROPIC_API_KEY on the deployment.'
   if (e instanceof Anthropic.RateLimitError) return 'The assistant is rate-limited or over its spend limit right now. Try again in a minute.'
   if (e instanceof Anthropic.APIConnectionTimeoutError) return 'The assistant took too long to respond. Try a narrower question.'
