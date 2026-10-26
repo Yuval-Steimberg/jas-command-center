@@ -6,8 +6,14 @@ import { getSession, requirePageAccess } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { loadOps } from '@/lib/ops/guard'
 import { checkoutData } from '@/lib/sales/views'
+import { growTerminalSetup } from '@/lib/sales/terminal'
 
 export const dynamic = 'force-dynamic'
+
+const terminalDevices = () => {
+  const t = growTerminalSetup()
+  return t.on ? t.config.devices.map((d) => d.name) : []
+}
 
 export default async function NewSalePage({ searchParams }: { searchParams: { item?: string | string[] } }) {
   await requirePageAccess('inventory:financial')
@@ -23,7 +29,7 @@ export default async function NewSalePage({ searchParams }: { searchParams: { it
         actions={<Link href="/sales" className={btn}>Sales</Link>}
       />
       {!res.ok ? <OpsUnavailable message={res.message} /> : (
-        <Checkout items={res.data.items} contacts={res.data.contacts} allowNewContact={may('crm:write')} lang="en" base="/sales" preselect={preselect} requestId={res.data.requestId} />
+        <Checkout items={res.data.items} contacts={res.data.contacts} allowNewContact={may('crm:write')} lang="en" base="/sales" preselect={preselect} requestId={res.data.requestId} terminalDevices={terminalDevices()} />
       )}
     </>
   )
