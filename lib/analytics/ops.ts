@@ -1,4 +1,6 @@
-import type { Contact, Deal, Item, Movement } from '@/lib/ops/types'
+import type { Contact, Deal, Item, Location, Movement } from '@/lib/ops/types'
+import { BREAKDOWNS, BREAKDOWN_LABEL, stockAndSales } from '@/lib/inventory/breakdown'
+import { matchPlace } from '@/lib/inventory/places'
 import { AVAILABLE } from '@/lib/inventory/model'
 import { OPEN_STAGES } from '@/lib/crm/model'
 import { AGING_DAYS, STALE_LEAD_DAYS } from '@/lib/ops/summary'
@@ -18,6 +20,8 @@ export interface OpsAnalyticsInput {
   movements: Movement[]
   deals: Deal[]
   contacts: Contact[]
+  /** For "in the shop"; absent = unknown. */
+  locations?: Location[]
   /** True when a read hit its row cap, so period counts may be low. */
   truncated: boolean
 }
@@ -90,20 +94,6 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
     m('inv.awaitingDelivery', 'Sold, not delivered', 'count', 'now', d ? d.items.filter((i) => i.status === 'sold').length : null, null, { lowerIsBetter: true }),
   )
   if (d) {
-    const cats = new Map<string, { available: number; sold: number }>()
-    for (const i of d.items) {
-      const k = i.category?.trim() || 'Uncategorised'
-      const c = cats.get(k) ?? { available: 0, sold: 0 }
-      if (AVAILABLE.includes(i.status)) c.available++
-      if (i.soldAt && inRange(i.soldAt, range)) c.sold++
-      cats.set(k, c)
-    }
-    sec.tables.push({
-      id: 'inv.categories',
-      title: 'By category',
-      columns: [{ key: 'category', label: 'Category' }, { key: 'available', label: 'Available now', unit: 'count' }, { key: 'sold', label: 'Sold in period', unit: 'count' }],
-      rows: [...cats].sort((a, b) => b[1].available + b[1].sold - (a[1].available + a[1].sold)).slice(0, MAX_ITEMS_SHOWN).map(([category, c]) => ({ category, ...c })),
-    })
     const sales = new Map<string, { units: number; value: number; margin: number | null }>()
     for (const x of moves(range, inStore) ?? []) {
       const it = byId.get(x.itemId)
@@ -120,21 +110,25 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
       columns: [{ key: 'category', label: 'Category' }, { key: 'units', label: 'Units', unit: 'count' }, { key: 'value', label: 'Value', unit: 'agorot' }, { key: 'avg', label: 'Avg per unit', unit: 'agorot' }, { key: 'margin', label: 'Margin (with cost)', unit: 'agorot' }],
       rows: [...sales].sort((a, b) => b[1].value - a[1].value).slice(0, MAX_ITEMS_SHOWN).map(([category, c]) => ({ category, units: c.units, value: c.value, avg: Math.round(c.value / c.units), margin: c.margin })),
     })
-    const colours = new Map<string, { available: number; sold: number }>()
-    for (const i of d.items) {
-      const first = i.colors?.split(',')[0]?.trim()
-      if (!first) continue
-      const c = colours.get(first) ?? { available: 0, sold: 0 }
-      if (AVAILABLE.includes(i.status)) c.available++
-      if (i.soldAt && inRange(i.soldAt, range)) c.sold++
-      colours.set(first, c)
+    const shop = matchPlace('shop', d.locations ?? [])
+    const shopIds = new Set(shop ? [shop.id] : [])
+    for (const by of BREAKDOWNS) {
+      sec.tables.push({
+        id: `inv.by.${by}`,
+        title: `Stock and sales by ${BREAKDOWN_LABEL[by].toLowerCase()}`,
+        columns: [
+          { key: 'group', label: BREAKDOWN_LABEL[by] },
+          { key: 'stock', label: 'In stock now', unit: 'count' },
+          { key: 'inShop', label: 'In the shop now', unit: 'count' },
+          { key: 'soldInShop', label: 'Sold in shop (period)', unit: 'count' },
+          { key: 'shopValueMinor', label: 'Shop sales value', unit: 'agorot' },
+          { key: 'soldOnline', label: 'Sold online (period)', unit: 'count' },
+        ],
+        rows: stockAndSales(d.items, d.movements, by, range, shopIds).map((r) => ({ ...r })),
+      })
     }
-    if (colours.size) sec.tables.push({
-      id: 'inv.colours',
-      title: 'By main colour',
-      columns: [{ key: 'colour', label: 'Colour' }, { key: 'available', label: 'Available now', unit: 'count' }, { key: 'sold', label: 'Sold in period', unit: 'count' }],
-      rows: [...colours].sort((a, b) => b[1].available + b[1].sold - (a[1].available + a[1].sold)).slice(0, MAX_ITEMS_SHOWN).map(([colour, c]) => ({ colour, ...c })),
-    })
+    if (!shop) sec.notes.push('No location is recognised as the shop (a location named חנות), so "In the shop now" is 0.')
+    sec.notes.push('Stock and sales by group: units; a sale is grouped by what the item says now; colour = the main (first) colour, spellings merged; shop sales are net of returns; online sales are counted, their money is website revenue.')
     if (d.truncated) sec.notes.push('More records than one read returns: period counts are a lower bound.')
   }
   sec.notes.push('Days, counts and values come from the inventory movement log, which is append-only. Furniture collection progress is in its own section.')

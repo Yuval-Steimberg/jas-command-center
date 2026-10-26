@@ -36,15 +36,16 @@ const CAP = 5000
 export async function readOps(since: string): Promise<OpsRead> {
   try {
     const store = getOpsStore()
-    const [items, movements, deals, contacts] = await Promise.all([
+    const [items, movements, deals, contacts, locations] = await Promise.all([
       store.listItems({ limit: CAP }),
       store.recentMovements(CAP, `${since}T00:00:00+02:00`),
       store.listDeals({ limit: CAP }),
       store.listContacts({ limit: CAP }),
+      store.listLocations(),
     ])
     // PostgREST caps a response (often at 1000 rows): a full page means there may be more.
     const truncated = [items, movements, deals, contacts].some((x) => x.length >= 1000)
-    return { state: 'ok', data: { items, movements, deals, contacts, truncated }, checkedAt: new Date().toISOString() }
+    return { state: 'ok', data: { items, movements, deals, contacts, locations, truncated }, checkedAt: new Date().toISOString() }
   } catch (e) {
     return e instanceof OpsSetupError ? { state: 'not_configured', detail: 'run migration 0003_crm_inventory.sql' } : { state: 'error', detail: e instanceof Error ? e.message : String(e) }
   }
