@@ -16,15 +16,16 @@ export interface StaffMember {
 export type StaffChange =
   | { kind: 'role'; targetId: string; role: Role }
   | { kind: 'active'; targetId: string; active: boolean }
+  | { kind: 'delete'; targetId: string }
 
 export function refuseStaffChange(actor: { id: string; role: Role }, staff: readonly StaffMember[], change: StaffChange): string | null {
   const target = staff.find((s) => s.id === change.targetId)
   if (!target) return 'That person is not on the staff list.'
-  if (target.id === actor.id) return 'You cannot change your own role or access. Ask another owner.'
+  if (target.id === actor.id) return change.kind === 'delete' ? 'You cannot delete yourself. Ask another owner.' : 'You cannot change your own role or access. Ask another owner.'
   // Only an owner may make, or unmake, an owner.
   if (actor.role !== 'owner' && (target.role === 'owner' || (change.kind === 'role' && change.role === 'owner'))) return 'Only an owner can grant or remove the owner role.'
   const activeOwners = staff.filter((s) => s.active && s.role === 'owner')
-  const removesOwner = target.role === 'owner' && target.active && ((change.kind === 'role' && change.role !== 'owner') || (change.kind === 'active' && !change.active))
+  const removesOwner = target.role === 'owner' && target.active && ((change.kind === 'role' && change.role !== 'owner') || (change.kind === 'active' && !change.active) || change.kind === 'delete')
   if (removesOwner && activeOwners.length <= 1) return 'This is the last active owner. Make someone else owner first.'
   return null
 }

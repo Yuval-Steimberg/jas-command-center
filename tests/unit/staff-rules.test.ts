@@ -19,6 +19,14 @@ describe('staff rules', () => {
     expect(refuseStaffChange({ id: 'adm', role: 'admin' }, staff, { kind: 'role', targetId: 'ops', role: 'viewer' })).toBeNull()
     expect(refuseInvite({ role: 'admin' }, staff, 'new@x.co', 'owner')).toMatch(/Only an owner/)
   })
+  it('deletes anyone but yourself and the last active owner; owners only by an owner', () => {
+    expect(refuseStaffChange({ id: 'own', role: 'owner' }, staff, { kind: 'delete', targetId: 'own' })).toMatch(/delete yourself/)
+    expect(refuseStaffChange({ id: 'own2', role: 'owner' }, [m('own', 'owner'), m('own2', 'owner', false)], { kind: 'delete', targetId: 'own' })).toMatch(/last active owner/)
+    expect(refuseStaffChange({ id: 'own', role: 'owner' }, [m('own', 'owner'), m('gone', 'owner', false)], { kind: 'delete', targetId: 'gone' })).toBeNull()
+    expect(refuseStaffChange({ id: 'adm', role: 'admin' }, [...staff, m('gone', 'owner', false)], { kind: 'delete', targetId: 'gone' })).toMatch(/Only an owner/)
+    expect(refuseStaffChange({ id: 'adm', role: 'admin' }, staff, { kind: 'delete', targetId: 'old' })).toBeNull()
+    expect(refuseStaffChange({ id: 'own', role: 'owner' }, staff, { kind: 'delete', targetId: 'nobody' })).toMatch(/not on the staff/)
+  })
   it('refuses a duplicate invite, case-insensitively', () => {
     expect(refuseInvite({ role: 'owner' }, staff, 'OPS@x.co', 'viewer')).toMatch(/already/)
     expect(refuseInvite({ role: 'owner' }, staff, 'new@x.co', 'viewer')).toBeNull()
