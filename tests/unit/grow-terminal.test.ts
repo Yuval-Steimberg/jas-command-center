@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { approveForm, createProcessForm, flattenUpdate, parseDevices, parseProcessResponse, readUpdate, terminalSetup, WALK_IN_NAME } from '@/lib/payments/grow-terminal'
+import { SHOP_PHONE, israeliMobile, approveForm, createProcessForm, flattenUpdate, parseDevices, parseProcessResponse, readUpdate, terminalSetup, WALK_IN_NAME } from '@/lib/payments/grow-terminal'
 
 const secret = 's'.repeat(32)
 const on = (over: Record<string, string> = {}) => {
@@ -29,7 +29,13 @@ describe('createPaymentProcess', () => {
   it('sends the dedicated page, the device, the amount in shekels and the charge id', () => {
     const f = createProcessForm(on({ apiKey: 'ak' }), { amountMinor: 12550, deviceKey: 'dk-1', chargeId: 'c-1', description: 'S-00001', notifyUrl: 'https://cc.test/api/webhooks/grow?token=t', fullName: null, phone: null })
     expect(Object.fromEntries(f)).toMatchObject({ pageCode: 'pc', userId: 'u1', apiKey: 'ak', deviceKey: 'dk-1', sum: '125.50', maxPayments: '1', cField1: 'c-1', 'pageField[fullName]': WALK_IN_NAME })
-    expect(f.has('pageField[phone]')).toBe(false)
+    // Grow refuses a charge without a phone: a walk-in sends the shop's number.
+    expect(f.get('pageField[phone]')).toBe(SHOP_PHONE)
+    const named = createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', fullName: 'נועה', phone: '+972 54-123-4567' })
+    expect(named.get('pageField[phone]')).toBe('0541234567')
+    expect(named.get('pageField[fullName]')).toBe(WALK_IN_NAME)
+    expect(createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', fullName: 'Dana Levi', phone: '03-1234567' }).get('pageField[phone]')).toBe(SHOP_PHONE)
+    expect([israeliMobile('058-787-6549'), israeliMobile('12345'), israeliMobile(null)]).toEqual(['0587876549', null, null])
   })
   it('takes the url from a success and the message from a refusal', () => {
     expect(parseProcessResponse([{ status: 1, data: { url: 'https://grow.test/p/1', processId: 77, processToken: 'tk' } }])).toEqual({ ok: true, url: 'https://grow.test/p/1', processId: '77', processToken: 'tk' })

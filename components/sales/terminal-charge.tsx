@@ -7,7 +7,7 @@ import { ActionForm, Field } from '@/app/(app)/inventory/forms'
 import { terminalCancelAction, terminalChargeAction } from '@/app/(app)/sales/actions'
 import { input } from '@/app/(app)/website/forms'
 import type { SaleCopy } from './copy'
-import { sendTerminalTab } from './terminal-tab'
+import { closeTerminalTab, sendTerminalTab } from './terminal-tab'
 
 /** Grow: on the GROW Android app a physical card tap is capped at ₪300; digital wallets are not. */
 const TAP_CAP = 30000
@@ -44,7 +44,9 @@ export function TerminalCharge({ saleId, t, amount, devices, last, requestId }: 
   const [autoSent, setAutoSent] = useState<string | null>(null)
   useEffect(() => {
     if (waiting && last?.url && autoSent !== last.id && sendTerminalTab(last.url)) setAutoSent(last.id)
-  }, [waiting, last?.id, last?.url, autoSent])
+    // Grow refused the push: the tab checkout opened for it has nothing to show.
+    if (last?.status === 'failed') closeTerminalTab()
+  }, [waiting, last?.id, last?.url, last?.status, autoSent])
   useEffect(() => {
     if (!waiting) return
     const timer = setInterval(() => router.refresh(), 3000)
