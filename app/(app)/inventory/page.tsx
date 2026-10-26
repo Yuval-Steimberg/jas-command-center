@@ -14,10 +14,8 @@ import { getOpsSnapshot } from '@/lib/ops/snapshot'
 import { listWebsiteProducts, listWebsiteProductsByIds } from '@/lib/integrations/website/manage'
 import { formatAgorot } from '@/lib/money'
 import { formatCount } from '@/lib/format'
-import { addDays, israelDate } from '@/lib/time'
-import { matchPlace } from '@/lib/inventory/places'
-import { isBreakdown, stockAndSales, type Breakdown } from '@/lib/inventory/breakdown'
-import { BREAKDOWN_DAYS, BreakdownCard } from '@/components/inventory/breakdown-card'
+import { breakdownParams, loadBreakdown } from '@/lib/inventory/breakdown-view'
+import { BreakdownCard } from '@/components/inventory/breakdown-card'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,24 +27,19 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
   const status = ITEM_STATUSES.find((x) => x === searchParams?.status)
   const statuses: ItemStatus[] | undefined = status ? [status] : searchParams?.view === 'all' ? undefined : ['in_storage', 'listed', 'reserved', 'sold']
   const location = typeof searchParams?.location === 'string' ? searchParams.location : ''
-  const by: Breakdown = isBreakdown(searchParams?.by) ? searchParams.by : 'category'
-  const days = (BREAKDOWN_DAYS as readonly string[]).includes(searchParams?.days ?? '') ? (searchParams!.days as (typeof BREAKDOWN_DAYS)[number]) : '30'
-  const period = days === 'all' ? null : { from: addDays(israelDate(), -(Number(days) - 1)), to: israelDate() }
+  const { by, days } = breakdownParams(searchParams)
 
   // The snapshot and the website's product list do not depend on the item list: start all three at once.
   const snapP = getOpsSnapshot()
   const allWebP = may('website:read') ? listWebsiteProducts('') : null
   const res = await loadOps(async () => {
     const store = getOpsStore()
-    const [items, locations, all, movements] = await Promise.all([
+    const [items, locations, groups] = await Promise.all([
       store.listItems({ statuses, q: q || undefined, locationId: location || undefined, limit: 500 }),
       store.listLocations(),
-      store.listItems({ limit: 5000 }),
-      store.recentMovements(5000, period ? `${period.from}T00:00:00+02:00` : undefined),
+      loadBreakdown(by, days),
     ])
-    const shop = matchPlace('shop', locations)
-    const groups = stockAndSales(all, movements, by, period, new Set(shop ? [shop.id] : []))
-    return { items, locations, groups, shopKnown: !!shop, capped: all.length >= 1000 || movements.length >= 1000 }
+    return { items, locations, groups }
   })
   const linkedIds = res.ok ? res.data.items.map((i) => i.websiteProductId).filter((x): x is number => x != null) : []
   const [snap, web, allWeb] = await Promise.all([snapP, linkedIds.length ? listWebsiteProductsByIds(linkedIds) : null, allWebP])
@@ -79,7 +72,7 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
         </div>
       ) : null}
 
-      {res.ok ? <BreakdownCard rows={res.data.groups} by={by} days={days} shopKnown={res.data.shopKnown} capped={res.data.capped} keep={{ q, status: status ?? '', location, view: searchParams?.view === 'all' ? 'all' : '' }} /> : null}
+      {res.ok ? <BreakdownCard className="mb-4" view={res.data.groups} path="/inventory" keep={{ q, status: status ?? '', location, view: searchParams?.view === 'all' ? 'all' : '' }} /> : null}
 
       <Card>
         <CardHeader title="Items" meta={res.ok ? `${res.data.items.length} shown${res.data.items.length === 500 ? ' (first 500; narrow the search)' : ''}` : undefined} />
