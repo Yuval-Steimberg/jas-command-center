@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormState, useFormStatus } from 'react-dom'
-import { inviteAction, resendAction, setActiveAction, setRoleAction, type StaffState } from './actions'
+import { deleteAction, inviteAction, resendAction, setActiveAction, setRoleAction, type StaffState } from './actions'
 
 function Submit({ label, busy }: { label: string; busy: string }) {
   const { pending } = useFormStatus()
@@ -66,4 +66,19 @@ export function ResendForm({ id, email }: { id: string; email: string }) {
       <Result state={state} />
     </form>
   )
+}
+
+export function DeleteForm({ id, email }: { id: string; email: string }) {
+  const [state, action] = useFormState<StaffState, FormData>(deleteAction, {})
+  return (
+    <form action={action} onSubmit={(e) => { if (!window.confirm(`Delete ${email} permanently?\n\nTheir login and staff record are removed and this cannot be undone. Past sales, notes and the audit log keep their email. To only block access, use Deactivate.`)) e.preventDefault() }} className="flex flex-col gap-1">
+      <input type="hidden" name="id" value={id} />
+      <DangerSubmit />
+      <Result state={state} />
+    </form>
+  )
+}
+function DangerSubmit() {
+  const { pending } = useFormStatus()
+  return <button disabled={pending} className="h-10 rounded-full border border-bad/40 px-4 text-sm font-medium text-bad hover:bg-bad/10 disabled:opacity-60">{pending ? 'Deleting…' : 'Delete'}</button>
 }

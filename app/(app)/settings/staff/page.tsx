@@ -4,7 +4,7 @@ import { requirePageAccess } from '@/lib/auth/session'
 import { authMode } from '@/lib/auth/mode'
 import { ROLES, ROLE_LABELS } from '@/lib/auth/rbac'
 import { listStaff } from '@/lib/staff/store'
-import { ActiveForm, InviteForm, ResendForm, RoleForm } from './forms'
+import { ActiveForm, DeleteForm, InviteForm, ResendForm, RoleForm } from './forms'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,7 +28,7 @@ export default async function StaffPage() {
   }
   return (
     <>
-      <PageHeader title="Staff" description="Who can sign in to the command center, and with which role. Every change is in the audit log. You cannot change yourself, and the last active owner cannot be removed." />
+      <PageHeader title="Staff" description="Who can sign in to the command center, and with which role. Every change is in the audit log. Deactivate blocks access and can be undone; Delete removes the login for good. You cannot change or delete yourself, and the last active owner cannot be removed." />
       <p className="mb-4 text-sm"><Link href="/settings" className="underline-offset-2 hover:underline">← Settings</Link></p>
       <div className="flex flex-col gap-4">
         <Card>
@@ -52,6 +52,7 @@ export default async function StaffPage() {
                         <RoleForm id={s.id} email={s.email} role={s.role} roles={roles} />
                         {s.active ? <ResendForm id={s.id} email={s.email} /> : null}
                         <ActiveForm id={s.id} email={s.email} active={s.active} />
+                        <DeleteForm id={s.id} email={s.email} />
                       </div>
                     ) : null}
                   </li>

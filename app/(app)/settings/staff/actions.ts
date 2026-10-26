@@ -8,7 +8,7 @@ import { env } from '@/lib/env'
 import { authMode } from '@/lib/auth/mode'
 import { ROLES, type Role } from '@/lib/auth/rbac'
 import { refuseInvite, refuseResend, refuseStaffChange } from '@/lib/staff/rules'
-import { invite, listStaff, resendAccess, setActive, setRole } from '@/lib/staff/store'
+import { deleteStaff, invite, listStaff, resendAccess, setActive, setRole } from '@/lib/staff/store'
 
 export type StaffState = { ok?: boolean; message?: string }
 
@@ -112,5 +112,28 @@ export async function resendAction(_prev: StaffState, form: FormData): Promise<S
   } catch (e) {
     await audit(a.user, { action: 'staff.resend_link', product: null, target: `profile:${id.data}`, outcome: 'failed', detail: { email: target.email, error: fail(e) } })
     return { ok: false, message: `Not sent: ${fail(e)}` }
+  }
+}
+
+export async function deleteAction(_prev: StaffState, form: FormData): Promise<StaffState> {
+  const a = await actor()
+  if ('error' in a) return { ok: false, message: a.error }
+  const id = z.string().uuid().safeParse(form.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid person.' }
+  const staff = await listStaff()
+  const refused = refuseStaffChange(a.user, staff, { kind: 'delete', targetId: id.data })
+  if (refused) return { ok: false, message: refused }
+  const target = staff.find((s) => s.id === id.data)!
+  // The audit row is the lasting record of who this was, once the profile is gone.
+  const detail = { email: target.email, name: target.name, role: target.role, active: target.active }
+  await audit(a.user, { action: 'staff.delete', product: null, target: `profile:${id.data}`, outcome: 'requested', detail })
+  try {
+    await deleteStaff(id.data)
+    await audit(a.user, { action: 'staff.delete', product: null, target: `profile:${id.data}`, outcome: 'succeeded', detail })
+    revalidatePath('/settings/staff')
+    return { ok: true, message: `Deleted ${target.email}.` }
+  } catch (e) {
+    await audit(a.user, { action: 'staff.delete', product: null, target: `profile:${id.data}`, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not deleted: ${fail(e)}` }
   }
 }

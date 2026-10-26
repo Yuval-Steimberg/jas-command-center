@@ -41,6 +41,33 @@ export async function setActive(profileId: string, active: boolean): Promise<voi
 }
 
 /**
+ * Removes a person for good: their Supabase Auth user (so the email can be
+ * invited again later) and their profile. Roles, notification settings and
+ * read marks go with the profile (on delete cascade); alerts, tasks, contacts
+ * and shifts assigned to them become unassigned (on delete set null). History
+ * stays readable because it never pointed at the profile: the audit log,
+ * sales, movements and notes record the person's email as text.
+ *
+ * The auth user goes first. If that fails nothing has changed; if the profile
+ * delete then fails, the profile is left without a login (auth_user_id is set
+ * null) and pressing Delete again finishes the job.
+ */
+export async function deleteStaff(profileId: string): Promise<void> {
+  const db = supabaseAdmin()
+  const prof = await db.from('cc_profiles').select('auth_user_id').eq('id', profileId).maybeSingle()
+  if (prof.error) throw new Error(`staff: ${prof.error.message}`)
+  if (!prof.data) return
+  const authUserId = prof.data.auth_user_id as string | null
+  if (authUserId) {
+    const { error } = await db.auth.admin.deleteUser(authUserId)
+    if (error && !/not.?found/i.test(error.message)) throw new Error(`auth: ${error.message}`)
+  }
+  const { error } = await db.from('cc_profiles').delete().eq('id', profileId)
+  dropProfileCache()
+  if (error) throw new Error(`staff: ${error.message}`)
+}
+
+/**
  * Supabase sends the invitation email itself (its own mailer, rate-limited by
  * Supabase); the link lands on /login/set-password. The profile is created
  * already linked to the new auth user, with the chosen role.
