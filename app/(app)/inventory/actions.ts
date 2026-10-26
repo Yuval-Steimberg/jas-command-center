@@ -393,7 +393,7 @@ export async function findBySkuAction(_p: ActionState, f: FormData): Promise<Act
   const raw = String(f.get('code') ?? '').trim().slice(0, 300)
   let target = /\/(?:inventory|shop\/items)\/([0-9a-f-]{36})/i.exec(raw)?.[1] ?? null
   try {
-    // Items imported from jas-inventory keep their 4-digit serials (JAS-0042), so printed labels still scan.
+    // 4-digit serials (JAS-0042), and the 6-digit codes printed before migration 0010 renumbered those items.
     for (const sku of skuCandidates(raw)) {
       if (target) break
       target = (await getOpsStore().getItemBySku(sku))?.id ?? null

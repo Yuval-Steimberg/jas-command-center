@@ -108,8 +108,12 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
       return r[0] ?? null
     },
     async getItemBySku(sku) {
-      const r = await many<Item>(db.from('cc_inventory_items').select('*').eq('sku', sku.trim().toUpperCase()).limit(1))
-      return r[0] ?? null
+      const s = sku.trim().toUpperCase()
+      const r = await many<Item>(db.from('cc_inventory_items').select('*').eq('sku', s).limit(1))
+      if (r[0]) return r[0]
+      // A label printed before an item was renumbered (migration 0010) names its old code.
+      const old = await many<Item>(db.from('cc_inventory_items').select('*').eq('previous_sku', s).limit(1))
+      return old[0] ?? null
     },
     async createItem(item, mv) {
       const r = await many<Item>(db.rpc('cc_inventory_create', { p_item: toRow(item), p_movement: toRow(mv) }))

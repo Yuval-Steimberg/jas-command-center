@@ -42,6 +42,8 @@ export interface Location {
 export interface Item {
   id: string
   sku: string
+  /** The code the item had before it was renumbered into the Sheets sequence (migration 0010). */
+  previousSku?: string | null
   title: string
   description: string | null
   category: string | null
@@ -100,7 +102,7 @@ export interface Item {
 }
 
 /** Fields a write may set (never id, sku, version, source, furniture link or timestamps). */
-export type ItemPatch = Partial<Omit<Item, 'id' | 'sku' | 'version' | 'source' | 'furnitureItemId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'purchaseOrderId' | 'supplierId'>>
+export type ItemPatch = Partial<Omit<Item, 'id' | 'sku' | 'previousSku' | 'version' | 'source' | 'furnitureItemId' | 'createdAt' | 'updatedAt' | 'createdBy' | 'purchaseOrderId' | 'supplierId'>>
 export type NewItem = ItemPatch & Pick<Item, 'title'> & Partial<Pick<Item, 'source' | 'furnitureItemId' | 'createdBy' | 'purchaseOrderId' | 'supplierId' | 'unitCostMinor'>>
 
 export interface Movement {
