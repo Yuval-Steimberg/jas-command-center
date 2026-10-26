@@ -127,25 +127,44 @@ export function daysHeld(item: Pick<Item, 'createdAt' | 'soldAt'>, now = Date.no
   return Math.max(0, Math.floor((end - Date.parse(item.createdAt)) / 86_400_000))
 }
 
-export const formatSku = (raw: string) => {
-  const m = /^\s*(?:jas-?)?(\d{1,6})\s*$/i.exec(raw)
-  return m ? `JAS-${m[1]!.padStart(6, '0')}` : raw.trim().toUpperCase()
+/**
+ * SKUs continue the Google Sheets serials: JAS-0001 … JAS-0136, then JAS-0137.
+ * Four digits, more only past 9999. `cc_next_sku()` (migration 0010) is the
+ * production rule; this is the same rule for the memory store and the tests.
+ */
+export function nextSku(skus: Iterable<string>): string {
+  let max = 0
+  for (const s of skus) {
+    const m = /^JAS-(\d+)$/.exec(s)
+    if (m) max = Math.max(max, Number(m[1]))
+  }
+  return `JAS-${String(max + 1).padStart(4, '0')}`
 }
 
-/** Codes to try for what was typed or scanned: as written, the command center's 6-digit form, and the 4-digit serial jas-inventory printed. */
+/** What was typed or scanned, in the SKU's own form: "123" and "JAS-000123" are both JAS-0123. */
+export const formatSku = (raw: string) => {
+  const m = /^\s*(?:jas-?)?(\d{1,6})\s*$/i.exec(raw)
+  return m ? `JAS-${String(Number(m[1])).padStart(4, '0')}` : raw.trim().toUpperCase()
+}
+
+/**
+ * Codes to try for what was typed or scanned: as written, the 4-digit serial,
+ * and the 6-digit form the command center printed before migration 0010
+ * (those items were renumbered; their old code is kept as `previous_sku`).
+ */
 export function skuCandidates(raw: string): string[] {
   const m = /^\s*(?:jas-?)?(\d{1,6})\s*$/i.exec(raw)
-  const legacy = m && m[1]!.length <= 4 ? `JAS-${m[1]!.padStart(4, '0')}` : null
+  const six = m ? `JAS-${String(Number(m[1])).padStart(6, '0')}` : null
   // A label that encodes a link (…/items/JAS-0042) still names its serial.
   const inLink = /\bJAS-\d{4,6}\b/i.exec(raw)?.[0].toUpperCase() ?? null
-  return [...new Set([raw.trim().toUpperCase(), formatSku(raw), legacy, inLink].filter((x): x is string => !!x))]
+  return [...new Set([raw.trim().toUpperCase(), formatSku(raw), six, inLink].filter((x): x is string => !!x))]
 }
 
 export const REFURB_STATUS_LABEL = { needed: 'Needs refurbishing', in_progress: 'Being refurbished', done: 'Refurbished' } as const
 export const REFURB_LEVEL_LABEL = { light: 'Light (clean, touch-up)', medium: 'Medium (repair, refinish)', full: 'Full (rebuild, reupholster)' } as const
 
 const FIELD_LABEL: Record<string, string> = {
-  title: 'name', description: 'notes', category: 'category', condition: 'condition', priceMinor: 'price', photoUrl: 'photo', dimensions: 'dimensions', material: 'material',
+  sku: 'code', title: 'name', description: 'notes', category: 'category', condition: 'condition', priceMinor: 'price', photoUrl: 'photo', dimensions: 'dimensions', material: 'material',
   colors: 'colours', extraPhotos: 'more photos', photoHash: 'photo fingerprint', priceApproved: 'price approved', aiPriceMinor: 'AI price', unitCostMinor: 'cost',
   quantity: 'quantity', kind: 'kind', locationId: 'location', refurbStatus: 'refurbishment', refurbLevel: 'refurbishment level', refurbContactId: 'refurbisher', refurbInstructions: 'refurbishment instructions', renewalLevel: 'renewal level', beforePhotoUrl: 'before photo', origin: 'origin', notes: 'notes',
 }

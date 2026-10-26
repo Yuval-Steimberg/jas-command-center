@@ -2,6 +2,7 @@ import { ConflictError, type OpsStore } from './store'
 import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Task } from './types'
 import type { PurchaseOrder, Receipt } from '@/lib/suppliers/model'
 import type { Sale, SaleLine, SalePayment, TerminalCharge } from '@/lib/sales/model'
+import { nextSku } from '@/lib/inventory/model'
 
 /**
  * In-memory OpsStore for local development and tests. Same rules as the SQL
@@ -19,7 +20,6 @@ export interface MemoryData {
   deliveries: Delivery[]
   rules: Map<string, boolean>
   cursors: Map<string, { cursor: string | null; lastSuccessAt: string | null; lastError: string | null }>
-  sku: number
   /** Suppliers (migration 0004). */
   purchaseOrders: PurchaseOrder[]
   receipts: Receipt[]
@@ -33,7 +33,7 @@ export interface MemoryData {
   terminalCharges: TerminalCharge[]
 }
 
-export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), sku: 0, purchaseOrders: [], receipts: [], poSeq: 0, sales: [], saleLines: [], salePayments: [], saleSeq: 0, terminalCharges: [] })
+export const emptyData = (): MemoryData => ({ locations: [], items: [], movements: [], contacts: [], deals: [], interactions: [], tasks: [], deliveries: [], rules: new Map(), cursors: new Map(), purchaseOrders: [], receipts: [], poSeq: 0, sales: [], saleLines: [], salePayments: [], saleSeq: 0, terminalCharges: [] })
 
 const now = () => new Date().toISOString()
 const id = () => crypto.randomUUID()
@@ -83,7 +83,8 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
       return copy(d.items.find((i) => i.id === itemId) ?? null)
     },
     async getItemBySku(sku) {
-      return copy(d.items.find((i) => i.sku === sku.trim().toUpperCase()) ?? null)
+      const s = sku.trim().toUpperCase()
+      return copy(d.items.find((i) => i.sku === s) ?? d.items.find((i) => i.previousSku === s) ?? null)
     },
     async createItem(input, mv) {
       if (input.furnitureItemId) {
@@ -93,7 +94,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
       if (input.websiteProductId != null && d.items.some((i) => i.websiteProductId === input.websiteProductId)) throw new ConflictError('that website product is already linked to another item')
       const t = now()
       const item: Item = {
-        id: id(), sku: `JAS-${String(++d.sku).padStart(6, '0')}`, description: null, category: null, kind: 'unique', quantity: 1, condition: null,
+        id: id(), sku: nextSku(d.items.map((i) => i.sku)), description: null, category: null, kind: 'unique', quantity: 1, condition: null,
         status: 'in_storage', locationId: null, priceMinor: null, photoUrl: null, dimensions: null, material: null, weightKg: null, source: 'manual',
         furnitureItemId: null, furnitureProjectId: null, furnitureProjectName: null, furnitureApartment: null, websiteProductId: null,
         reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, soldChannel: null, soldAt: null, soldPriceMinor: null,
@@ -114,7 +115,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
       if (set.websiteProductId != null && d.items.some((i) => i.id !== itemId && i.websiteProductId === set.websiteProductId)) throw new ConflictError('that website product is already linked to another item')
       const before = { ...item }
       const safe = { ...set } as Record<string, unknown>
-      for (const k of ['id', 'sku', 'version', 'createdAt', 'createdBy', 'source', 'furnitureItemId', 'purchaseOrderId', 'supplierId']) delete safe[k]
+      for (const k of ['id', 'sku', 'previousSku', 'version', 'createdAt', 'createdBy', 'source', 'furnitureItemId', 'purchaseOrderId', 'supplierId']) delete safe[k]
       // The cost of an item received from a supplier is provenance; any other item's cost can be corrected.
       if (item.source === 'purchase') delete safe.unitCostMinor
       Object.assign(item, safe, { version: item.version + 1, updatedAt: now() })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { can, draftProduct, formatSku, skuCandidates, reservationExpired, skuSlug, websiteCategoryFor, WEBSITE_CONDITION } from '@/lib/inventory/model'
+import { can, draftProduct, formatSku, nextSku, skuCandidates, reservationExpired, skuSlug, websiteCategoryFor, WEBSITE_CONDITION } from '@/lib/inventory/model'
 import { CC_SLUG } from '@/lib/sync/products'
 import { driveFileId } from '@/lib/inventory/drive'
 import { mergeContact, normalizeEmail, normalizePhone, whatsappLink, daysWithoutContact } from '@/lib/crm/model'
@@ -34,17 +34,27 @@ describe('inventory model', () => {
     expect(can('donate', 'sold')).toBe(false)
   })
 
-  it('formats typed and scanned codes to one SKU form, and a SKU to a stable slug', () => {
-    expect(formatSku('123')).toBe('JAS-000123')
-    expect(formatSku('jas-42')).toBe('JAS-000042')
-    expect(skuSlug('JAS-000123')).toBe('jas-000123')
+  it('formats typed and scanned codes to the 4-digit Sheets form, and a SKU to a stable slug', () => {
+    expect(formatSku('123')).toBe('JAS-0123')
+    expect(formatSku('jas-42')).toBe('JAS-0042')
+    expect(formatSku('JAS-000123')).toBe('JAS-0123')
+    expect(formatSku('12345')).toBe('JAS-12345')
+    expect(skuSlug('JAS-0123')).toBe('jas-0123')
   })
 
-  it('also tries the 4-digit serials imported from jas-inventory, typed or inside a scanned link', () => {
+  it('continues the Sheets numbering: highest JAS-number + 1, four digits', () => {
+    expect(nextSku(['JAS-0001', 'JAS-0136', 'JAS-0107'])).toBe('JAS-0137')
+    expect(nextSku(['JAS-0136', 'JAS-000002'])).toBe('JAS-0137')
+    expect(nextSku([])).toBe('JAS-0001')
+    expect(nextSku(['JAS-9999'])).toBe('JAS-10000')
+    expect(nextSku(['JAS-0005', 'S-0099', 'oak'])).toBe('JAS-0006')
+  })
+
+  it('tries the 4-digit serial and the old 6-digit form, typed or inside a scanned link', () => {
     expect(skuCandidates('JAS-0042')).toEqual(['JAS-0042', 'JAS-000042'])
-    expect(skuCandidates('42')).toEqual(['42', 'JAS-000042', 'JAS-0042'])
+    expect(skuCandidates('42')).toEqual(['42', 'JAS-0042', 'JAS-000042'])
     expect(skuCandidates('https://jas-inventory.vercel.app/item/JAS-0042')).toContain('JAS-0042')
-    expect(skuCandidates('JAS-000123')).toEqual(['JAS-000123'])
+    expect(skuCandidates('JAS-000123')).toEqual(['JAS-000123', 'JAS-0123'])
     expect(skuCandidates('')).toEqual([])
   })
 

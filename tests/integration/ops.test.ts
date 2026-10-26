@@ -114,6 +114,17 @@ describe('the store: one item, one outcome', () => {
     expect((await store.getItem(it0.id))!.version).toBe(2)
   })
 
+  it('new items continue the Sheets serials; a renumbered item is still found by its old code', async () => {
+    const store = memoryStore()
+    await store.createItem({ title: 'Imported', sku: 'JAS-0136' } as never, { actorEmail: 'a' })
+    const a = await store.createItem({ title: 'New' }, { actorEmail: 'a' })
+    const b = await store.createItem({ title: 'Newer' }, { actorEmail: 'a' })
+    expect([a.sku, b.sku]).toEqual(['JAS-0137', 'JAS-0138'])
+    await store.createItem({ title: 'Old label', sku: 'JAS-0139', previousSku: 'JAS-000002' } as never, { actorEmail: 'a' })
+    expect((await store.getItemBySku('jas-000002'))?.sku).toBe('JAS-0139')
+    expect((await store.getItemBySku('JAS-0137'))?.id).toBe(a.id)
+  })
+
   it('replaying a movement with the same ref changes nothing; one field item enters inventory once', async () => {
     const store = memoryStore()
     const a = await store.createItem({ title: 'Chair', furnitureItemId: 'f-1', status: 'listed' }, { actorEmail: 'a' })

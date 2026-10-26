@@ -105,8 +105,8 @@ interface Detector {
  * detector (Chrome / Android). Typing the SKU always works.
  */
 const SCAN_TEXT = {
-  en: { code: 'Code', placeholder: 'Scan or type a code, e.g. JAS-000123 or 123', open: 'Open item', looking: 'Looking…', camera: 'Use the camera', stop: 'Stop the camera', unsupported: 'This browser cannot read codes from the camera. Use a scanner or type the code.' },
-  he: { code: 'קוד', placeholder: 'סריקה או הקלדת קוד, למשל JAS-000123 או 123', open: 'פתיחת פריט', looking: 'מחפש…', camera: 'סריקה במצלמה', stop: 'עצירת המצלמה', unsupported: 'הדפדפן הזה לא קורא קודים מהמצלמה. השתמשו בסורק או הקלידו את הקוד.' },
+  en: { code: 'Code', placeholder: 'Scan or type a code, e.g. JAS-0123 or 123', open: 'Open item', looking: 'Looking…', camera: 'Use the camera', stop: 'Stop the camera', unsupported: 'This browser cannot read codes from the camera. Use a scanner or type the code.' },
+  he: { code: 'קוד', placeholder: 'סריקה או הקלדת קוד, למשל JAS-0123 או 123', open: 'פתיחת פריט', looking: 'מחפש…', camera: 'סריקה במצלמה', stop: 'עצירת המצלמה', unsupported: 'הדפדפן הזה לא קורא קודים מהמצלמה. השתמשו בסורק או הקלידו את הקוד.' },
 }
 
 export function ScanBox({ base = '/inventory', lang = 'en' }: { base?: '/inventory' | '/shop'; lang?: 'en' | 'he' }) {
