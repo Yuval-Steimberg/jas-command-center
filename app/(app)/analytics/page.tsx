@@ -1,12 +1,12 @@
 import { Download } from 'lucide-react'
 import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { AnalyticsSection } from '@/components/analytics/section'
-import { requireUser, userCan } from '@/lib/auth/session'
+import { getSession, requireUser } from '@/lib/auth/session'
 import { METRICS } from '@/lib/metrics-catalog'
 import { loadAnalytics } from '@/lib/analytics/load'
 import { analyticsRange } from '@/lib/analytics/range'
 import { timeAgo } from '@/lib/format'
-import { PRODUCTS, type Product } from '@/lib/auth/rbac'
+import { PRODUCTS, canReadAnalytics, type Product } from '@/lib/auth/rbac'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,7 +14,9 @@ type SP = Record<string, string | string[] | undefined>
 
 export default async function AnalyticsPage({ searchParams }: { searchParams?: SP }) {
   await requireUser()
-  const allowed = new Set<Product>((await Promise.all(PRODUCTS.map(async (p) => ((await userCan(`${p}:read`)) ? p : null)))).filter((p): p is Product => p !== null))
+  const s = (await getSession())!
+  // Inventory analytics are the shop's sales: they need inventory:reports, not just inventory:read (a seller has read).
+  const allowed = new Set<Product>(PRODUCTS.filter((p) => canReadAnalytics(s.user.role, p, s.overrides)))
   const { range, label, custom, error } = analyticsRange(searchParams)
   const report = await loadAnalytics(range, (p) => allowed.has(p))
   const previousLabel = `${report.previous.from} – ${report.previous.to}`

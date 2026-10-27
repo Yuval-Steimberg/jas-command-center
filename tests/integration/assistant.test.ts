@@ -65,12 +65,12 @@ const toolResults = (params: Anthropic.Beta.MessageCreateParamsNonStreaming) => 
 }
 
 describe('which tools the model is offered', () => {
-  it('follows the role: a project manager sees furniture, map and the warehouse, never sales channels or customers', async () => {
+  it('follows the role: a project manager sees furniture, map and the warehouse, never sales channels, shop performance or customers', async () => {
     const h = harness('project_manager', [msg([text('ok')], 'end_turn')])
     await ask('hi', [], h.deps)
     expect(h.calls[0]!.tools!.map((t) => (t as { name: string }).name)).toEqual([
       'list_furniture_projects', 'get_furniture_impact', 'get_map_places',
-      'find_inventory_items', 'get_item_history', 'get_fulfilment_queue', 'get_open_tasks', 'get_inventory_performance', 'get_purchase_orders',
+      'find_inventory_items', 'get_item_history', 'get_fulfilment_queue', 'get_open_tasks', 'get_purchase_orders',
       'get_volunteer_overview', 'suggest_volunteers_for_shift',
       'propose_furniture_archive', 'propose_task_create', 'propose_volunteer_invite', 'propose_volunteer_message_shift',
     ])

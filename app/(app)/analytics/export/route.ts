@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
-import { can } from '@/lib/auth/rbac'
+import { canReadAnalytics } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
 import { loadAnalytics } from '@/lib/analytics/load'
 import { analyticsRange } from '@/lib/analytics/range'
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   if (!Object.hasOwn(KINDS, kind)) return NextResponse.json({ error: 'kind must be metrics, daily or tables' }, { status: 400 })
   const { range, error } = analyticsRange(sp)
   if (error) return NextResponse.json({ error }, { status: 400 })
-  const report = await loadAnalytics(range, (p) => can(s.user.role, `${p}:read`, s.overrides))
+  const report = await loadAnalytics(range, (p) => canReadAnalytics(s.user.role, p, s.overrides))
   await audit(s.user, { action: 'analytics.export', product: null, target: kind, outcome: 'succeeded', detail: { range, products: report.sections.map((x) => x.product) } })
   return new NextResponse(KINDS[kind](report), {
     headers: {

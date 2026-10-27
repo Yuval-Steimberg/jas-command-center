@@ -65,8 +65,13 @@ export default async function SalesPage() {
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Kpi label="Website orders to fulfil" value={queue && !queueProblem ? formatCount(orders.length) : '—'} sub="paid, processing or shipped" />
-            <Kpi label="In-store sales, 30 days" value={formatCount(metric('inv.inStoreSales'))} sub={metric('inv.inStoreNet') == null ? undefined : `${formatAgorot(metric('inv.inStoreNet')!, { whole: true })} after returns`} hint="Shop sale lines in the last 30 days, the same figure as Analytics. Not website revenue." />
-            <Kpi label="Inventory sold online, 30 days" value={formatCount(metric('inv.soldOnline'))} sub="their revenue is in the website's numbers" />
+            {/* Sales performance is for managers (inventory:reports), not for whoever records a sale. */}
+            {may('inventory:reports') ? (
+              <>
+                <Kpi label="In-store sales, 30 days" value={formatCount(metric('inv.inStoreSales'))} sub={metric('inv.inStoreNet') == null ? undefined : `${formatAgorot(metric('inv.inStoreNet')!, { whole: true })} after returns`} hint="Shop sale lines in the last 30 days, the same figure as Analytics. Not website revenue." />
+                <Kpi label="Inventory sold online, 30 days" value={formatCount(metric('inv.soldOnline'))} sub="their revenue is in the website's numbers" />
+              </>
+            ) : null}
             <Kpi label="Sold, not delivered" value={formatCount(res.data.sold.filter((i) => i.status === 'sold').length)} />
           </div>
 

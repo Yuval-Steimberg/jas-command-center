@@ -11,21 +11,18 @@ import { ITEM_STATUSES, type ItemStatus } from '@/lib/ops/types'
 import { formatAgorot } from '@/lib/money'
 import { ShopItemSearch, type StatusOption } from '@/components/shop/item-search'
 import { Thumb } from '@/components/shop/bits'
-import { BreakdownCard } from '@/components/inventory/breakdown-card'
-import { breakdownParams, loadBreakdown } from '@/lib/inventory/breakdown-view'
 
 export const dynamic = 'force-dynamic'
 
 /** "In stock" is the one definition the home screen and analytics use: on the shelf or on the website (held items are their own filter). */
 const IN_STOCK = AVAILABLE
 
-export default async function ShopItemsPage({ searchParams }: { searchParams: { q?: string; s?: string; by?: string; days?: string } }) {
+export default async function ShopItemsPage({ searchParams }: { searchParams: { q?: string; s?: string } }) {
   const session = (await getSession())!
   const q = (searchParams.q ?? '').trim().slice(0, 100)
   const s = searchParams.s === 'all' || (ITEM_STATUSES as readonly string[]).includes(searchParams.s ?? '') ? searchParams.s! : 'stock'
   const statuses = s === 'stock' ? [...IN_STOCK] : s === 'all' ? undefined : [s as ItemStatus]
-  const { by: groupBy, days } = breakdownParams(searchParams)
-  const [res, snap, groups] = await Promise.all([loadOps(() => getOpsStore().listItems({ q: q || undefined, statuses, limit: 300 })), getOpsSnapshot(), loadOps(() => loadBreakdown(groupBy, days))])
+  const [res, snap] = await Promise.all([loadOps(() => getOpsStore().listItems({ q: q || undefined, statuses, limit: 300 })), getOpsSnapshot()])
   // Counts come from the same snapshot the home screen uses, so the two never disagree.
   const by = snap.state === 'ok' ? snap.data.items.byStatus : null
   const total = by ? Object.values(by).reduce((a, b) => a + b, 0) : null
@@ -40,13 +37,6 @@ export default async function ShopItemsPage({ searchParams }: { searchParams: { 
         <h1 className="text-2xl font-bold text-ink">מלאי</h1>
         {total != null ? <p className="num text-sm text-muted">{total} פריטים במערכת</p> : null}
       </div>
-      {groups.ok ? (
-        // Closed by default so the item list stays first; a tap on a group or period reopens it on the new numbers.
-        <details className="rounded-lg border border-line bg-surface p-3" open={!!(searchParams.by || searchParams.days)}>
-          <summary className="font-semibold text-ink">סטטיסטיקה: מלאי ומכירות לפי קטגוריה, צבע ורמת חידוש</summary>
-          <BreakdownCard className="mt-3 border-0 shadow-none [&>header]:hidden [&>div]:px-0" view={groups.data} path="/shop/items" keep={{ q, s: s === 'stock' ? '' : s }} lang="he" />
-        </details>
-      ) : null}
       <ShopItemSearch q={q} status={s} options={options} />
       {!res.ok ? <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p> : res.data.length === 0 ? (
         <p className="rounded-lg border border-dashed border-line px-4 py-6 text-center text-sm text-muted">{q ? <>לא נמצא פריט שמתאים ל־<span dir="auto" className="font-medium text-ink">{q}</span>.{s === 'all' ? '' : ' אפשר לבחור ״הכול״.'}</> : 'אין פריטים כאלה.'}</p>

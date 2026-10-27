@@ -39,7 +39,7 @@ export default async function SettingsPage() {
                 </tr>
               </thead>
               <tbody>
-                {[...PRODUCTS.flatMap((p) => ACTIONS.map((a) => `${p}:${a}` as Permission)), 'integrations:read', 'audit:read', 'users:manage', 'assistant:use'].map((perm) => (
+                {[...PRODUCTS.flatMap((p) => ACTIONS.map((a) => `${p}:${a}` as Permission)), 'inventory:reports', 'integrations:read', 'audit:read', 'users:manage', 'assistant:use'].map((perm) => (
                   <tr key={perm} className="border-t border-line/50">
                     <td className="py-1 font-mono">{perm}</td>
                     {ROLES.map((r) => <td key={r} className="px-2 text-center">{can(r, perm as Permission, overrides) ? <span aria-label="allowed" className="text-ok">●</span> : <span aria-label="not allowed" className="text-line">○</span>}</td>)}
