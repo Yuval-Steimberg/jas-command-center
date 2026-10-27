@@ -196,4 +196,13 @@ describe('ops analytics', () => {
     expect(inv.metrics.find((m) => m.id === 'inv.daysToSell')!.value).toBe(10)
     expect(inventorySection({ state: 'not_configured', detail: 'run 0003' }, range, previous).metrics.every((m) => m.value === null && m.quality === 'unavailable')).toBe(true)
   })
+
+  it('in-store sales after returns subtracts a return made from the item page too', async () => {
+    const { inventorySection } = await import('@/lib/analytics/ops')
+    const range = { from: '2026-10-17', to: '2026-10-23' }
+    const previous = { from: '2026-10-10', to: '2026-10-16' }
+    const mv = (type: 'sell' | 'return', detail: Record<string, unknown>) => ({ id: `m-${type}`, itemId: 'i1', at: '2026-10-21T10:00:00Z', type, fromStatus: null, toStatus: null, fromLocation: null, toLocation: null, quantityDelta: 0, refKind: null, refId: null, note: null, actorEmail: 'a', detail })
+    const r = { state: 'ok' as const, checkedAt: T, data: { items: [item()], movements: [mv('sell', { channel: 'in_store', priceMinor: 30000 }), mv('return', { soldChannel: 'in_store', soldPriceMinor: 30000 })], deals: [], contacts: [], truncated: false } }
+    expect(inventorySection(r, range, previous).metrics.find((m) => m.id === 'inv.inStoreNet')!.value).toBe(0)
+  })
 })

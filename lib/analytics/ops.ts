@@ -61,8 +61,10 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
   const available = d?.items.filter((i) => AVAILABLE.includes(i.status)) ?? null
   const byId = new Map((d?.items ?? []).map((i) => [i.id, i]))
   const units = (x: Movement) => Math.max(1, Number(x.detail.units) || 1)
-  const shopReturn = (x: Movement) => x.type === 'return' && x.detail.channel === 'in_store' && Number(x.detail.priceMinor) > 0
-  const returned = (p: DateRange) => moves(p, shopReturn)?.reduce((a, x) => a + (Number(x.detail.priceMinor) || 0), 0) ?? null
+  // A sale's own return writes channel/priceMinor; "back to stock" on the item page writes soldChannel/soldPriceMinor.
+  const returnPrice = (x: Movement) => Number(x.detail.priceMinor ?? x.detail.soldPriceMinor) || 0
+  const shopReturn = (x: Movement) => x.type === 'return' && (x.detail.channel ?? x.detail.soldChannel) === 'in_store' && returnPrice(x) > 0
+  const returned = (p: DateRange) => moves(p, shopReturn)?.reduce((a, x) => a + returnPrice(x), 0) ?? null
   const net = (p: DateRange) => { const v = value(p), r = returned(p); return v == null || r == null ? null : v - r }
   const avgPrice = (p: DateRange) => {
     const xs = moves(p, inStore)
