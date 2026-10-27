@@ -4,7 +4,7 @@ import { Card, CardBody, CardHeader, PageHeader } from '@/components/ui/card'
 import { StatusBadge } from '@/components/ui/status'
 import { AlertsList } from '@/components/alerts-list'
 import { getSession, requireUser } from '@/lib/auth/session'
-import { can } from '@/lib/auth/rbac'
+import { canReadAnalytics } from '@/lib/auth/rbac'
 import { timeAgo } from '@/lib/format'
 import { isReportKind, REPORT_KINDS, type ReportKind, type ReportLine } from '@/lib/reports/business'
 import { loadBusinessReport } from '@/lib/reports/load'
@@ -29,7 +29,7 @@ export default async function ReportsPage({ searchParams }: { searchParams?: { k
   await requireUser()
   const s = (await getSession())!
   const kind: ReportKind = isReportKind(searchParams?.kind) ? searchParams.kind : 'weekly'
-  const r = await loadBusinessReport(kind, (p) => can(s.user.role, `${p}:read`, s.overrides))
+  const r = await loadBusinessReport(kind, (p) => canReadAnalytics(s.user.role, p, s.overrides))
   return (
     <>
       <PageHeader

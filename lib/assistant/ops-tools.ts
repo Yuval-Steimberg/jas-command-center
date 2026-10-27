@@ -164,7 +164,7 @@ export const OPS_TOOLS: AssistantTool[] = [
     label: 'Inventory & customer performance',
     description:
       'Inventory and customer KPIs for a period, each compared with the period before: items taken in, sold in the shop (count and ₪), inventory items sold online (count only: their money is website revenue), donated/recycled, days from intake to sale; and now: available, unlisted, unlisted 60+ days, sold not delivered. With customer access also new contacts, new and won leads, open and waiting leads. Never add in-store value to website revenue.',
-    permission: 'inventory:read',
+    permission: 'inventory:reports',
     input: z.object({ period: z.enum(Object.keys(PRESETS) as [Preset, ...Preset[]]) }).strict(),
     schema: { type: 'object', properties: { period: { type: 'string', enum: Object.keys(PRESETS) } }, required: ['period'], additionalProperties: false },
     run: async (input, ctx) => {
@@ -178,8 +178,8 @@ export const OPS_TOOLS: AssistantTool[] = [
         checkedAt: r.checkedAt,
         data: {
           range, previous, currency: 'ILS',
-          // In-store takings only for roles that record sales (inventory:financial); the counts are for everyone.
-          metrics: sections.flatMap((s) => s.metrics.filter((m) => m.unit !== 'agorot' || ctx.can('inventory:financial')).map((m) => ({ id: m.id, label: m.label, basis: m.basis, quality: m.quality, value: m.unit === 'agorot' ? ils(m.value) : m.value, previous: m.unit === 'agorot' ? ils(m.previous) : m.previous, note: m.note ?? null }))),
+          // The tool itself needs inventory:reports (shop performance is for managers), so counts and takings go together.
+          metrics: sections.flatMap((s) => s.metrics.map((m) => ({ id: m.id, label: m.label, basis: m.basis, quality: m.quality, value: m.unit === 'agorot' ? ils(m.value) : m.value, previous: m.unit === 'agorot' ? ils(m.previous) : m.previous, note: m.note ?? null }))),
           notes: sections.flatMap((s) => s.notes),
         },
       }

@@ -28,6 +28,8 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
   const statuses: ItemStatus[] | undefined = status ? [status] : searchParams?.view === 'all' ? undefined : ['in_storage', 'listed', 'reserved', 'sold']
   const location = typeof searchParams?.location === 'string' ? searchParams.location : ''
   const { by, days } = breakdownParams(searchParams)
+  // Shop performance (sales per group, asking value) is for managers: a seller can open this page too.
+  const reports = may('inventory:reports')
 
   // The snapshot and the website's product list do not depend on the item list: start all three at once.
   const snapP = getOpsSnapshot()
@@ -37,7 +39,7 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
     const [items, locations, groups] = await Promise.all([
       store.listItems({ statuses, q: q || undefined, locationId: location || undefined, limit: 500 }),
       store.listLocations(),
-      loadBreakdown(by, days),
+      loadBreakdown(by, days, { sales: reports }),
     ])
     return { items, locations, groups }
   })
@@ -68,7 +70,7 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
           <Kpi label="Listed online" value={formatCount(snap.data.items.byStatus.listed)} />
           <Kpi label="Reserved" value={formatCount(snap.data.items.byStatus.reserved)} />
           <Kpi label="Sold, not delivered" value={formatCount(snap.data.items.awaitingDelivery)} />
-          <Kpi label="Asking value" value={formatAgorot(snap.data.items.askingValueMinor, { whole: true })} sub={`${snap.data.items.priced} priced items`} hint="Sum of asking prices of available items that have one. Not revenue." />
+          {reports ? <Kpi label="Asking value" value={formatAgorot(snap.data.items.askingValueMinor, { whole: true })} sub={`${snap.data.items.priced} priced items`} hint="Sum of asking prices of available items that have one. Not revenue." /> : null}
         </div>
       ) : null}
 

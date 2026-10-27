@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth/session'
-import { can } from '@/lib/auth/rbac'
+import { canReadAnalytics } from '@/lib/auth/rbac'
 import { audit } from '@/lib/audit/audit'
 import { isReportKind, reportMarkdown } from '@/lib/reports/business'
 import { loadBusinessReport } from '@/lib/reports/load'
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url)
   const kind = url.searchParams.get('kind')
   if (!isReportKind(kind)) return NextResponse.json({ error: 'kind must be daily, weekly or monthly' }, { status: 400 })
-  const report = await loadBusinessReport(kind, (p) => can(s.user.role, `${p}:read`, s.overrides))
+  const report = await loadBusinessReport(kind, (p) => canReadAnalytics(s.user.role, p, s.overrides))
   await audit(s.user, { action: 'report.export', product: null, target: kind, outcome: 'succeeded', detail: { period: report.period, sections: report.sections.map((x) => x.title) } })
   return new NextResponse(reportMarkdown(report, url.origin), {
     headers: {

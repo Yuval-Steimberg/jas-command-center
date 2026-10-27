@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { breakdownTotals, groupOf, mainColour, stockAndSales, NO_COLOUR, NO_LEVEL } from '@/lib/inventory/breakdown'
+import { breakdownTotals, groupOf, mainColour, soldUnits, stockAndSales, NO_COLOUR, NO_LEVEL } from '@/lib/inventory/breakdown'
 import type { Item, Movement } from '@/lib/ops/types'
 
 const T = '2026-10-20T10:00:00.000Z'
@@ -81,5 +81,21 @@ describe('stockAndSales', () => {
 
   it('takes every movement when there is no period', () => {
     expect(breakdownTotals(stockAndSales(items, moves, 'category', null)).shopValueMinor).toBe(170000)
+  })
+
+  it('takes off an item sent back to stock from the item page, in the shop and on the website (a cancelled order)', () => {
+    const back = [
+      ...moves,
+      move('d', 'return', { soldChannel: 'in_store', soldPriceMinor: 90000 }),
+      move('b', 'return', { soldChannel: 'website', soldPriceMinor: 80000, websiteOrderNumber: 'W-1' }),
+    ]
+    const r = stockAndSales(items, back, 'category', period).find((x) => x.group === 'כורסה')!
+    expect(r).toMatchObject({ soldInShop: 0, shopValueMinor: 0, soldOnline: 0 })
+    expect(soldUnits(r)).toBe(0)
+  })
+
+  it('soldUnits adds shop and website units, net of returns', () => {
+    const rows = stockAndSales(items, moves, 'category', period)
+    expect(rows.map((r) => [r.group, soldUnits(r)])).toEqual([['כיסא', 1], ['כורסה', 2]])
   })
 })

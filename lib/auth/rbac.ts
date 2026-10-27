@@ -55,6 +55,8 @@ export type Permission =
   | `${Product}:${Action}`
   | 'integrations:read'
   | 'audit:read'
+  /** Shop performance: sales counts and takings per group, asking value of stock, inventory analytics. */
+  | 'inventory:reports'
   | 'users:manage'
   | 'assistant:use'
 
@@ -68,6 +70,7 @@ const all = (actions: readonly Action[], products: readonly Product[] = PRODUCTS
 export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   owner: new Set<Permission>([
     ...all(ACTIONS),
+    'inventory:reports',
     'integrations:read',
     'audit:read',
     'users:manage',
@@ -77,6 +80,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     ...all(['read', 'read_pii', 'operate', 'write']),
     'website:financial',
     'inventory:financial',
+    'inventory:reports',
     'integrations:read',
     'audit:read',
     'assistant:use',
@@ -91,6 +95,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'inventory:write',
     'volunteers:read_pii',
     'volunteers:write',
+    'inventory:reports',
     'integrations:read',
     'assistant:use',
   ]),
@@ -128,7 +133,9 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
    * Works the shop floor through /shop: takes items in (photo, AI fields),
    * sells, records payments, hands over and takes returns, and adds customers.
    * Purchase cost is visible to them (the shop prices from it). Nothing about
-   * the website's content, gift cards, the field app or volunteers.
+   * the website's content, gift cards, the field app or volunteers, and no
+   * `inventory:reports`: how much the shop sells (counts or ₪) is for managers.
+   * `inventory:financial` lets them RECORD a sale, not see the business's totals.
    */
   seller: new Set<Permission>([
     'inventory:read',
@@ -139,7 +146,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'crm:read_pii',
     'crm:write',
   ]),
-  viewer: new Set<Permission>([...all(['read']), 'integrations:read']),
+  viewer: new Set<Permission>([...all(['read']), 'inventory:reports', 'integrations:read']),
 }
 
 /** Per-deployment overrides (stored in cc_role_permissions). `false` revokes a default. */
@@ -158,6 +165,15 @@ export function can(role: Role | null, permission: Permission, overrides?: Permi
     return override
   }
   return DEFAULT_PERMISSIONS[role].has(permission)
+}
+
+/**
+ * May this role see a product's ANALYTICS (/analytics, /reports, report emails)?
+ * Reading the product is not enough for inventory: its analytics are the
+ * shop's sales, which need `inventory:reports` too.
+ */
+export function canReadAnalytics(role: Role | null, product: Product, overrides?: PermissionOverrides): boolean {
+  return can(role, `${product}:read`, overrides) && (product !== 'inventory' || can(role, 'inventory:reports', overrides))
 }
 
 export class ForbiddenError extends Error {

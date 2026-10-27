@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ACTIONS, PRODUCTS, ROLES, assertCan, can, primaryRole, ForbiddenError, type Permission } from '@/lib/auth/rbac'
+import { ACTIONS, PRODUCTS, ROLES, assertCan, can, canReadAnalytics, primaryRole, ForbiddenError, type Permission } from '@/lib/auth/rbac'
 
 describe('rbac', () => {
   it('owner holds every permission', () => {
@@ -65,4 +65,15 @@ describe('rbac', () => {
       expect((e as ForbiddenError).permission).toBe('gift_cards:financial')
     }
   })
+
+  it('a seller can record a sale but not see shop performance, here or in analytics', () => {
+    expect(can('seller', 'inventory:financial')).toBe(true)
+    expect(can('seller', 'inventory:reports')).toBe(false)
+    expect(canReadAnalytics('seller', 'inventory')).toBe(false)
+    expect(canReadAnalytics('project_manager', 'inventory')).toBe(false)
+    for (const r of ['owner', 'admin', 'operations_manager', 'viewer'] as const) expect(canReadAnalytics(r, 'inventory')).toBe(true)
+    expect(canReadAnalytics('seller', 'inventory', { seller: { 'inventory:reports': true } })).toBe(true)
+    expect(canReadAnalytics('project_manager', 'furniture')).toBe(true)
+  })
 })
+

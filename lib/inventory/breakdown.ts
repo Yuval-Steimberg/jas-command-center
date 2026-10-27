@@ -13,7 +13,7 @@ import { RENEWAL_LABEL_HE, isRenewalLevel } from './renewal'
  * - Stock = units of items a customer could still buy (AVAILABLE), now.
  *   "In the shop" is the part of it whose location is the shop.
  * - Sold in the shop = in-store `sell` movements in the period minus in-store
- *   returns in the period, in units and in what the customer paid (after the
+ *   returns in the period (from a sale or from the item page), in units and in what the customer paid (after the
  *   sale discount). Online sales are counted in units only: their money is the
  *   website's revenue and is never valued here (CLAUDE.md).
  * - A sale is grouped by what the item says NOW (its category, colour, level),
@@ -92,12 +92,15 @@ export interface BreakdownRow {
   soldInShop: number
   /** What customers paid for them (agorot, after discount, net of returns). */
   shopValueMinor: number
-  /** Sold through the website in the period: counted, never valued. */
+  /** Sold through the website in the period, net of items returned to stock: counted, never valued. */
   soldOnline: number
 }
 
 const units = (x: Movement) => Math.max(1, Number(x.detail.units) || Math.abs(x.quantityDelta) || 1)
-const price = (x: Movement) => Number(x.detail.priceMinor) || 0
+// A return from the item page ("back to stock", also how a cancelled website order comes back) writes
+// `soldChannel` / `soldPriceMinor`; a sale's own return writes `channel` / `priceMinor`. Both undo a sale.
+const price = (x: Movement) => Number(x.detail.priceMinor ?? x.detail.soldPriceMinor) || 0
+const channelOf = (x: Movement) => x.detail.channel ?? x.detail.soldChannel
 const inPeriod = (iso: string, p: DateRange | null) => {
   if (!p) return true
   const day = israelDate(new Date(iso))
@@ -127,7 +130,7 @@ export function stockAndSales(items: Item[], movements: Movement[], by: Breakdow
   }
   for (const x of movements) {
     if (!inPeriod(x.at, period)) continue
-    const channel = x.detail.channel
+    const channel = channelOf(x)
     if (x.type === 'sell' && channel === 'in_store') {
       const r = row(groupOf(byId.get(x.itemId), by))
       r.soldInShop += units(x)
@@ -138,6 +141,8 @@ export function stockAndSales(items: Item[], movements: Movement[], by: Breakdow
       r.shopValueMinor -= price(x)
     } else if (x.type === 'sell' && channel === 'website') {
       row(groupOf(byId.get(x.itemId), by)).soldOnline += units(x)
+    } else if (x.type === 'return' && channel === 'website') {
+      row(groupOf(byId.get(x.itemId), by)).soldOnline -= units(x)
     }
   }
   const order = (g: string) => {
@@ -159,3 +164,6 @@ export function stockAndSales(items: Item[], movements: Movement[], by: Breakdow
 export function breakdownTotals(rows: BreakdownRow[]): Omit<BreakdownRow, 'group'> {
   return rows.reduce((t, r) => ({ stock: t.stock + r.stock, inShop: t.inShop + r.inShop, soldInShop: t.soldInShop + r.soldInShop, shopValueMinor: t.shopValueMinor + r.shopValueMinor, soldOnline: t.soldOnline + r.soldOnline }), { stock: 0, inShop: 0, soldInShop: 0, shopValueMinor: 0, soldOnline: 0 })
 }
+
+/** Items sold in the period, shop and website together, net of returns: the count shop mode shows. */
+export const soldUnits = (r: BreakdownRow) => r.soldInShop + r.soldOnline

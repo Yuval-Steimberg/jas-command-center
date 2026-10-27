@@ -1,5 +1,5 @@
 import 'server-only'
-import { can, type Product, type Role } from '@/lib/auth/rbac'
+import { PRODUCTS, can, canReadAnalytics, type Product, type Role } from '@/lib/auth/rbac'
 import { loadOverrides } from '@/lib/auth/session'
 import { authMode } from '@/lib/auth/mode'
 import { env } from '@/lib/env'
@@ -20,13 +20,13 @@ import { reportsDue } from './schedule'
  * Nothing is sent until SENDGRID_API_KEY + ALERT_EMAIL_FROM are set; until then
  * these return `skipped`, they never pretend to have sent.
  */
-interface Recipient { id: string; email: string; role: Role; canRead: (p: Product) => boolean }
+interface Recipient { id: string; email: string; role: Role; canRead: (p: Product) => boolean; analytics: (p: Product) => boolean }
 
 async function recipients(): Promise<{ list: Recipient[]; prefs: Awaited<ReturnType<ReturnType<typeof notificationStore>['allPrefs']>> }> {
   const [staff, overrides, prefs] = await Promise.all([listStaff(), loadOverrides(), notificationStore().allPrefs()])
   const list = staff
     .filter((s) => s.active && s.role)
-    .map((s) => ({ id: s.id, email: s.email, role: s.role!, canRead: (p: Product) => can(s.role, `${p}:read`, overrides) }))
+    .map((s) => ({ id: s.id, email: s.email, role: s.role!, canRead: (p: Product) => can(s.role, `${p}:read`, overrides), analytics: (p: Product) => canReadAnalytics(s.role, p, overrides) }))
   return { list, prefs }
 }
 
@@ -96,8 +96,9 @@ export async function emailScheduledReports(now = new Date()): Promise<Record<st
     // One report per distinct permission set, not per person.
     const byAccess = new Map<string, Awaited<ReturnType<typeof loadBusinessReport>>>()
     for (const r of to) {
-      const key = (['website', 'gift_cards', 'furniture', 'design_agent', 'map'] as Product[]).map((p) => (r.canRead(p) ? '1' : '0')).join('')
-      if (!byAccess.has(key)) byAccess.set(key, await loadBusinessReport(kind, r.canRead))
+      // Every product is in the key: two people who differ only in inventory or CRM access must not share a report.
+      const key = PRODUCTS.map((p) => (r.analytics(p) ? '1' : '0')).join('')
+      if (!byAccess.has(key)) byAccess.set(key, await loadBusinessReport(kind, r.analytics))
       const report = byAccess.get(key)!
       const res = await sendEmail(r.email, `[JAS] ${REPORT_KINDS[kind].label} report · ${report.period}`, `${reportMarkdown(report, base)}\n\nChange what you receive: ${base}/settings/notifications\n`)
       if (res.ok) sent++
