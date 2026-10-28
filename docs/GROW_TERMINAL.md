@@ -12,8 +12,9 @@ update records the payment on the sale. Code: `lib/payments/grow-terminal.ts`
    `notifyUrl` = `/api/webhooks/grow?token=…` and `cField1` = our charge id.
    Grow returns a url. Nothing is recorded as paid.
 2. Seller opens **שליחה למסופון** (that url) on the phone/computer running
-   /shop, NOT on the terminal, and keeps it open. The GROW app on the terminal must
-   already be open on its home screen (a Grow POS terminal: "מסופון סליקה").
+   /shop, NOT on the terminal, and keeps it open. The terminal must have the
+   "מסופון סליקה" app open on its home screen, NOT the GROW app (Grow support,
+   2026-10-28: with the GROW app open the link falls back to a card-entry page).
 3. Customer pays on the terminal. Grow sends a server update; we record a
    `card` payment of exactly what Grow says was charged (request id
    `grow:<transactionId>`, so a repeated update records once), mark the charge
