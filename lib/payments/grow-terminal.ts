@@ -128,7 +128,7 @@ const fullNameFor = (name: string | null) => {
 
 export function createProcessForm(
   c: GrowTerminalConfig,
-  p: { amountMinor: number; deviceKey: string; chargeId: string; description: string; notifyUrl: string; fullName: string | null; phone: string | null },
+  p: { amountMinor: number; deviceKey: string; chargeId: string; description: string; notifyUrl: string; returnUrl: string; fullName: string | null; phone: string | null },
 ): URLSearchParams {
   const f = new URLSearchParams()
   f.set('pageCode', c.pageCode)
@@ -140,6 +140,9 @@ export function createProcessForm(
   // One payment. Grow rejects maxPayments=1 (it must be 2–12); paymentNum=1 is its single-payment form.
   f.set('paymentNum', '1')
   f.set('notifyUrl', p.notifyUrl)
+  // Grow requires both, or it falls back to its card-entry page instead of the terminal. Both return to the sale.
+  f.set('successUrl', `${p.returnUrl}?terminal=success`)
+  f.set('cancelUrl', `${p.returnUrl}?terminal=cancel`)
   // Echoed back on the server update, so the update names the exact charge.
   f.set('cField1', p.chargeId)
   f.set('pageField[fullName]', fullNameFor(p.fullName))
