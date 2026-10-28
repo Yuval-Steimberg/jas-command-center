@@ -32,15 +32,15 @@ describe('configuration', () => {
 
 describe('createPaymentProcess', () => {
   it('sends the dedicated page, the device, the amount in shekels and the charge id', () => {
-    const f = createProcessForm(on({ apiKey: 'ak' }), { amountMinor: 12550, deviceKey: 'dk-1', chargeId: 'c-1', description: 'S-00001', notifyUrl: 'https://cc.test/api/webhooks/grow?token=t', fullName: null, phone: null })
+    const f = createProcessForm(on({ apiKey: 'ak' }), { amountMinor: 12550, deviceKey: 'dk-1', chargeId: 'c-1', description: 'S-00001', notifyUrl: 'https://cc.test/api/webhooks/grow?token=t', returnUrl: 'https://cc.test/shop/sales/s1', fullName: null, phone: null })
     expect(f.has('maxPayments')).toBe(false)
-    expect(Object.fromEntries(f)).toMatchObject({ pageCode: 'pc', userId: 'u1', apiKey: 'ak', deviceKey: 'dk-1', sum: '125.50', paymentNum: '1', cField1: 'c-1', 'pageField[fullName]': WALK_IN_NAME })
+    expect(Object.fromEntries(f)).toMatchObject({ pageCode: 'pc', userId: 'u1', apiKey: 'ak', deviceKey: 'dk-1', sum: '125.50', paymentNum: '1', cField1: 'c-1', 'pageField[fullName]': WALK_IN_NAME, successUrl: 'https://cc.test/shop/sales/s1?terminal=success', cancelUrl: 'https://cc.test/shop/sales/s1?terminal=cancel' })
     // Grow refuses a charge without a phone: a walk-in sends the shop's number.
     expect(f.get('pageField[phone]')).toBe(SHOP_PHONE)
-    const named = createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', fullName: 'נועה', phone: '+972 54-123-4567' })
+    const named = createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', returnUrl: 'https://x/s', fullName: 'נועה', phone: '+972 54-123-4567' })
     expect(named.get('pageField[phone]')).toBe('0541234567')
     expect(named.get('pageField[fullName]')).toBe(WALK_IN_NAME)
-    expect(createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', fullName: 'Dana Levi', phone: '03-1234567' }).get('pageField[phone]')).toBe(SHOP_PHONE)
+    expect(createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', returnUrl: 'https://x/s', fullName: 'Dana Levi', phone: '03-1234567' }).get('pageField[phone]')).toBe(SHOP_PHONE)
     expect([israeliMobile('058-787-6549'), israeliMobile('12345'), israeliMobile(null)]).toEqual(['0587876549', null, null])
   })
   it('takes the url from a success and the message from a refusal', () => {

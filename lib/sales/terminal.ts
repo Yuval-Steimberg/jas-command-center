@@ -95,7 +95,7 @@ export async function startTerminalCharge(saleId: string, amountMinor: number, d
   let res
   try {
     res = parseProcessResponse(await post(c, 'createPaymentProcess', createProcessForm(c, {
-      amountMinor, deviceKey: device.key, chargeId: charge.id, description: `Just A Second ${detail.sale.number}`, notifyUrl: notifyUrl(c), fullName, phone,
+      amountMinor, deviceKey: device.key, chargeId: charge.id, description: `Just A Second ${detail.sale.number}`, notifyUrl: notifyUrl(c), returnUrl: `${env().cc.appUrl}/shop/sales/${saleId}`, fullName, phone,
     })))
   } catch (e) {
     res = { ok: false as const, message: why(e) }
