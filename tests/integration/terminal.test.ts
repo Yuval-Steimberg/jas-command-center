@@ -65,8 +65,9 @@ const money = async (id: string) => { const d = (await getSalesStore().getSale(i
 describe('off until configured', () => {
   it('refuses to charge, names what is missing, and the webhook does not exist', async () => {
     const { sale: s } = await sale()
-    expect(await startTerminalCharge(s.id, 50000, null, 'r-1', actor)).toMatchObject({ ok: false, message: expect.stringContaining('GROW_USER_ID') })
-    expect(await terminalView(s.id)).toMatchObject({ on: false, missing: expect.arrayContaining(['GROW_TERMINAL_DEVICES']) })
+    // The shop's Grow account ids are built in; the webhook secret never is.
+    expect(await startTerminalCharge(s.id, 50000, null, 'r-1', actor)).toMatchObject({ ok: false, message: expect.stringContaining('GROW_WEBHOOK_SECRET') })
+    expect(await terminalView(s.id)).toMatchObject({ on: false, missing: ['GROW_WEBHOOK_SECRET (24+ characters)'] })
     expect((await update('x=1')).status).toBe(404)
   })
 })

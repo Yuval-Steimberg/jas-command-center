@@ -1,4 +1,5 @@
 import 'server-only'
+import { JAS_GROW } from '@/lib/payments/grow-terminal'
 
 /**
  * Server-side environment. Parses only — it never throws for a missing value,
@@ -97,10 +98,10 @@ export function env() {
     growTerminal: {
       apiUrl: url('GROW_API_URL'),
       apiPath: read('GROW_API_PATH'),
-      userId: read('GROW_USER_ID'),
+      userId: read('GROW_USER_ID') ?? JAS_GROW.userId,
       apiKey: read('GROW_API_KEY'),
-      pageCode: read('GROW_TERMINAL_PAGE_CODE'),
-      devices: read('GROW_TERMINAL_DEVICES'),
+      pageCode: read('GROW_TERMINAL_PAGE_CODE') ?? JAS_GROW.pageCode,
+      devices: read('GROW_TERMINAL_DEVICES') ?? JAS_GROW.devices,
       webhookSecret: read('GROW_WEBHOOK_SECRET'),
       /** Sent to Grow for a customer without a mobile on file; defaults to the shop's number. */
       phone: read('GROW_TERMINAL_PHONE'),
