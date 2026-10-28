@@ -19,6 +19,7 @@ import { can, type Product } from '@/lib/auth/rbac'
 import { timeAgo } from '@/lib/format'
 import { activityFeed } from '@/lib/activity/feed'
 import { ActivityList } from '@/components/activity-feed'
+import { QuickLinks } from '@/components/quick-links'
 
 export const dynamic = 'force-dynamic'
 
@@ -86,6 +87,7 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
         title={`Good ${greeting()}, ${user.name.split(' ')[0]}`}
         description="Live state of every connected Just A Second system. Each card reads its own source; a source that is not connected says so instead of showing zero."
       />
+      <QuickLinks allowed={(p) => can(user.role, p, overrides)} />
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
           <Suspense fallback={<CardSkeleton rows={2} />}>
