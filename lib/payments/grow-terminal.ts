@@ -45,6 +45,17 @@ export const DEFAULT_GROW_PATH = '/api/light/server/1.0'
 export const TERMINAL_WAIT_MS = 10 * 60 * 1000
 
 /**
+ * The shop's own Grow account, as Grow support sent it (2026-10-28). These are
+ * account identifiers, not credentials: a charge still needs the webhook secret
+ * to be recorded, and Grow only accepts it from this account's terminal flow.
+ * The GROW_* variables override them.
+ */
+export const JAS_GROW = { userId: 'c3d675a2e8469b97', pageCode: '439510662e39', devices: 'מסופון:a3c1ff222e98489d' } as const
+
+/** Keys Grow has replaced: a deployment still holding one sends the new key instead. */
+export const RETIRED_DEVICE_KEYS: Record<string, string> = { '122fcdf308e01f78': 'a3c1ff222e98489d' }
+
+/**
  * "Counter:abc123, Phone:def456" → two named devices; a bare "abc123" → one
  * device called מסופון. Grow supports several deviceKeys per account.
  */
@@ -54,7 +65,8 @@ export function parseDevices(raw: string | undefined): TerminalDevice[] {
   for (const part of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
     const i = part.indexOf(':')
     const name = i > 0 ? part.slice(0, i).trim() : 'מסופון'
-    const key = (i > 0 ? part.slice(i + 1) : part).trim()
+    const raw = (i > 0 ? part.slice(i + 1) : part).trim()
+    const key = RETIRED_DEVICE_KEYS[raw] ?? raw
     if (key && !out.some((d) => d.name === name)) out.push({ name, key })
   }
   return out

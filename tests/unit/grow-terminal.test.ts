@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { SHOP_PHONE, israeliMobile, approveForm, createProcessForm, flattenUpdate, parseDevices, parseProcessResponse, readUpdate, terminalSetup, WALK_IN_NAME } from '@/lib/payments/grow-terminal'
+import { JAS_GROW, SHOP_PHONE, israeliMobile, approveForm, createProcessForm, flattenUpdate, parseDevices, parseProcessResponse, readUpdate, terminalSetup, WALK_IN_NAME } from '@/lib/payments/grow-terminal'
 
 const secret = 's'.repeat(32)
 const on = (over: Record<string, string> = {}) => {
@@ -9,6 +9,11 @@ const on = (over: Record<string, string> = {}) => {
 }
 
 describe('configuration', () => {
+  it('replaces a device key Grow retired, and the shop defaults name the current one', () => {
+    expect(parseDevices('מסופון:122fcdf308e01f78')).toEqual([{ name: 'מסופון', key: 'a3c1ff222e98489d' }])
+    expect(parseDevices(JAS_GROW.devices)).toEqual([{ name: 'מסופון', key: 'a3c1ff222e98489d' }])
+  })
+
   it('stays off and names every missing variable', () => {
     expect(terminalSetup({})).toEqual({ on: false, missing: ['GROW_USER_ID', 'GROW_TERMINAL_PAGE_CODE', 'GROW_TERMINAL_DEVICES', 'GROW_WEBHOOK_SECRET (24+ characters)'] })
     expect(terminalSetup({ userId: 'u', pageCode: 'p', devices: 'k', webhookSecret: 'short' })).toMatchObject({ on: false, missing: ['GROW_WEBHOOK_SECRET (24+ characters)'] })
