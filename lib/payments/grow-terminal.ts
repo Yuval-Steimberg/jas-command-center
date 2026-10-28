@@ -137,7 +137,8 @@ export function createProcessForm(
   f.set('deviceKey', p.deviceKey)
   f.set('sum', growSum(p.amountMinor))
   f.set('description', p.description)
-  f.set('maxPayments', '1')
+  // One payment. Grow rejects maxPayments=1 (it must be 2–12); paymentNum=1 is its single-payment form.
+  f.set('paymentNum', '1')
   f.set('notifyUrl', p.notifyUrl)
   // Echoed back on the server update, so the update names the exact charge.
   f.set('cField1', p.chargeId)

@@ -33,7 +33,8 @@ describe('configuration', () => {
 describe('createPaymentProcess', () => {
   it('sends the dedicated page, the device, the amount in shekels and the charge id', () => {
     const f = createProcessForm(on({ apiKey: 'ak' }), { amountMinor: 12550, deviceKey: 'dk-1', chargeId: 'c-1', description: 'S-00001', notifyUrl: 'https://cc.test/api/webhooks/grow?token=t', fullName: null, phone: null })
-    expect(Object.fromEntries(f)).toMatchObject({ pageCode: 'pc', userId: 'u1', apiKey: 'ak', deviceKey: 'dk-1', sum: '125.50', maxPayments: '1', cField1: 'c-1', 'pageField[fullName]': WALK_IN_NAME })
+    expect(f.has('maxPayments')).toBe(false)
+    expect(Object.fromEntries(f)).toMatchObject({ pageCode: 'pc', userId: 'u1', apiKey: 'ak', deviceKey: 'dk-1', sum: '125.50', paymentNum: '1', cField1: 'c-1', 'pageField[fullName]': WALK_IN_NAME })
     // Grow refuses a charge without a phone: a walk-in sends the shop's number.
     expect(f.get('pageField[phone]')).toBe(SHOP_PHONE)
     const named = createProcessForm(on({}), { amountMinor: 100, deviceKey: 'dk', chargeId: 'c', description: 'd', notifyUrl: 'https://x', fullName: 'נועה', phone: '+972 54-123-4567' })
