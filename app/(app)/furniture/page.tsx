@@ -4,7 +4,8 @@ import { Freshness, SourceProblem } from '@/components/ui/source-state'
 import { CapabilityList } from '@/components/capabilities'
 import { Progress } from '@/components/progress'
 import { furnitureAdapter, getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
-import { requirePageAccess } from '@/lib/auth/session'
+import { getSession, requirePageAccess } from '@/lib/auth/session'
+import { can } from '@/lib/auth/rbac'
 import { env } from '@/lib/env'
 import { cn } from '@/lib/cn'
 
@@ -15,12 +16,19 @@ export default async function FurniturePage({ searchParams }: { searchParams?: R
   const showArchived = searchParams?.archived === '1'
   const r = await getFurnitureProjects()
   const appUrl = env().furniture.appUrl
+  const s = (await getSession())!
+  const write = can(s.user.role, 'furniture:write', s.overrides)
   return (
     <>
       <PageHeader
         title="Furniture collection"
-        description="Projects and progress from the field app's database, using the app's own summary view. Weight, diversion and CO₂ stay in the app's reports: its rules allow one place to compute them."
-        actions={appUrl ? <a href={appUrl} target="_blank" rel="noreferrer" className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-sunken">Open field app</a> : null}
+        description="Projects and progress from the field app's database, using the app's own summary view. Weight, diversion and CO₂ are computed by the field app, and every change made here is made by the field app itself."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {write ? <Link href="/furniture/new" className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-sunken">New project</Link> : null}
+            {appUrl ? <a href={appUrl} target="_blank" rel="noreferrer" className="rounded-full border border-line px-3 py-1.5 text-sm hover:bg-sunken">Open field app</a> : null}
+          </div>
+        }
       />
       {r.state !== 'ok' ? (
         <SourceProblem result={r} what="Furniture projects" />

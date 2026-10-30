@@ -1,0 +1,389 @@
+{
+  "ok": true,
+  "destinations": [
+    {
+      "id": "unsorted",
+      "galleryType": "unsorted",
+      "label": "טרם מוין"
+    },
+    {
+      "id": "jas",
+      "galleryType": "jas_collection",
+      "label": "JAS"
+    },
+    {
+      "id": "third_party",
+      "galleryType": "third_party",
+      "label": "צד שלישי"
+    },
+    {
+      "id": "donation",
+      "galleryType": "donation",
+      "label": "תרומה"
+    },
+    {
+      "id": "documentation",
+      "galleryType": "documentation",
+      "label": "תיעוד"
+    }
+  ],
+  "galleryTypes": [
+    "unsorted",
+    "jas_collection",
+    "donation",
+    "documentation",
+    "third_party"
+  ],
+  "itemTypes": [
+    {
+      "id": "furniture",
+      "label": "רהיט"
+    },
+    {
+      "id": "appliance",
+      "label": "מכשיר חשמלי"
+    },
+    {
+      "id": "textile",
+      "label": "טקסטיל"
+    },
+    {
+      "id": "small_item",
+      "label": "פריט קטן"
+    },
+    {
+      "id": "other",
+      "label": "אחר"
+    }
+  ],
+  "materials": [
+    {
+      "id": "glass",
+      "label": "זכוכית"
+    },
+    {
+      "id": "aluminum",
+      "label": "אלומיניום"
+    },
+    {
+      "id": "wood",
+      "label": "עץ"
+    },
+    {
+      "id": "plastic",
+      "label": "פלסטיק"
+    },
+    {
+      "id": "metal",
+      "label": "מתכת"
+    },
+    {
+      "id": "textile",
+      "label": "טקסטיל"
+    },
+    {
+      "id": "electrical",
+      "label": "חשמלי"
+    },
+    {
+      "id": "other",
+      "label": "אחר"
+    }
+  ],
+  "conditions": [
+    {
+      "id": "as_new",
+      "label": "כמו חדש"
+    },
+    {
+      "id": "good",
+      "label": "טוב"
+    },
+    {
+      "id": "needs_repair",
+      "label": "דורש תיקון"
+    },
+    {
+      "id": "scrap_only",
+      "label": "לגריטה בלבד"
+    }
+  ],
+  "difficulties": [
+    {
+      "id": "easy",
+      "label": "קל"
+    },
+    {
+      "id": "moderate",
+      "label": "בינוני"
+    },
+    {
+      "id": "hard",
+      "label": "קשה"
+    }
+  ],
+  "categories": [
+    "שידות",
+    "מדפים",
+    "שולחן אוכל",
+    "שולחן קפה",
+    "כורסא",
+    "ספה",
+    "שרפרפים",
+    "כיסאות",
+    "ארון ויטרינה",
+    "דלתות ארון",
+    "דלת תריס",
+    "ברזים",
+    "כיורים",
+    "גופי תאורה",
+    "ידיות",
+    "מגירות",
+    "מתלים",
+    "חומרי ניקוי",
+    "כלים",
+    "מראות",
+    "תמונות",
+    "שונות",
+    "אופניים",
+    "מזגנים",
+    "חלונות אלומיניום"
+  ],
+  "identityFields": [
+    {
+      "key": "name",
+      "label": "שם הפרויקט",
+      "type": "text",
+      "section": "זיהוי"
+    },
+    {
+      "key": "developer_name",
+      "label": "שם היזם",
+      "type": "text",
+      "section": "זיהוי"
+    },
+    {
+      "key": "city",
+      "label": "עיר",
+      "type": "text",
+      "section": "מיקום"
+    },
+    {
+      "key": "street",
+      "label": "רחוב",
+      "type": "text",
+      "section": "מיקום"
+    },
+    {
+      "key": "building_numbers",
+      "label": "מספר / מספרי בניינים",
+      "type": "text",
+      "section": "מיקום"
+    },
+    {
+      "key": "building_count",
+      "label": "כמות בניינים בפרויקט",
+      "type": "number",
+      "section": "מיקום"
+    },
+    {
+      "key": "entrance_count",
+      "label": "מספר כניסות (בכל בניין)",
+      "type": "number",
+      "section": "מיקום"
+    },
+    {
+      "key": "apartment_count",
+      "label": "מספר דירות כולל בפרויקט לפינוי",
+      "type": "number",
+      "section": "היקף"
+    },
+    {
+      "key": "jas_apartment_count",
+      "label": "מספר דירות לפינוי בפועל על ידי JAS",
+      "type": "number",
+      "section": "היקף"
+    },
+    {
+      "key": "reservists_count",
+      "label": "אנשי מילואים שהועסקו",
+      "type": "number",
+      "section": "השפעה חברתית — לדוח"
+    },
+    {
+      "key": "volunteers_count",
+      "label": "מתנדבים שהשתתפו",
+      "type": "number",
+      "section": "השפעה חברתית — לדוח"
+    },
+    {
+      "key": "social_workdays",
+      "label": "ימי עבודה שנוצרו",
+      "type": "number",
+      "section": "השפעה חברתית — לדוח"
+    },
+    {
+      "key": "community_note",
+      "label": "תרומה לקהילה",
+      "type": "multiline",
+      "section": "השפעה חברתית — לדוח"
+    },
+    {
+      "key": "executive_summary",
+      "label": "תקציר מנהלים",
+      "type": "multiline",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "client_logo_url",
+      "label": "לוגו היזם (כתובת תמונה)",
+      "type": "text",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "cover_image_url",
+      "label": "תמונת שער (כתובת תמונה)",
+      "type": "text",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "summary_image_url",
+      "label": "תמונת תקציר מנהלים (כתובת תמונה)",
+      "type": "text",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "esg_image_e",
+      "label": "תמונת ESG — סביבתי",
+      "type": "text",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "esg_image_s",
+      "label": "תמונת ESG — חברתי",
+      "type": "text",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "esg_image_g",
+      "label": "תמונת ESG — ממשל",
+      "type": "text",
+      "section": "דוח השפעה — תוכן ותמונות"
+    },
+    {
+      "key": "zoning_plan",
+      "label": "תב״ע",
+      "type": "text",
+      "section": "תכנון"
+    },
+    {
+      "key": "parcel",
+      "label": "חלקה",
+      "type": "text",
+      "section": "תכנון"
+    },
+    {
+      "key": "total_sqm",
+      "label": "מ״ר במתחם כולו",
+      "type": "number",
+      "section": "שטחים"
+    },
+    {
+      "key": "jas_dismantle_sqm",
+      "label": "מ״ר לפירוק ע״י JAS",
+      "type": "number",
+      "section": "שטחים"
+    },
+    {
+      "key": "evacuation_letter_date",
+      "label": "תאריך מכתב פינוי",
+      "type": "date",
+      "section": "מועדים"
+    },
+    {
+      "key": "dismantle_start_date",
+      "label": "תחילת עבודת הפירוק",
+      "type": "date",
+      "section": "מועדים"
+    },
+    {
+      "key": "mapping_manager",
+      "label": "מנהל שלב המיפוי",
+      "type": "text",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "collection_manager",
+      "label": "מנהל שלב האיסוף",
+      "type": "text",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "ac_aluminum_contact",
+      "label": "אחראי קשר — מפרק מזגנים ואלומיניום",
+      "type": "text",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "appliances_contact",
+      "label": "אחראי קשר — פינוי מוצרי חשמל",
+      "type": "text",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "donations_contact",
+      "label": "אחראי קשר — תרומות",
+      "type": "text",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "daily_workers_needed",
+      "label": "מספר עובדים נדרש ליום",
+      "type": "number",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "daily_vehicles",
+      "label": "מספר / סוג רכבים ליום עבודה",
+      "type": "text",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "special_tools",
+      "label": "כלי עבודה מיוחדים לפרויקט זה",
+      "type": "multiline",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "special_personnel",
+      "label": "כל אדם מיוחד",
+      "type": "multiline",
+      "section": "מידע JAS"
+    },
+    {
+      "key": "notes",
+      "label": "הערות",
+      "type": "multiline",
+      "section": "הערות"
+    }
+  ],
+  "projectRoles": [
+    {
+      "id": "PROJECT_MANAGER",
+      "label": "מנהל פרויקט"
+    },
+    {
+      "id": "WORKER",
+      "label": "עובד"
+    },
+    {
+      "id": "VIEWER",
+      "label": "צופה"
+    }
+  ],
+  "limits": {
+    "maxBuildings": 50,
+    "maxApartmentsPerEntrance": 200,
+    "maxBatch": 200
+  }
+}

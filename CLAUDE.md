@@ -67,10 +67,17 @@ Website writes (`lib/integrations/website/manage.ts`, pages `/website/orders`, `
 - The owner decided (2026-10-22) to RETIRE the website's /manager: build admin features here, not there.
 
 Furniture writes (`lib/integrations/furniture/manage.ts`, page `/furniture/[id]`):
-- Only column updates the field app itself makes: `projects.archived`, `items.gallery_type` (its
-  trigger derives `intended_for_collection`). Item PATCH is conditional on `updated_at`.
-- Never tick `collected`, finish an apartment or confirm a handover from here: those carry the
-  collector's name and completion rules that live in the app's client code.
+- Direct column updates only for `projects.archived` and one item's `gallery_type` (its trigger derives
+  `intended_for_collection`), conditional on `updated_at`.
+- Everything else goes through the field app's `api/command-center.js` (`runFieldOp` in `field.ts`, server
+  actions in `app/(app)/furniture/manage-actions.ts`): item edit / typed items / photos (+ AI description) /
+  bulk move + delete, apartments, buildings, new project with skeleton (`/furniture/new`), project card
+  (`/[id]/edit`), team (`/[id]/members`), item page (`/[id]/items/[itemId]`). Form labels and enums come from
+  its `GET action=options` (fixture `tests/fixtures/furniture-options.json`): keep no copy here.
+  `furniture:operate` = item work, `furniture:write` = structure, deletes, team. Items are authored by the
+  person's own field-app profile (same email), else `no_field_account`. Project create + flat/building
+  delete need field-app migration `20261030000000` (else `needs_migration`).
+- Stays in the field app: voice, room scan, guided walk, burst camera, inviting new users.
 
 Map writes (`lib/integrations/map/edit.ts` + `github.ts`, page `/map`):
 - A place change (add / edit / remove; the anchor store is never removed) is a pull request on Interactive-map, never a commit to the published branch. `edit.ts`
