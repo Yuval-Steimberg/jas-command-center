@@ -104,7 +104,7 @@ async function Stats({ view, days }: { view: View; days: BreakdownDays }) {
       </p>
       <div className="grid gap-3 lg:grid-cols-3">
         {ORDER.map((b) => (
-          <Bars key={b} title={GROUP_HE[b]} rows={res.data.rows[b].map((r) => ({ label: r.group, value: value(r) })).filter((r) => r.value > 0)} empty={view === 'sales' ? 'לא נמכרו פריטים בתקופה הזו.' : 'אין פריטים במלאי.'} />
+          <Bars key={b} title={GROUP_HE[b]} rows={sortRows(b, res.data.rows[b].map((r) => ({ label: r.group, value: value(r) })).filter((r) => r.value > 0))} empty={view === 'sales' ? 'לא נמכרו פריטים בתקופה הזו.' : 'אין פריטים במלאי.'} />
         ))}
       </div>
       <p className="text-xs text-muted">
@@ -115,6 +115,15 @@ async function Stats({ view, days }: { view: View; days: BreakdownDays }) {
       </p>
     </>
   )
+}
+
+/**
+ * Category and colour read highest first. Renewal keeps its level order
+ * (1 → 4, then no level): it is a scale, and sorting it by count would scramble it.
+ */
+function sortRows(b: Breakdown, rows: { label: string; value: number }[]) {
+  if (b === 'renewal') return rows
+  return [...rows].sort((x, y) => y.value - x.value || x.label.localeCompare(y.label, 'he'))
 }
 
 /** Horizontal bars: one hue (sage), the count written at the end, so it reads without a legend or a percentage. */
