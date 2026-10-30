@@ -15,14 +15,15 @@ import { furnitureHint, headers } from './adapter'
  *  - an item's destination (`gallery_type`). The app's
  *    trg_sync_intended_for_collection trigger derives intended_for_collection
  *    from it, exactly as when a worker moves the item in the app.
- * Ticking an item collected is NOT here: it carries the collector's name and
- * the app's apartment-completion step, which lives in the app's client code.
+ * Everything else (collect, finish, items, photos, flats, buildings, members)
+ * goes through the field app's own endpoint: see field.ts and manage-actions.ts.
  * Item writes are conditional on `updated_at`, so an edit made in the field
  * since this page loaded is never silently overwritten.
  */
 
 /** Destinations in the app's order (src/lib/albums.ts ALBUMS), with its Hebrew labels. */
 export const DESTINATIONS = [
+  { id: 'unsorted', label: 'טרם מוין', hint: 'ממתין למיון' },
   { id: 'jas_collection', label: 'JAS', hint: 'פריטים לאיסוף' },
   { id: 'third_party', label: 'צד שלישי', hint: 'ספק חיצוני' },
   { id: 'donation', label: 'תרומה', hint: 'נאסף ונתרם' },
@@ -74,6 +75,8 @@ export interface FurnitureProjectDetail {
   apartments: FurnitureApartment[]
   items: FurnitureItem[]
   itemsCapped: boolean
+  /** The project's building registry (buildings with no apartment yet included); [] on a database without it. */
+  buildings: string[]
 }
 
 const ITEM_CAP = 2000
@@ -106,18 +109,25 @@ export async function getFurnitureProject(id: string): Promise<SourceResult<Furn
   const r = await readOnce(`furniture:project:${id}`, 'Furniture-Collect Supabase: projects, apartments, items', async () => {
     const h = headers(supabaseKey!)
     const base = `${supabaseUrl}/rest/v1`
-    const [p, a, i] = await Promise.all([
+    const [p, a, i, b] = await Promise.all([
       // select=* for the same reason: street/building_numbers postdate some databases.
       fetchJson(`${base}/projects?select=*&id=eq.${id}`, { headers: h }),
       // select=* so a database with or without the entrance column both answer (PostgREST fails a query naming a missing column).
       fetchJson(`${base}/apartments?select=*&project_id=eq.${id}&order=building_number.asc,apartment_number.asc&limit=1000`, { headers: h }),
       fetchItems(base, h, id),
+      fetchJson(`${base}/project_buildings?select=building_number&project_id=eq.${id}&limit=500`, { headers: h }).catch(() => ({ data: [], latencyMs: 0 })),
     ]).catch((e) => withHint(e, furnitureHint))
     const rows = z.array(project).parse(p.data)
     if (!rows.length) throw new SourceError('project not found', 404, null)
     const items = z.array(item).parse(i.data)
     return {
-      data: { project: rows[0]!, apartments: z.array(apartment.passthrough()).parse(a.data), items, itemsCapped: items.length >= ITEM_CAP },
+      data: {
+        project: rows[0]!,
+        apartments: z.array(apartment.passthrough()).parse(a.data),
+        items,
+        itemsCapped: items.length >= ITEM_CAP,
+        buildings: z.array(z.object({ building_number: z.string() })).catch([]).parse(b.data).map((x) => x.building_number),
+      },
       latencyMs: Math.max(p.latencyMs, a.latencyMs, i.latencyMs),
     }
   })

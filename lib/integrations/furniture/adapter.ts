@@ -93,12 +93,15 @@ export const furnitureAdapter: IntegrationAdapter = {
   },
   capabilities: () => [
     { id: 'projects', label: 'Projects, apartments mapped/completed, items recorded/collected', kind: 'read', status: 'available' },
-    { id: 'inventory', label: 'Per project: apartments, items, destination, collected and by whom', kind: 'read', status: 'available', note: 'Photos stay in the field app (private storage).' },
-    { id: 'archive', label: 'Archive / unarchive a project', kind: 'write', status: 'available', note: 'The same column update as the app’s ⋮ menu.' },
-    { id: 'destination', label: 'Move an item between JAS / third party / donation / documentation', kind: 'write', status: 'available', note: 'Conditional on updated_at; the app’s trigger keeps the collection flag in step.' },
-    { id: 'impact', label: 'Mass, diversion (planned vs confirmed), CO₂', kind: 'read', status: 'needs_source_change', note: 'Only src/lib/reports/kpis.ts may compute these; needs the app to expose its KPI output.' },
+    { id: 'inventory', label: 'Per project: buildings, apartments, items with photos, destination, collected and by whom', kind: 'read', status: 'available' },
+    { id: 'impact', label: 'Mass, diversion (planned vs confirmed), CO₂', kind: 'read', status: 'available', note: 'Computed by the field app’s own projectKpis.' },
     { id: 'reports', label: 'Impact / ESG reports (PDF)', kind: 'read', status: 'available', note: 'Opens the app’s own /reports pages.' },
-    { id: 'collect', label: 'Tick items collected, finish an apartment, confirm a handover', kind: 'write', status: 'not_built', note: 'These carry the collector’s name and the app’s completion rules, which live in the app’s client code. Done in the field app.' },
+    { id: 'archive', label: 'Archive / unarchive a project', kind: 'write', status: 'available' },
+    { id: 'field', label: 'Mark collected, finish / reopen an apartment, confirm a handover', kind: 'write', status: 'available', note: 'Through the field app’s endpoint, with its collector name and completion rules.' },
+    { id: 'items', label: 'Edit every item field, add items by typing, add photos (AI description), move or delete several at once', kind: 'write', status: 'available', note: 'Through the field app’s endpoint; items are recorded under your own field-app account (same email).' },
+    { id: 'structure', label: 'Create a project with its buildings and apartments, edit the project card, add / rename / delete buildings and apartments', kind: 'write', status: 'available', note: 'Creating a project and deleting needs field-app migration 20261030000000. Only empty apartments and buildings can be deleted.' },
+    { id: 'team', label: 'Project team: add people, change their role, remove them', kind: 'write', status: 'available', note: 'New accounts are invited in the field app’s user management (its invite function needs a signed-in admin).' },
+    { id: 'capture', label: 'Voice recording, room scan, guided walk, burst camera', kind: 'write', status: 'not_built', note: 'Need the phone’s microphone or camera in the room; photo upload here covers desk work.' },
   ],
   async health() {
     const e = env().furniture
