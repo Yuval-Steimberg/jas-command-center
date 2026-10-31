@@ -29,7 +29,6 @@ export default async function StaffPage() {
   return (
     <>
       <PageHeader title="Staff" description="Who can sign in to the command center, and with which role. Every change is in the audit log. Deactivate blocks access and can be undone; Delete removes the login for good. You cannot change or delete yourself, and the last active owner cannot be removed." />
-      <p className="mb-4 text-sm"><Link href="/settings" className="underline-offset-2 hover:underline">← Settings</Link></p>
       <div className="flex flex-col gap-4">
         <Card>
           <CardHeader title="Invite someone" meta="Supabase emails them a link to set their password. Expired or lost? Use Send new link below." />

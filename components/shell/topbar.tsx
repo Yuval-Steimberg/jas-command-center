@@ -41,7 +41,7 @@ export function Topbar({ user, nav }: { user: CurrentUser; nav: typeof NAV }) {
         <Search aria-hidden className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-faint" />
         <label>
           <span className="sr-only">Search across systems</span>
-          <input name="q" dir="auto" maxLength={100} placeholder="Search projects, places, designs…" className="h-9 w-full rounded-md border border-line bg-surface ps-8 pe-3 text-sm placeholder:text-faint" />
+          <input name="q" dir="auto" maxLength={100} placeholder="Search items, orders, customers, pages…" className="h-9 w-full rounded-md border border-line bg-surface ps-8 pe-3 text-sm placeholder:text-faint" />
         </label>
       </form>
       <Link href="/search" aria-label="Search" className="grid h-9 w-9 place-items-center rounded-md text-ink hover:bg-sunken md:hidden">

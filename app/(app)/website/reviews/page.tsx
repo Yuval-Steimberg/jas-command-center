@@ -24,9 +24,6 @@ export default async function WebsiteReviewsPage({ searchParams }: { searchParam
   return (
     <>
       <PageHeader title="Website reviews" description="Customer reviews submitted on the website. Approving shows a review on the site; hiding takes it off again; deleting removes it for good." />
-      <p className="mb-4 text-sm">
-        <Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link> · <Link href="/website/content" className="underline-offset-2 hover:underline">Content</Link>
-      </p>
       <nav aria-label="Review filter" className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map(([v, label]) => (
           <Link

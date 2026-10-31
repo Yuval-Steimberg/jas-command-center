@@ -33,9 +33,6 @@ export default async function WebsiteMarketingPage({ searchParams }: { searchPar
   return (
     <>
       <PageHeader title="Website marketing" description="Discount codes used at checkout, newsletter subscribers and the history of sent campaigns, from the website manager's marketing tab." />
-      <p className="mb-4 text-sm">
-        <Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link> · <Link href="/website/orders" className="underline-offset-2 hover:underline">Orders</Link>
-      </p>
       <div className="flex flex-col gap-4">
         <Card>
           <CardHeader title="Discount codes" meta={codes.state === 'ok' ? <Freshness checkedAt={codes.checkedAt} source={codes.source} latencyMs={codes.latencyMs} /> : undefined} />

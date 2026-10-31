@@ -1,3 +1,7 @@
+/* Hallmark · checked: 2026-10-31 · genre: modern-minimal (inferred) · shape: app screen
+ * floor: 0 FAIL · fixed: 9 (tracked-caps nav and section labels), 6 (sidebar focus ring on forest)
+ * waive 26b range-select: a native select, its disabled state is the browser's
+ * built: the project · redesign: navigation (full, app scope) · v2.0.0 */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

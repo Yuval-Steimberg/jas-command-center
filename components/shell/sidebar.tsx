@@ -4,30 +4,23 @@ import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import {
-  LayoutDashboard, Store, MessageCircle, Sofa, MapPinned, Gift, ChartLine, FileText, Sparkles, Bell, Cable, Settings, Menu, X,
-  Users, Package, ShoppingBag, Truck, ListChecks, Factory, HeartHandshake,
-} from 'lucide-react'
+import { Menu, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
-import type { NavItem } from './nav'
+import { isActive, type NavGroup } from './nav'
+import { NAV_ICONS as ICONS } from './icons'
 
-const ICONS = {
-  overview: LayoutDashboard, crm: Users, inventory: Package, sales: ShoppingBag, truck: Truck, tasks: ListChecks, supplier: Factory, volunteers: HeartHandshake, website: Store, agent: MessageCircle, furniture: Sofa, map: MapPinned, gift: Gift,
-  analytics: ChartLine, report: FileText, assistant: Sparkles, bell: Bell, plug: Cable, settings: Settings,
-} as const
 
-function Links({ groups, onNavigate }: { groups: { section: string; items: NavItem[] }[]; onNavigate?: () => void }) {
+function Group({ g, onNavigate }: { g: NavGroup; onNavigate?: () => void }) {
   const path = usePathname()
   const params = useSearchParams()
   const range = params.get('range')
+  const id = `nav-${g.section.replace(/\W+/g, '-').toLowerCase() || 'root'}`
   return (
-    <nav aria-label="Main" className="flex flex-col gap-4">
-      {groups.map((g) => (
-        <div key={g.section || 'root'}>
-          {g.section ? <div className="px-3 pb-1 text-meta font-semibold uppercase tracking-[0.12em] text-cream/50">{g.section}</div> : null}
+        <div role={g.section ? 'group' : undefined} aria-labelledby={g.section ? id : undefined}>
+          {g.section ? <div id={id} className="px-3 pb-1 text-xs font-medium text-cream/55">{g.section}</div> : null}
           <ul className="flex flex-col gap-0.5">
             {g.items.map((it) => {
-              const active = it.href === '/' ? path === '/' : path === it.href || path.startsWith(`${it.href}/`)
+              const active = isActive(path, it.href)
               const Icon = ICONS[it.icon]
               return (
                 <li key={it.href}>
@@ -35,8 +28,9 @@ function Links({ groups, onNavigate }: { groups: { section: string; items: NavIt
                     href={range ? `${it.href}?range=${range}` : it.href}
                     onClick={onNavigate}
                     aria-current={active ? 'page' : undefined}
+                    title={it.hint}
                     className={cn(
-                      'flex min-h-[40px] items-center gap-2.5 rounded-md px-3 text-sm transition-colors duration-150',
+                      'flex min-h-[40px] items-center gap-2.5 rounded-md px-3 text-sm transition-colors duration-150 focus-visible:outline-cream',
                       active ? 'bg-cream/10 font-medium text-cream' : 'text-cream/70 hover:bg-cream/5 hover:text-cream',
                     )}
                   >
@@ -48,7 +42,21 @@ function Links({ groups, onNavigate }: { groups: { section: string; items: NavIt
             })}
           </ul>
         </div>
-      ))}
+  )
+}
+
+/** Task groups at the top; help and setup pinned to the bottom of the column. */
+function Links({ groups, onNavigate }: { groups: NavGroup[]; onNavigate?: () => void }) {
+  const main = groups.filter((g) => !g.footer)
+  const foot = groups.filter((g) => g.footer)
+  return (
+    <nav aria-label="Main" className="flex flex-1 flex-col gap-4">
+      {main.map((g) => <Group key={g.section || 'root'} g={g} onNavigate={onNavigate} />)}
+      {foot.length ? (
+        <div className="mt-auto flex flex-col gap-4 border-t border-cream/10 pt-4">
+          {foot.map((g) => <Group key={g.section} g={g} onNavigate={onNavigate} />)}
+        </div>
+      ) : null}
     </nav>
   )
 }
@@ -65,7 +73,7 @@ function Brand() {
   )
 }
 
-export function Sidebar({ groups }: { groups: { section: string; items: NavItem[] }[] }) {
+export function Sidebar({ groups }: { groups: NavGroup[] }) {
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col gap-6 overflow-y-auto bg-forest px-2 py-4 lg:flex">
       <Brand />
@@ -74,7 +82,7 @@ export function Sidebar({ groups }: { groups: { section: string; items: NavItem[
   )
 }
 
-export function MobileNav({ groups }: { groups: { section: string; items: NavItem[] }[] }) {
+export function MobileNav({ groups }: { groups: NavGroup[] }) {
   const [open, setOpen] = useState(false)
   const path = usePathname()
   useEffect(() => setOpen(false), [path])
@@ -97,7 +105,7 @@ export function MobileNav({ groups }: { groups: { section: string; items: NavIte
           <div className="absolute inset-y-0 start-0 flex w-72 max-w-[85vw] flex-col gap-6 overflow-y-auto bg-forest px-2 py-4">
             <div className="flex items-center justify-between pe-2">
               <Brand />
-              <button type="button" onClick={() => setOpen(false)} aria-label="Close navigation" className="grid h-10 w-10 place-items-center rounded-md text-cream hover:bg-cream/10">
+              <button type="button" onClick={() => setOpen(false)} aria-label="Close navigation" className="grid h-10 w-10 place-items-center rounded-md text-cream hover:bg-cream/10 focus-visible:outline-cream">
                 <X aria-hidden className="h-5 w-5" />
               </button>
             </div>

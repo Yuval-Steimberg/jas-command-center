@@ -25,7 +25,7 @@ export default async function WebsiteProductsPage({ searchParams }: { searchPara
         title="Website products"
         description="Everything the website manager's products tab does: create, edit every field, publish, delete, categories and the low-stock alert. Saved through the website's own endpoint with its product form's rules; an edit made by someone else since you loaded the page is refused, never overwritten."
       />
-      <p className="mb-4 text-sm"><Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link> · <Link href="/website/orders" className="underline-offset-2 hover:underline">Orders</Link>{write ? <> · <Link href="/website/products/new" className="font-medium underline-offset-2 hover:underline">New product</Link></> : null}</p>
+      {write ? <p className="mb-4 text-sm"><Link href="/website/products/new" className="font-medium underline-offset-2 hover:underline">New product</Link></p> : null}
       {searchParams?.deleted ? <p role="status" className="mb-3 text-sm text-ok">Product deleted.</p> : null}
       <Card>
         <CardHeader title="Products" meta={r.state === 'ok' ? <Freshness checkedAt={r.checkedAt} source={r.source} latencyMs={r.latencyMs} /> : undefined} />

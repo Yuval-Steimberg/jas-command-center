@@ -51,17 +51,8 @@ export default async function InventoryPage({ searchParams }: { searchParams?: {
     <>
       <PageHeader
         title="Inventory"
-        description="Every physical item after intake: where it is, its condition, and its way to a buyer, a donation or recycling. Once listed, the website owns the item's price, visibility and stock; this page reads them live. Products added on the website itself (the phone studio) come in by the hourly sync; older ones are listed below until someone brings them in."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            {may('inventory:operate') ? <Link href="/inventory/intake" className={btn}>Intake from collections</Link> : null}
-            {may('inventory:operate') ? <Link href="/inventory/website" className={btn}>From the website</Link> : null}
-            {may('website:write') ? <Link href="/inventory/online" className={btn}>Website shop</Link> : null}
-            {may('inventory:write') ? <Link href="/inventory/new" className={btn}>Add an item</Link> : null}
-            <Link href="/inventory/scan" className={btn}>Scan</Link>
-            <Link href="/inventory/locations" className={btn}>Locations</Link>
-          </div>
-        }
+        description="Everything in storage, from the day it arrives until it is sold, donated or recycled. The tabs above add items, take in collections, scan and print labels. Once an item is listed on the website, its price and stock are read live from the website."
+        actions={may('inventory:write') ? <Link href="/inventory/new" className={btn}>Add an item</Link> : undefined}
       />
       {snap.state === 'ok' ? (
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
