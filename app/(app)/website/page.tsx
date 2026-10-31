@@ -31,11 +31,11 @@ export default async function WebsitePage({ searchParams }: { searchParams?: Rec
   return (
     <>
       <PageHeader
-        title="Website & shop"
-        description="Read from the website's own analytics engine. Revenue comes only from orders in a paid status; checkout and cart events are never counted as sales."
+        title="Website"
+        description="How the website is doing, and everything you can change on it. Sales count only orders that were actually paid, never carts or started checkouts."
       />
       <Card className="mb-4">
-        <CardHeader title="Manage the website" meta="Everything the website's own admin did, edited here." />
+        <CardHeader title="Manage the website" meta="The same pages are in the tabs above." />
         <CardBody className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
           {MANAGE.map(([href, label, desc]) => (
             <Link key={href} href={href} className="rounded-md border border-line px-3 py-2 hover:bg-line/30">

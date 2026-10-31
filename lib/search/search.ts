@@ -1,6 +1,6 @@
 import 'server-only'
 import type { Permission, Product } from '@/lib/auth/rbac'
-import { NAV } from '@/components/shell/nav'
+import { NAV, SECTIONS } from '@/components/shell/nav'
 import { getFurnitureProjects } from '@/lib/integrations/furniture/adapter'
 import { DESTINATIONS, searchFurnitureItems } from '@/lib/integrations/furniture/manage'
 import { searchGiftCards } from '@/lib/integrations/gift-cards/adapter'
@@ -30,9 +30,18 @@ export interface SearchGroup {
  * Only sources the user may read are searched at all.
  */
 export async function searchEverything(query: string, can: (p: Permission) => boolean): Promise<SearchGroup[]> {
-  const pages: SearchDoc[] = NAV.flatMap((s) => s.items)
-    .filter((i) => !i.permission || can(i.permission))
-    .map((i) => ({ title: i.label, subtitle: 'Command center page', href: i.href }))
+  const top = NAV.flatMap((s) => s.items).filter((i) => !i.permission || can(i.permission))
+  const pages: SearchDoc[] = [
+    ...top.map((i) => ({ title: i.label, subtitle: i.hint, href: i.href })),
+    // Pages inside a section ("Intake from collections", "Messages"), found by name too.
+    ...SECTIONS.flatMap((sec) => {
+      const parent = top.find((i) => i.href === sec.base)
+      if (!parent) return []
+      return sec.tabs
+        .filter((t) => t.href !== sec.base && (!t.permission || can(t.permission)))
+        .map((t) => ({ title: t.label, subtitle: parent.label, href: t.href }))
+    }),
+  ]
 
   const fromSource = async <T>(key: string, label: string, product: Product, read: () => Promise<SourceResult<T>>, toDocs: (d: T) => SearchDoc[]): Promise<SearchGroup | null> => {
     if (!can(`${product}:read`)) return null

@@ -18,7 +18,6 @@ export default async function WebsiteBlogPage({ searchParams }: { searchParams?:
     <>
       <PageHeader title="Website blog" description="Posts stored in the website's database (the manager's בלוג tab). Guides that ship with the website's code are not listed here; a post with the same address replaces one." />
       <p className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm">
-        <Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link>
         {write ? <Link href="/website/blog/new" className="ms-auto inline-flex h-10 items-center rounded-full bg-brand px-4 text-sm font-semibold text-forest hover:bg-brand-pressed hover:text-cream">New post</Link> : null}
       </p>
       {searchParams?.deleted ? <p role="status" className="mb-3 text-sm text-ok">Post deleted.</p> : null}

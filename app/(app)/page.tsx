@@ -40,7 +40,7 @@ async function Activity() {
   const feed = await activityFeed((p) => can(s.user.role, p, s.overrides), 15)
   return (
     <Card>
-      <CardHeader title="Activity feed" meta="Alerts, actions taken here, and timestamped source records" />
+      <CardHeader title="Recent activity" meta="What happened lately: alerts, changes made here, new orders and records" />
       <CardBody>
         <ActivityList feed={feed} />
       </CardBody>
@@ -52,7 +52,7 @@ async function Health() {
   const health = await liveHealth()
   return (
     <Card>
-      <CardHeader title="System health" meta="Live probes of each running service" action={<Link href="/integrations" className="text-xs text-muted underline-offset-2 hover:underline">Details</Link>} />
+      <CardHeader title="System status" meta="Is each connected system answering right now" action={<Link href="/integrations" className="text-xs text-muted underline-offset-2 hover:underline">Details</Link>} />
       <CardBody>
         <ul className="divide-y divide-line/70">
           {health.map((h) => {
@@ -84,8 +84,8 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
   return (
     <>
       <PageHeader
-        title={`Good ${greeting()}, ${user.name.split(' ')[0]}`}
-        description="Live state of every connected Just A Second system. Each card reads its own source; a source that is not connected says so instead of showing zero."
+        title="What do you want to do?"
+        description="Pick a task below, or a section from the menu. Anything the systems found that needs a person is listed under Needs attention."
       />
       <QuickLinks allowed={(p) => can(user.role, p, overrides)} />
       <div className="grid gap-4 lg:grid-cols-3">
@@ -100,10 +100,10 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
       </div>
 
       {sees('website') || sees('gift_cards') ? (<>
-      <h2 className="mb-2 mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Revenue sources</h2>
+      <h2 className="mb-1 mt-8 text-base font-semibold text-ink">Money coming in</h2>
       <p className="mb-3 max-w-3xl text-xs text-muted">
-        Website and gift-card figures are shown side by side and never summed: they are separate systems with different periods, and the website checkout also sells its own gift
-        cards, which would be counted twice.
+        Website and gift-card money are shown side by side and never added together: they are separate systems, and the website also sells its own gift cards, so adding them
+        would count some sales twice.
       </p>
       <div className="grid gap-4 xl:grid-cols-2">
         {sees('website') ? (
@@ -119,7 +119,7 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
       </div>
       </>) : null}
 
-      <h2 className="mb-3 mt-6 text-xs font-semibold uppercase tracking-[0.12em] text-muted">Operations</h2>
+      <h2 className="mb-3 mt-8 text-base font-semibold text-ink">Day-to-day work</h2>
       <div className="grid gap-4 xl:grid-cols-3">
         {sees('inventory') ? (
           <Suspense fallback={<CardSkeleton rows={2} />}>
@@ -157,7 +157,3 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
   )
 }
 
-function greeting() {
-  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: 'numeric', hour12: false }).format(new Date()))
-  return h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening'
-}

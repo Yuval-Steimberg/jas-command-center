@@ -53,9 +53,6 @@ export default async function WebsiteContentPage({ searchParams }: { searchParam
         title="Website content"
         description="Every text, image and video the website manager's content tab edits, plus shop hours and partner logos. Saved through the website's own endpoint, which applies the manager's rules and refuses an edit if someone changed the same text since you loaded it."
       />
-      <p className="mb-4 text-sm">
-        <Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link> · <Link href="/website/orders" className="underline-offset-2 hover:underline">Orders</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link>
-      </p>
       {r.state !== 'ok' ? (
         <SourceProblem result={r} what="Website content" />
       ) : (

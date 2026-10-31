@@ -23,7 +23,6 @@ export default async function WebsiteInquiriesPage({ searchParams }: { searchPar
   return (
     <>
       <PageHeader title="Website messages" description="Everything sent through the site's contact, volunteer and equipment-donation forms. Each message is also emailed to the business address." />
-      <p className="mb-4 text-sm"><Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link></p>
       {!r ? (
         <p className="text-sm text-muted">These messages carry names and phone numbers; your role cannot see customer details.</p>
       ) : (

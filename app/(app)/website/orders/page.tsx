@@ -26,9 +26,8 @@ export default async function WebsiteOrdersPage({ searchParams }: { searchParams
     <>
       <PageHeader
         title="Website orders"
-        description="Read from and written to the website's own orders table through its command-center endpoint. Only fulfilment can change here (paid → processing → shipped → delivered), so revenue never moves; payment states, cancellations and refunds stay in the website manager and Grow."
+        description="Orders paid on the website. Move each one along as you prepare it: processing, shipped, delivered. Payments, cancellations and refunds are handled in Grow, not here."
       />
-      <p className="mb-4 text-sm"><Link href="/website" className="underline-offset-2 hover:underline">← Website & shop</Link> · <Link href="/website/products" className="underline-offset-2 hover:underline">Products</Link></p>
       <Card>
         <CardHeader title="Orders" meta={r.state === 'ok' ? <Freshness checkedAt={r.checkedAt} source={r.source} latencyMs={r.latencyMs} /> : undefined} />
         <CardBody>
