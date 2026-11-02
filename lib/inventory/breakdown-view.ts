@@ -2,7 +2,7 @@ import 'server-only'
 import { getOpsStore } from '@/lib/ops'
 import { addDays, israelDate, type DateRange } from '@/lib/time'
 import { matchPlace } from './places'
-import { BREAKDOWNS, isBreakdown, stockAndSales, type Breakdown, type BreakdownRow } from './breakdown'
+import { BREAKDOWNS, isBreakdown, priceBands, stockAndSales, type Breakdown, type BreakdownRow, type PriceBandView } from './breakdown'
 
 export const BREAKDOWN_DAYS = ['30', '90', '365', 'all'] as const
 export type BreakdownDays = (typeof BREAKDOWN_DAYS)[number]
@@ -16,6 +16,8 @@ export interface BreakdownView {
   capped: boolean
   /** False = the reader may not see sales (`inventory:reports`): every sales field is 0 and was never read. */
   sales: boolean
+  /** Only when grouped by price: the items in each range, in stock now and (with `sales`) sold in the period. */
+  bands?: { stock: PriceBandView[]; sales: PriceBandView[] | null }
 }
 
 export function breakdownParams(sp: { by?: string; days?: string } | undefined): { by: Breakdown; days: BreakdownDays } {
@@ -45,12 +47,13 @@ async function readSources(days: BreakdownDays, sales: boolean) {
 /** The "stock and sales by group" card on /inventory: one grouping at a time. */
 export async function loadBreakdown(by: Breakdown, days: BreakdownDays, { sales }: { sales: boolean }): Promise<BreakdownView> {
   const r = await readSources(days, sales)
-  return { rows: stockAndSales(r.items, r.movements, by, r.period, r.shopIds), by, days, shopKnown: r.shopKnown, capped: r.capped, sales }
+  const bands = by === 'price' ? { stock: priceBands(r.items, [], 'stock', null), sales: sales ? priceBands(r.items, r.movements, 'sales', r.period) : null } : undefined
+  return { rows: stockAndSales(r.items, r.movements, by, r.period, r.shopIds), by, days, shopKnown: r.shopKnown, capped: r.capped, sales, bands }
 }
 
-/** Shop mode's home: all three groupings from one read. */
-export async function loadAllBreakdowns(days: BreakdownDays, { sales }: { sales: boolean }): Promise<{ rows: Record<Breakdown, BreakdownRow[]>; days: BreakdownDays; capped: boolean; sales: boolean }> {
+/** Shop mode's home: every grouping from one read, plus the price ranges with their items (stock, or sales when `sales`). */
+export async function loadAllBreakdowns(days: BreakdownDays, { sales }: { sales: boolean }): Promise<{ rows: Record<Breakdown, BreakdownRow[]>; bands: PriceBandView[]; days: BreakdownDays; capped: boolean; sales: boolean }> {
   const r = await readSources(days, sales)
   const rows = Object.fromEntries(BREAKDOWNS.map((b) => [b, stockAndSales(r.items, r.movements, b, r.period, r.shopIds)])) as Record<Breakdown, BreakdownRow[]>
-  return { rows, days, capped: r.capped, sales }
+  return { rows, bands: priceBands(r.items, r.movements, sales ? 'sales' : 'stock', r.period), days, capped: r.capped, sales }
 }

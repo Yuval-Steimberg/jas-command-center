@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { breakdownTotals, groupOf, mainColour, soldUnits, stockAndSales, NO_COLOUR, NO_LEVEL } from '@/lib/inventory/breakdown'
+import { breakdownTotals, groupOf, mainColour, priceBand, priceBands, soldUnits, stockAndSales, NO_COLOUR, NO_LEVEL, NO_PRICE, PRICE_BAND_LABELS } from '@/lib/inventory/breakdown'
 import type { Item, Movement } from '@/lib/ops/types'
 
 const T = '2026-10-20T10:00:00.000Z'
@@ -97,5 +97,60 @@ describe('stockAndSales', () => {
   it('soldUnits adds shop and website units, net of returns', () => {
     const rows = stockAndSales(items, moves, 'category', period)
     expect(rows.map((r) => [r.group, soldUnits(r)])).toEqual([['כיסא', 1], ['כורסה', 2]])
+  })
+})
+
+describe('price ranges', () => {
+  it('bands per unit with inclusive upper bounds', () => {
+    expect(priceBand(10_000)).toBe('עד 100 ₪')
+    expect(priceBand(10_050)).toBe('101–500 ₪')
+    expect(priceBand(50_000)).toBe('101–500 ₪')
+    expect(priceBand(100_000)).toBe('501–1,000 ₪')
+    expect(priceBand(100_100)).toBe('מעל 1,000 ₪')
+    expect(priceBand(null)).toBe(NO_PRICE)
+    expect(priceBand(0)).toBe(NO_PRICE)
+  })
+
+  const items = [
+    item({ id: 'a', title: 'שרפרף', priceMinor: 8_000 }),
+    item({ id: 'b', title: 'כיסא', kind: 'batch', quantity: 3, priceMinor: 25_000, status: 'listed' }),
+    item({ id: 'c', title: 'ספה', priceMinor: 150_000 }),
+    item({ id: 'd', title: 'שידה', priceMinor: 12_000, status: 'sold' }),
+    item({ id: 'e', title: 'כורסה', priceMinor: null }),
+  ]
+  const period = { from: '2026-10-01', to: '2026-10-31' }
+
+  it('stock: share of units and the items in each range, natural order, empty ranges kept', () => {
+    const bands = priceBands(items, [], 'stock', null)
+    expect(bands.map((b) => b.band)).toEqual([...PRICE_BAND_LABELS, NO_PRICE])
+    expect(bands.map((b) => [b.units, b.percent])).toEqual([[1, 17], [3, 50], [0, 0], [1, 17], [1, 16]])
+    expect(bands[1]!.items).toEqual([{ id: 'b', sku: 'JAS-000001', title: 'כיסא', units: 3, unitPriceMinor: 25_000 }])
+    // Same numbers as the table's price rows.
+    const rows = stockAndSales(items, [], 'price', null)
+    expect(rows.map((r) => [r.group, r.stock])).toEqual([['עד 100 ₪', 1], ['101–500 ₪', 3], ['מעל 1,000 ₪', 1], [NO_PRICE, 1]])
+  })
+
+  it('sales: banded by what was paid per unit after discount, net of returns', () => {
+    const moves = [
+      // Listed at ₪120, sold for ₪90 after a discount: a sale "up to 100".
+      move('d', 'sell', { channel: 'in_store', priceMinor: 9_000, units: 1 }),
+      // 2 chairs for ₪400 = ₪200 each; one comes back.
+      move('b', 'sell', { channel: 'in_store', priceMinor: 40_000, units: 2 }),
+      move('b', 'return', { channel: 'in_store', priceMinor: 20_000, units: 1 }),
+      // A website line of ₪1,200.
+      move('c', 'sell', { channel: 'website', lineTotalMinor: 120_000, units: 1 }),
+      move('a', 'sell', { channel: 'in_store', priceMinor: 8_000, units: 1 }, '2026-09-01T10:00:00.000Z'),
+    ]
+    const bands = priceBands(items, moves, 'sales', period)
+    expect(bands.map((b) => [b.band, b.units, b.percent])).toEqual([['עד 100 ₪', 1, 34], ['101–500 ₪', 1, 33], ['501–1,000 ₪', 0, 0], ['מעל 1,000 ₪', 1, 33]])
+    expect(bands[0]!.items.map((i) => [i.id, i.unitPriceMinor])).toEqual([['d', 9_000]])
+    const rows = stockAndSales(items, moves, 'price', period)
+    expect(rows.find((r) => r.group === 'עד 100 ₪')).toMatchObject({ soldInShop: 1, shopValueMinor: 9_000 })
+    expect(rows.find((r) => r.group === '101–500 ₪')).toMatchObject({ soldInShop: 1, shopValueMinor: 20_000 })
+    expect(rows.find((r) => r.group === 'מעל 1,000 ₪')).toMatchObject({ soldOnline: 1 })
+  })
+
+  it('nothing at all: every range at 0%', () => {
+    expect(priceBands([], [], 'sales', period).every((b) => b.units === 0 && b.percent === 0)).toBe(true)
   })
 })

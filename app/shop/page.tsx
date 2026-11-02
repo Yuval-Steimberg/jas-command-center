@@ -5,6 +5,7 @@ import { getSession } from '@/lib/auth/session'
 import { can, ROLE_LABELS_HE, type Permission } from '@/lib/auth/rbac'
 import { loadOps } from '@/lib/ops/guard'
 import { soldUnits, type Breakdown, type BreakdownRow } from '@/lib/inventory/breakdown'
+import { PriceBands } from '@/components/inventory/price-bands'
 import { BREAKDOWN_DAYS, isBreakdownDays, loadAllBreakdowns, type BreakdownDays } from '@/lib/inventory/breakdown-view'
 
 export const dynamic = 'force-dynamic'
@@ -82,8 +83,8 @@ export default async function ShopHome({ searchParams }: { searchParams?: { view
 }
 
 const DAYS_HE: Record<BreakdownDays, string> = { '30': '30 ימים', '90': '90 ימים', '365': '12 חודשים', all: 'מאז ומעולם' }
-const GROUP_HE: Record<Breakdown, string> = { renewal: 'לפי רמת חידוש', category: 'לפי קטגוריה', colour: 'לפי צבע' }
-// The order the brief asks for: renewal level, category, colour.
+const GROUP_HE: Record<Breakdown, string> = { renewal: 'לפי רמת חידוש', category: 'לפי קטגוריה', colour: 'לפי צבע', price: 'לפי מחיר' }
+// The order the brief asks for: renewal level, category, colour. Price has its own section above them, with its items.
 const ORDER: Breakdown[] = ['renewal', 'category', 'colour']
 
 /**
@@ -102,6 +103,11 @@ async function Stats({ view, days }: { view: View; days: BreakdownDays }) {
       <p className="num text-sm text-muted">
         {view === 'sales' ? `${total} פריטים נמכרו ב${DAYS_HE[days]}${days === 'all' ? '' : ' האחרונים'}` : `${total} פריטים במלאי עכשיו`}
       </p>
+      <div className="flex flex-col gap-2">
+        <h3 className="text-base font-bold text-ink">{GROUP_HE.price}</h3>
+        {/* Count-only in shop mode: the sales view lists the items sold, never what they were sold for. */}
+        <PriceBands bands={res.data.bands} itemHref={(id) => `/shop/items/${id}`} showPrice={view === 'stock'} />
+      </div>
       <div className="grid gap-3 lg:grid-cols-3">
         {ORDER.map((b) => (
           <Bars key={b} title={GROUP_HE[b]} rows={sortRows(b, res.data.rows[b].map((r) => ({ label: r.group, value: value(r) })).filter((r) => r.value > 0))} empty={view === 'sales' ? 'לא נמכרו פריטים בתקופה הזו.' : 'אין פריטים במלאי.'} />
@@ -109,8 +115,8 @@ async function Stats({ view, days }: { view: View; days: BreakdownDays }) {
       </div>
       <p className="text-xs text-muted">
         {view === 'sales'
-          ? 'מספר פריטים, לא סכומים. בחנות ובאתר יחד, בניכוי פריטים שהוחזרו; הזמנה שבוטלה לא נספרת. מכירה משויכת לפי מה שכתוב על הפריט עכשיו.'
-          : 'מספר פריטים במחסן או באתר, בכל מקום. צבע = הצבע הראשון שנכתב על הפריט.'}
+          ? 'מספר פריטים, לא סכומים. בחנות ובאתר יחד, בניכוי פריטים שהוחזרו; הזמנה שבוטלה לא נספרת. מחיר = מה שהלקוח שילם ליחידה, אחרי הנחה. שאר הקבוצות לפי מה שכתוב על הפריט עכשיו.'
+          : 'מספר פריטים במחסן או באתר, בכל מקום. מחיר = המחיר המבוקש ליחידה. צבע = הצבע הראשון שנכתב על הפריט. לחיצה על טווח מחיר מציגה את הפריטים.'}
         {res.data.capped ? ' יש יותר רשומות ממה שנקרא בבת אחת: המספרים עשויים להיות נמוכים.' : ''}
       </p>
     </>
