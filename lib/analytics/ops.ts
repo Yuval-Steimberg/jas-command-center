@@ -130,7 +130,7 @@ export function inventorySection(r: OpsRead, range: DateRange, previous: DateRan
       })
     }
     if (!shop) sec.notes.push('No location is recognised as the shop (a location named חנות), so "In the shop now" is 0.')
-    sec.notes.push('Stock and sales by group: units; a sale is grouped by what the item says now; colour = the main (first) colour, spellings merged; shop sales are net of returns; online sales are counted, their money is website revenue.')
+    sec.notes.push('Stock and sales by group: units; a sale is grouped by what the item says now, except price range (stock by asking price per unit, a sale by what was paid per unit after discount; ranges ≤₪100, ₪101–500, ₪501–1,000, over ₪1,000); colour = the main (first) colour, spellings merged; shop sales are net of returns; online sales are counted, their money is website revenue.')
     if (d.truncated) sec.notes.push('More records than one read returns: period counts are a lower bound.')
   }
   sec.notes.push('Days, counts and values come from the inventory movement log, which is append-only. Furniture collection progress is in its own section.')

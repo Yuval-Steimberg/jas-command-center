@@ -4,6 +4,7 @@ import { cn } from '@/lib/cn'
 import { formatAgorot } from '@/lib/money'
 import { formatCount } from '@/lib/format'
 import { BREAKDOWNS, breakdownTotals, type Breakdown } from '@/lib/inventory/breakdown'
+import { PriceBands } from './price-bands'
 import { BREAKDOWN_DAYS, type BreakdownDays, type BreakdownView } from '@/lib/inventory/breakdown-view'
 
 const COPY = {
@@ -11,12 +12,13 @@ const COPY = {
     title: 'Stock and sales by group',
     stockTitle: 'Stock by group', stockMeta: 'Now',
     meta: (d: string) => `Stock is now · sales are ${d.toLowerCase()}`,
-    groups: { category: 'Category', colour: 'Main colour', renewal: 'Renewal level' } as Record<Breakdown, string>,
+    groups: { category: 'Category', colour: 'Main colour', renewal: 'Renewal level', price: 'Price range' } as Record<Breakdown, string>,
+    bandsStock: 'In stock now, by asking price', bandsSales: (d: string) => `Sold, ${d.toLowerCase()}, by price paid per unit (after discount)`,
     days: { '30': 'Last 30 days', '90': 'Last 90 days', '365': 'Last 12 months', all: 'All time' } as Record<BreakdownDays, string>,
     groupBy: 'Group by', period: 'Sales period',
     cols: ['In stock', 'In the shop', 'Sold in shop', 'Shop sales', 'Sold online'],
     total: 'Total', empty: 'No stock and no sales yet.',
-    note: (shopKnown: boolean) => `Units. In stock = in storage or listed, wherever it is; in the shop = of those, the ones at the shop location${shopKnown ? '' : ' (no location named חנות yet, so not shown)'}. Shop sales are what customers paid, after discounts and returns. Online sales are counted only: their money is in the website's revenue. A sale is grouped by what the item says now; colour is the main (first) colour with spellings merged. Website-only products that never came into inventory are not here.`,
+    note: (shopKnown: boolean) => `Units. In stock = in storage or listed, wherever it is; in the shop = of those, the ones at the shop location${shopKnown ? '' : ' (no location named חנות yet, so not shown)'}. Shop sales are what customers paid, after discounts and returns. Online sales are counted only: their money is in the website's revenue. A sale is grouped by what the item says now, except price range: stock by asking price, a sale by what was paid per unit after discount; colour is the main (first) colour with spellings merged. Website-only products that never came into inventory are not here.`,
     stockNote: (shopKnown: boolean) => `Units. In stock = in storage or listed, wherever it is; in the shop = of those, the ones at the shop location${shopKnown ? '' : ' (no location named חנות yet, so not shown)'}.`,
     capped: ' More records than one read returns: numbers may be low.',
   },
@@ -24,12 +26,13 @@ const COPY = {
     title: 'מלאי ומכירות לפי קבוצה',
     stockTitle: 'מלאי לפי קבוצה', stockMeta: 'נכון לעכשיו',
     meta: (d: string) => `מלאי נכון לעכשיו · מכירות ב${d}`,
-    groups: { category: 'קטגוריה', colour: 'צבע', renewal: 'רמת חידוש' } as Record<Breakdown, string>,
+    groups: { category: 'קטגוריה', colour: 'צבע', renewal: 'רמת חידוש', price: 'טווח מחיר' } as Record<Breakdown, string>,
+    bandsStock: 'במלאי עכשיו, לפי המחיר המבוקש', bandsSales: (d: string) => `נמכרו ב${d}, לפי המחיר ששולם ליחידה (אחרי הנחה)`,
     days: { '30': '30 ימים', '90': '90 ימים', '365': '12 חודשים', all: 'מאז ומעולם' } as Record<BreakdownDays, string>,
     groupBy: 'קיבוץ לפי', period: 'תקופת מכירות',
     cols: ['במלאי', 'בחנות', 'נמכרו בחנות', 'סכום בחנות', 'נמכרו באתר'],
     total: 'סה״כ', empty: 'עוד אין מלאי ואין מכירות.',
-    note: (shopKnown: boolean) => `ביחידות. במלאי = במחסן או באתר, בכל מקום; בחנות = מתוכן, אלה שהמיקום שלהן הוא החנות${shopKnown ? '' : ' (אין עדיין מיקום בשם חנות)'}. סכום בחנות = מה שהלקוחות שילמו, אחרי הנחות והחזרות. מכירות באתר נספרות בלבד: הכסף שלהן בהכנסות האתר. מכירה משויכת לפי מה שכתוב על הפריט עכשיו; צבע = הצבע הראשון, כתיבים שונים מאוחדים.`,
+    note: (shopKnown: boolean) => `ביחידות. במלאי = במחסן או באתר, בכל מקום; בחנות = מתוכן, אלה שהמיקום שלהן הוא החנות${shopKnown ? '' : ' (אין עדיין מיקום בשם חנות)'}. סכום בחנות = מה שהלקוחות שילמו, אחרי הנחות והחזרות. מכירות באתר נספרות בלבד: הכסף שלהן בהכנסות האתר. מכירה משויכת לפי מה שכתוב על הפריט עכשיו, חוץ מטווח מחיר: מלאי לפי המחיר המבוקש, מכירה לפי מה ששולם ליחידה אחרי הנחה; צבע = הצבע הראשון, כתיבים שונים מאוחדים.`,
     stockNote: (shopKnown: boolean) => `ביחידות. במלאי = במחסן או באתר, בכל מקום; בחנות = מתוכן, אלה שהמיקום שלהן הוא החנות${shopKnown ? '' : ' (אין עדיין מיקום בשם חנות)'}.`,
     capped: ' יש יותר רשומות ממה שנקרא בבת אחת: המספרים עשויים להיות נמוכים.',
   },
@@ -110,6 +113,20 @@ export function BreakdownCard({ view, path, keep = {}, lang = 'en', className }:
             </table>
           </div>
         )}
+        {view.bands ? (
+          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-ink">{t.bandsStock}</h3>
+              <PriceBands bands={view.bands.stock} lang={lang} itemHref={(id) => `${lang === 'he' ? '/shop/items' : '/inventory'}/${id}`} />
+            </div>
+            {view.bands.sales ? (
+              <div className="flex flex-col gap-2">
+                <h3 className="text-sm font-semibold text-ink">{t.bandsSales(t.days[days])}</h3>
+                <PriceBands bands={view.bands.sales} lang={lang} itemHref={(id) => `${lang === 'he' ? '/shop/items' : '/inventory'}/${id}`} />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
         <p className="mt-3 text-xs text-muted">{sales ? t.note(shopKnown) : t.stockNote(shopKnown)}{capped ? t.capped : ''}</p>
       </CardBody>
     </Card>

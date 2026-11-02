@@ -22,15 +22,35 @@ import { RENEWAL_LABEL_HE, isRenewalLevel } from './renewal'
  *   in exactly one row and the rows add up to the total.
  */
 
-export const BREAKDOWNS = ['category', 'colour', 'renewal'] as const
+export const BREAKDOWNS = ['category', 'colour', 'renewal', 'price'] as const
 export type Breakdown = (typeof BREAKDOWNS)[number]
-export const BREAKDOWN_LABEL: Record<Breakdown, string> = { category: 'Category', colour: 'Main colour', renewal: 'Renewal level' }
+export const BREAKDOWN_LABEL: Record<Breakdown, string> = { category: 'Category', colour: 'Main colour', renewal: 'Renewal level', price: 'Price range' }
 export const isBreakdown = (v: unknown): v is Breakdown => typeof v === 'string' && (BREAKDOWNS as readonly string[]).includes(v)
 
 export const NO_CATEGORY = 'ללא קטגוריה'
 export const NO_COLOUR = 'ללא צבע'
 export const NO_LEVEL = 'ללא רמה'
 const UNKNOWN_ITEM = 'פריט לא נמצא'
+export const NO_PRICE = 'ללא מחיר'
+
+/**
+ * Price ranges, per UNIT, in agorot (owner's ranges, 2026-11-02). Upper bound inclusive:
+ * ₪100.00 is "up to 100", ₪100.50 is "101–500". Kept in this order on every screen (a scale, never sorted by count).
+ * - Stock is banded by the item's asking price (`priceMinor`) now.
+ * - A shop sale is banded by what the customer paid per unit, after the sale discount (the movement's `priceMinor` / units),
+ *   so an item listed at ₪120 and sold for ₪90 is a sale "up to 100". A website sale by its order line per unit.
+ */
+export const PRICE_BANDS = [
+  { label: 'עד 100 ₪', maxMinor: 10_000 },
+  { label: '101–500 ₪', maxMinor: 50_000 },
+  { label: '501–1,000 ₪', maxMinor: 100_000 },
+  { label: 'מעל 1,000 ₪', maxMinor: Infinity },
+] as const
+export const PRICE_BAND_LABELS: readonly string[] = PRICE_BANDS.map((b) => b.label)
+export function priceBand(minor: number | null | undefined): string {
+  if (minor == null || !Number.isFinite(minor) || minor <= 0) return NO_PRICE
+  return PRICE_BANDS.find((b) => minor <= b.maxMinor)!.label
+}
 
 const strip = (s: string) => s.replace(/[֑-ׇ]/g, '').replace(/[׳'"`]/g, '').replace(/\s+/g, ' ').trim().toLowerCase()
 
@@ -78,6 +98,7 @@ export function groupOf(item: Item | undefined, by: Breakdown): string {
   if (!item) return UNKNOWN_ITEM
   if (by === 'category') return toItemCategory(item.category) ?? (item.category?.replace(/\s+/g, ' ').trim() || NO_CATEGORY)
   if (by === 'colour') return mainColour(item.colors) ?? NO_COLOUR
+  if (by === 'price') return priceBand(item.priceMinor)
   const l = item.renewalLevel
   return l != null && isRenewalLevel(l) ? `${l} · ${RENEWAL_LABEL_HE[l]}` : NO_LEVEL
 }
@@ -101,6 +122,18 @@ const units = (x: Movement) => Math.max(1, Number(x.detail.units) || Math.abs(x.
 // `soldChannel` / `soldPriceMinor`; a sale's own return writes `channel` / `priceMinor`. Both undo a sale.
 const price = (x: Movement) => Number(x.detail.priceMinor ?? x.detail.soldPriceMinor) || 0
 const channelOf = (x: Movement) => x.detail.channel ?? x.detail.soldChannel
+/** Per-unit price a sale (or its return) was made at, or null when the movement does not say. */
+function unitPaid(x: Movement): number | null {
+  const total = Number(x.detail.priceMinor ?? x.detail.soldPriceMinor ?? x.detail.lineTotalMinor)
+  return Number.isFinite(total) && total > 0 ? Math.round(total / units(x)) : null
+}
+/** The group a sale/return movement counts in: for price, what was paid per unit (else the item's price now). */
+function movementGroup(x: Movement, item: Item | undefined, by: Breakdown): string {
+  if (by !== 'price') return groupOf(item, by)
+  const paid = unitPaid(x)
+  if (paid != null) return priceBand(paid)
+  return item ? priceBand(item.soldPriceMinor != null ? Math.round(item.soldPriceMinor / Math.max(1, units(x))) : item.priceMinor) : UNKNOWN_ITEM
+}
 const inPeriod = (iso: string, p: DateRange | null) => {
   if (!p) return true
   const day = israelDate(new Date(iso))
@@ -131,19 +164,14 @@ export function stockAndSales(items: Item[], movements: Movement[], by: Breakdow
   for (const x of movements) {
     if (!inPeriod(x.at, period)) continue
     const channel = channelOf(x)
-    if (x.type === 'sell' && channel === 'in_store') {
-      const r = row(groupOf(byId.get(x.itemId), by))
-      r.soldInShop += units(x)
-      r.shopValueMinor += price(x)
-    } else if (x.type === 'return' && channel === 'in_store') {
-      const r = row(groupOf(byId.get(x.itemId), by))
-      r.soldInShop -= units(x)
-      r.shopValueMinor -= price(x)
-    } else if (x.type === 'sell' && channel === 'website') {
-      row(groupOf(byId.get(x.itemId), by)).soldOnline += units(x)
-    } else if (x.type === 'return' && channel === 'website') {
-      row(groupOf(byId.get(x.itemId), by)).soldOnline -= units(x)
-    }
+    if (x.type !== 'sell' && x.type !== 'return') continue
+    if (channel !== 'in_store' && channel !== 'website') continue
+    const r = row(movementGroup(x, byId.get(x.itemId), by))
+    const sign = x.type === 'sell' ? 1 : -1
+    if (channel === 'in_store') {
+      r.soldInShop += sign * units(x)
+      r.shopValueMinor += sign * price(x)
+    } else r.soldOnline += sign * units(x)
   }
   const order = (g: string) => {
     if (by === 'renewal') {
@@ -154,9 +182,13 @@ export function stockAndSales(items: Item[], movements: Movement[], by: Breakdow
       const k = (ITEM_CATEGORIES as readonly string[]).indexOf(g)
       return k >= 0 ? k : 99
     }
+    if (by === 'price') {
+      const k = PRICE_BAND_LABELS.indexOf(g)
+      return k >= 0 ? k : 99
+    }
     return 0
   }
-  const last = (g: string) => g === NO_CATEGORY || g === NO_COLOUR || g === NO_LEVEL || g === UNKNOWN_ITEM
+  const last = (g: string) => g === NO_CATEGORY || g === NO_COLOUR || g === NO_LEVEL || g === NO_PRICE || g === UNKNOWN_ITEM
   const weight = (r: BreakdownRow) => r.stock + r.soldInShop + r.soldOnline
   return [...rows.values()].sort((a, b) => Number(last(a.group)) - Number(last(b.group)) || order(a.group) - order(b.group) || weight(b) - weight(a) || a.group.localeCompare(b.group, 'he'))
 }
@@ -167,3 +199,66 @@ export function breakdownTotals(rows: BreakdownRow[]): Omit<BreakdownRow, 'group
 
 /** Items sold in the period, shop and website together, net of returns: the count shop mode shows. */
 export const soldUnits = (r: BreakdownRow) => r.soldInShop + r.soldOnline
+
+export interface BandItem {
+  id: string
+  sku: string
+  title: string
+  /** Units in stock now, or sold in the period net of returns. */
+  units: number
+  /** Stock: the asking price per unit. Sales: what was paid per unit, after discount (null for a website sale with no line total). */
+  unitPriceMinor: number | null
+}
+export interface PriceBandView {
+  band: string
+  units: number
+  /** Share of all units in this view, whole percent; the ranges add up to 100 (0 everywhere when there are none). */
+  percent: number
+  items: BandItem[]
+}
+
+/**
+ * Price ranges with the items in each: "what share of what we have / sold is up to ₪100, and which items".
+ * Same rules as `stockAndSales(…, 'price', …)`, so a range's units always equal that row's stock or soldUnits.
+ * Every range is returned, empty ones too (a scale reads wrong with gaps); "no price" only when it has units.
+ */
+export function priceBands(items: Item[], movements: Movement[], view: 'stock' | 'sales', period: DateRange | null): PriceBandView[] {
+  const bands = new Map<string, Map<string, BandItem>>()
+  const add = (band: string, it: Item | undefined, id: string, n: number, unitPrice: number | null) => {
+    let m = bands.get(band)
+    if (!m) bands.set(band, (m = new Map()))
+    const e = m.get(id) ?? { id, sku: it?.sku ?? '', title: it?.title ?? UNKNOWN_ITEM, units: 0, unitPriceMinor: unitPrice }
+    e.units += n
+    if (e.unitPriceMinor == null) e.unitPriceMinor = unitPrice
+    m.set(id, e)
+  }
+  if (view === 'stock') {
+    for (const i of items) if (AVAILABLE.includes(i.status) && i.quantity > 0) add(priceBand(i.priceMinor), i, i.id, i.quantity, i.priceMinor ?? null)
+  } else {
+    const byId = new Map(items.map((i) => [i.id, i]))
+    for (const x of movements) {
+      if (!inPeriod(x.at, period) || (x.type !== 'sell' && x.type !== 'return')) continue
+      const channel = channelOf(x)
+      if (channel !== 'in_store' && channel !== 'website') continue
+      const it = byId.get(x.itemId)
+      const band = movementGroup(x, it, 'price')
+      // One entry per item and price range: a return lands on the range its sale was made in, because it carries the same price.
+      add(band, it, x.itemId, (x.type === 'sell' ? 1 : -1) * units(x), x.type === 'sell' ? unitPaid(x) : null)
+    }
+  }
+  const labels = [...PRICE_BAND_LABELS, ...[...bands.keys()].filter((b) => !PRICE_BAND_LABELS.includes(b)).sort((a, b) => Number(a === NO_PRICE) - Number(b === NO_PRICE) || a.localeCompare(b, 'he'))]
+  const rows = labels.map((band) => {
+    const list = [...(bands.get(band)?.values() ?? [])].filter((e) => e.units > 0)
+      .sort((a, b) => (b.unitPriceMinor ?? 0) - (a.unitPriceMinor ?? 0) || a.title.localeCompare(b.title, 'he'))
+    return { band, units: list.reduce((a, e) => a + e.units, 0), items: list }
+  }).filter((r) => PRICE_BAND_LABELS.includes(r.band) || r.units > 0)
+  const total = rows.reduce((a, r) => a + r.units, 0)
+  // Whole percents that add up to exactly 100 (largest remainder), so the screen never shows 101%.
+  const shares = rows.map((r, k) => {
+    const raw = total ? (r.units / total) * 100 : 0
+    return { k, raw, pct: Math.floor(raw) }
+  })
+  let left = total ? 100 - shares.reduce((a, x) => a + x.pct, 0) : 0
+  for (const x of [...shares].sort((a, b) => b.raw - b.pct - (a.raw - a.pct) || a.k - b.k)) if (left-- > 0) x.pct++
+  return rows.map((r, k) => ({ ...r, percent: shares[k]!.pct }))
+}
