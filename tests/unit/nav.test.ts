@@ -6,7 +6,8 @@ import { can, ROLES } from '@/lib/auth/rbac'
 
 /** The file that renders a console path, and the permission it demands, if any. */
 function pagePermission(href: string): { exists: boolean; permission: string | null } {
-  const base = href.startsWith('/shop') ? join('app', href) : join('app', '(app)', href)
+  // Shop mode and schedule mode live outside the console's (app) group.
+  const base = href.startsWith('/shop') || href.startsWith('/schedule') ? join('app', href) : join('app', '(app)', href)
   const file = join(process.cwd(), base, 'page.tsx')
   if (!existsSync(file)) return { exists: false, permission: null }
   const m = readFileSync(file, 'utf8').match(/requirePageAccess\('([^']+)'\)/)

@@ -18,7 +18,7 @@ const WINDOW_MS = 10 * 60_000
 
 export async function askScheduleAction(raw: { question: string; history: unknown }): Promise<ScheduleAskResult> {
   const s = await currentScheduler()
-  if ('error' in s) return { ok: false, message: 'אין לך הרשאת שיבוץ.' }
+  if ('error' in s) return { ok: false, message: 'אין לך גישה ללוח המתנדבים.' }
   const { apiKey, workspaceId, model } = env().assistant
   if (!apiKey) return { ok: false, message: 'העוזר לא מוגדר: חסר ANTHROPIC_API_KEY בשרת.' }
   const parsed = input.safeParse(raw)
@@ -32,6 +32,7 @@ export async function askScheduleAction(raw: { question: string; history: unknow
       store: s.store,
       locationId: s.location.id,
       today: israelDate(),
+      readOnly: !s.canEdit,
       audit: (entry) => audit(s.user, { ...entry, product: 'volunteers', via: 'assistant' }),
     })
   } catch (e) {
@@ -48,6 +49,7 @@ const DONE: Record<string, string> = {
   cancel_assignment: 'בוצע: השיבוץ בוטל.',
   withdraw_absence: 'בוצע: ההיעדרות בוטלה.',
   set_required: 'בוצע: היעד נשמר.',
+  add_regular: 'בוצע: נוסף/ה לקבועים.',
 }
 
 /**

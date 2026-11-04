@@ -35,8 +35,9 @@ export async function loadDay(s: Scheduler, slotId: string, date: string): Promi
 }
 
 /** What the browser needs to listen to Realtime as the signed-in person (both values are public). */
-export function realtimeConfig(): { url: string | null; anonKey: string | null } {
-  if (authMode().kind !== 'supabase') return { url: null, anonKey: null }
+/** Staff who read through the service role are not on the location's list, so Realtime (RLS) would send them nothing: they poll. */
+export function realtimeConfig(s?: { via: 'location' | 'staff' }): { url: string | null; anonKey: string | null } {
+  if (authMode().kind !== 'supabase' || s?.via === 'staff') return { url: null, anonKey: null }
   const e = env().cc
   return { url: e.supabaseUrl ?? null, anonKey: e.supabaseAnonKey ?? null }
 }

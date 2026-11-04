@@ -11,6 +11,7 @@ const TABS = [
   { href: '/volunteers/calendar', label: 'Calendar' },
   { href: '/volunteers/people', label: 'Volunteers' },
   { href: '/volunteers/reports', label: 'Reports' },
+  { href: '/schedule', label: 'Weekly schedule' },
 ]
 
 export function VolNav({ active }: { active: string }) {

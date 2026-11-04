@@ -123,15 +123,56 @@ shown until they exist.
   do not schedule themselves). `VOLUNTEER_OPEN_SIGNUP=on` on the volunteer app
   brings the activities pages and open registration back.
 
+### Part 2 (migration 0012): location managers, reminders, reservists
+
+- **Two kinds of access per location** (`cc_vol_location_admins.access`):
+  `schedule` (Dafna: changes it) and `view` (Sharon, Gil, Liat: see who is
+  coming, absent and replacing, change nothing). Writes still go only through
+  `cc_vol__admin()`, which now accepts `schedule` only; RLS reads accept both,
+  so a location manager also gets the live (Realtime) view. Command Center staff
+  with `volunteers:read_pii` can open `/schedule` read-only for any location
+  (read with the service role, which the database refuses every schedule write;
+  they refresh every 30 s instead of Realtime). The assistant is read-only for them.
+- **Weekly reminder** (`/schedule/remind`, scheduler only): "can't come? tell us"
+  for the coming week (this week on Sunday). Email: one per volunteer expected
+  that week (regulars + confirmed one-date assignments, not already absent, not
+  on a closed day), dedupe key `sched-reminder:<location>:<week>:<volunteer>`, so
+  pressing twice sends nothing new. The database records each send first
+  (`cc_vol_sched_log_reminder`, scheduler only) in `cc_vol_reminders`, which is
+  the history on the page. **WhatsApp**: there is no WhatsApp sending account
+  (the connected number is the owner's design agent), so the button opens
+  WhatsApp with the text filled in (`wa.me/?text=`) and Dafna picks the
+  volunteers' group; the app records only that it was opened. The page lists
+  who will NOT get an email (no address, or reminders turned off). Not automatic:
+  the spec starts with a coordinator-pressed reminder.
+- **Absence alert**: when a volunteer reports an absence in the app, every
+  scheduler of that location gets an email (who, which date, how the day now
+  stands, link to fill it if the volunteer app has `COMMAND_CENTER_URL`). Sent at
+  once when the day is within ~36 h, otherwise after quiet hours. Best-effort:
+  the absence is already recorded and shown live.
+- **New volunteer from schedule mode** (קבועים → "+ מתנדב/ת חדש/ה"): name, mobile,
+  email (still required: it is the sign-in), reservist, optionally a regular day
+  from today. Weekly reminders are ON for them (being a regular is what the
+  reminder is about; they can turn it off in the app).
+- **Reservist** (`cc_volunteers.reservist`): a "מילואים" mark next to the name,
+  set by the scheduler. Nothing is computed from it.
+- **Assistant**: `propose_add_regular` ("put Ruti on Wednesdays"); read-only for
+  location managers and staff (no `propose_*` tools offered, refused if called).
+- Days Sunday–Friday need no code: a slot row per weekday per location.
+
 ### Owner setup for scheduling
 
 1. Supabase (Command Center project) → SQL Editor → run
-   `supabase/migrations/0011_volunteer_schedule.sql` (idempotent; needs 0005).
-2. `/settings/staff` → invite Dafna with the role **Volunteer scheduler**.
-3. Same page → **Volunteer scheduling** → Sharon's Workshop → Add scheduler → Dafna.
-4. Dafna opens the Command Center on her phone (add to home screen), goes to
+   `supabase/migrations/0011_volunteer_schedule.sql`, then
+   `0012_volunteer_schedule_access.sql` (both idempotent; 0011 needs 0005).
+2. `/settings/staff` → invite Dafna (and Sharon) with the role **Volunteer schedule**.
+3. Same page → **Volunteer schedule** → Sharon's Workshop → Add → Dafna as
+   "Schedules", Sharon as "Location manager (sees it only)".
+4. Volunteer app (Vercel) env, optional: `COMMAND_CENTER_URL` = the Command
+   Center's URL, for the link in the absence email. Redeploy after adding.
+5. Dafna opens the Command Center on her phone (add to home screen), goes to
    קבועים, sets how many are needed each day and adds the regulars.
-5. Check: the volunteer app's `/api/health` now includes `schedule: ok`, and
+6. Check: the volunteer app's `/api/health` now includes `schedule: ok`, and
    the production check shows "Volunteer schedule (migration 0011)" ok.
 
 ## Assistant, analytics, production check

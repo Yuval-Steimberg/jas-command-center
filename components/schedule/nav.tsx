@@ -3,26 +3,28 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { ArrowRight, CalendarDays, MessageCircle, Users } from 'lucide-react'
+import { ArrowRight, BellRing, CalendarDays, MessageCircle, Users } from 'lucide-react'
 
 const TABS = [
-  { href: '/schedule', label: 'השבוע', icon: CalendarDays },
-  { href: '/schedule/team', label: 'קבועים', icon: Users },
-  { href: '/schedule/assistant', label: 'עוזר', icon: MessageCircle },
+  { href: '/schedule', label: 'השבוע', icon: CalendarDays, edit: false },
+  { href: '/schedule/team', label: 'קבועים', icon: Users, edit: false },
+  { href: '/schedule/remind', label: 'תזכורת', icon: BellRing, edit: true },
+  { href: '/schedule/assistant', label: 'עוזר', icon: MessageCircle, edit: false },
 ] as const
 
-const tabOf = (path: string) => (path.startsWith('/schedule/team') ? '/schedule/team' : path.startsWith('/schedule/assistant') ? '/schedule/assistant' : '/schedule')
+const tabOf = (path: string) => TABS.slice(1).find((t) => path.startsWith(t.href))?.href ?? '/schedule'
 
-/** Schedule mode's bottom bar: three places, the same on every screen (like shop mode). */
-export function ScheduleTabBar() {
+/** Schedule mode's bottom bar: the same places on every screen (like shop mode). The reminder is a scheduler's tab. */
+export function ScheduleTabBar({ canEdit }: { canEdit: boolean }) {
   const path = usePathname()
   const [pending, setPending] = useState<string | null>(null)
   useEffect(() => setPending(null), [path])
   const active = tabOf(pending ?? path)
+  const tabs = TABS.filter((t) => canEdit || !t.edit)
   return (
     <nav aria-label="ניווט שיבוץ" className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur print:hidden">
       <ul className="mx-auto flex max-w-3xl">
-        {TABS.map((t) => {
+        {tabs.map((t) => {
           const on = active === t.href
           return (
             <li key={t.href} className="flex-1">

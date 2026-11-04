@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { isDate } from '@shared/volunteers/schedule'
 import { scheduleErrorHe } from '@shared/volunteers/schedule-messages'
 import { currentVolunteer } from '@/lib/session'
-import { getScheduleStore } from '@/lib/schedule'
+import { alertSchedulers, getScheduleStore } from '@/lib/schedule'
 
 export type AbsenceState = { ok?: boolean; message?: string }
 
@@ -24,11 +24,14 @@ export async function reportAbsenceAction(_p: AbsenceState, f: FormData): Promis
   const date = String(f.get('date') ?? '')
   if (!slotId.success || !isDate(date)) return { ok: false, message: 'התאריך לא מוכר. נא לרענן.' }
   const reason = String(f.get('reason') ?? '').trim().slice(0, 300) || null
+  let absence
   try {
-    await getScheduleStore().absence(slotId.data, v.id, date, reason, 'volunteer')
+    absence = await getScheduleStore().absence(slotId.data, v.id, date, reason, 'volunteer')
   } catch (e) {
     return { ok: false, message: scheduleErrorHe(e) }
   }
+  // The scheduler sees it live on the schedule; the email reaches them when they are not looking.
+  await alertSchedulers({ id: absence.id, slotId: slotId.data, volunteerId: v.id, onDate: date, reason }, v.fullName)
   revalidatePath('/')
   redirect(`/?absent=${date}`)
 }

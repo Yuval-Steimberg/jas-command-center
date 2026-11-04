@@ -52,4 +52,6 @@ SQL
 psql ... -d t -f supabase/migrations/0011_volunteer_schedule.sql
 psql ... -d t -f tests/sql/schedule.sql                       # rules, RLS, the write guard
 PGHOST=/tmp/claude-0/pg PGPORT=5544 PGDB=t sh tests/sql/schedule-concurrency.sh   # races
+psql ... -d t -f supabase/migrations/0012_volunteer_schedule_access.sql
+psql ... -d t -f tests/sql/schedule-access.sql                # 0012: viewers change nothing, reminder log
 ```

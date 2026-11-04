@@ -31,7 +31,7 @@ export default async function WeekPage({ searchParams }: { searchParams?: { week
         <Link href={`/schedule?week=${plusDays(week, -7)}`} aria-label="השבוע הקודם" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface hover:bg-sunken"><ChevronRight aria-hidden className="h-5 w-5" /></Link>
         <div className="text-center">
           <h1 className="text-xl font-bold text-ink">{thisWeek ? 'השבוע' : 'שבוע'} <span className="num" dir="ltr">{shortDate(days[0]?.date ?? week)}–{shortDate(days.at(-1)?.date ?? plusDays(week, 6))}</span></h1>
-          <LiveSchedule {...realtimeConfig()} />
+          <LiveSchedule {...realtimeConfig(s)} />
         </div>
         <Link href={`/schedule?week=${plusDays(week, 7)}`} aria-label="השבוע הבא" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-line bg-surface hover:bg-sunken"><ChevronLeft aria-hidden className="h-5 w-5" /></Link>
       </div>

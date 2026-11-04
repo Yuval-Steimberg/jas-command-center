@@ -7,7 +7,7 @@ import { dayLabelHe, hhmm, WEEKDAY_HE, type Candidate, type PersonOnDay } from '
 import { assignAction, cancelAssignmentAction, markAbsentAction, setAssignmentStatusAction, withdrawAbsenceAction } from '@/app/schedule/actions'
 import { ActButton } from '@/components/schedule/act-button'
 import { LiveSchedule } from '@/components/schedule/live'
-import { DayStatus, Phone, Section, Stat, empty, rowCls } from '@/components/schedule/bits'
+import { DayStatus, Phone, Reservist, Section, Stat, empty, rowCls } from '@/components/schedule/bits'
 import { ClosureForm } from '@/components/schedule/forms'
 
 export const dynamic = 'force-dynamic'
@@ -31,6 +31,8 @@ export default async function DayPage({ params, searchParams }: { params: { slot
   if (!res) notFound()
   const { day: d, today } = res
   const past = d.date < today
+  /** Buttons only for a scheduler, and only for today or later. The database refuses anything else anyway. */
+  const edit = s.canEdit && !past
   const name = new Map(res.data.volunteers.map((v) => [v.id, v.fullName]))
   const coming = [...d.regulars, ...d.assigned].filter((p) => p.counted)
   const asked = d.assigned.filter((p) => p.why === 'tentative')
@@ -51,7 +53,7 @@ export default async function DayPage({ params, searchParams }: { params: { slot
           <h1 className="text-2xl font-bold text-ink">{dayLabelHe(d.date)}</h1>
           {hours ? <span className="num text-sm text-muted" dir="ltr">{hours}</span> : null}
         </div>
-        <LiveSchedule {...realtimeConfig()} />
+        <LiveSchedule {...realtimeConfig(s)} />
       </div>
       <div className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4 shadow-card">
         <DayStatus d={d} past={past} big />
@@ -62,7 +64,7 @@ export default async function DayPage({ params, searchParams }: { params: { slot
             <Stat label="חסרים" value={d.missing} tone={d.missing ? 'warn' : undefined} />
           </dl>
         )}
-        {d.required === null && !d.closed ? <Link href="/schedule/team" className="text-sm font-semibold text-forest underline underline-offset-4">לקבוע כמה מתנדבים צריך בימי {WEEKDAY_HE[d.slot.weekday]}</Link> : null}
+        {d.required === null && !d.closed && s.canEdit ? <Link href="/schedule/team" className="text-sm font-semibold text-forest underline underline-offset-4">לקבוע כמה מתנדבים צריך בימי {WEEKDAY_HE[d.slot.weekday]}</Link> : null}
       </div>
       {past ? <p className="rounded-lg bg-sunken px-4 py-3 text-sm text-muted">היום הזה עבר. מוצג כפי שהיה; אי אפשר לשנות אותו.</p> : null}
 
@@ -74,7 +76,7 @@ export default async function DayPage({ params, searchParams }: { params: { slot
                 {coming.map((p) => (
                   <li key={p.volunteer.id} className={rowCls}>
                     <Person p={p} name={name} />
-                    {past ? null : p.basis === 'regular' ? (
+                    {!edit ? null : p.basis === 'regular' ? (
                       <ActButton action={markAbsentAction} args={{ ...base, volunteerId: p.volunteer.id }} label="לא יגיע/תגיע" small confirm={`לרשום ש${p.volunteer.fullName} לא יגיע/תגיע ב${dayLabelHe(d.date)}? רק התאריך הזה; הימים הקבועים לא משתנים.`} />
                     ) : (
                       <ActButton action={cancelAssignmentAction} args={{ assignmentId: p.assignment!.id }} label="ביטול שיבוץ" small tone="danger" confirm={`לבטל את השיבוץ של ${p.volunteer.fullName} ב${dayLabelHe(d.date)}?`} />
@@ -92,7 +94,7 @@ export default async function DayPage({ params, searchParams }: { params: { slot
                 {asked.map((p) => (
                   <li key={p.volunteer.id} className={rowCls}>
                     <Person p={p} name={name} />
-                    {past ? null : (
+                    {!edit ? null : (
                       <>
                         <ActButton action={setAssignmentStatusAction} args={{ assignmentId: p.assignment!.id, status: 'confirmed' as const }} label="אישר/ה שמגיע/ה" small tone="strong" />
                         <ActButton action={cancelAssignmentAction} args={{ assignmentId: p.assignment!.id }} label="לא יכול/ה" small tone="danger" />
@@ -110,14 +112,14 @@ export default async function DayPage({ params, searchParams }: { params: { slot
                 {d.absent.map((p) => (
                   <li key={p.volunteer.id} className={rowCls}>
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-ink">{p.volunteer.fullName}</p>
+                      <p className="font-semibold text-ink">{p.volunteer.fullName}<Reservist on={p.volunteer.reservist} /></p>
                       <p className="text-xs text-muted">
                         {p.absence!.source === 'volunteer' ? 'דיווח/ה באפליקציה' : 'נרשם על ידך'}
                         {p.absence!.reason ? ` · ${p.absence!.reason}` : ''}
                         {covered.has(p.volunteer.id) ? ' · יש מחליף/ה' : ''}
                       </p>
                     </div>
-                    {past ? null : <ActButton action={withdrawAbsenceAction} args={{ absenceId: p.absence!.id }} label="בכל זאת מגיע/ה" small />}
+                    {!edit ? null : <ActButton action={withdrawAbsenceAction} args={{ absenceId: p.absence!.id }} label="בכל זאת מגיע/ה" small />}
                   </li>
                 ))}
               </ul>
@@ -134,8 +136,8 @@ export default async function DayPage({ params, searchParams }: { params: { slot
           {past ? null : (
             <Section title={d.missing ? `מחליפים אפשריים · חסרים ${d.missing}` : 'מתנדבים נוספים'} tone={d.missing ? 'warn' : undefined}>
               <p className="text-xs text-muted">
-                {replaces ? `שיבוץ חדש יירשם כמחליף/ה של ${uncovered[0]!.volunteer.fullName}. ` : ''}
-                “אמר/ה שפנוי/ה” = כך כתוב בפרופיל שלהם, לא אישור לתאריך הזה. אפשר לשבץ ישר, או לסמן “ביקשתי” ולאשר אחרי שענו.
+                {replaces && s.canEdit ? `שיבוץ חדש יירשם כמחליף/ה של ${uncovered[0]!.volunteer.fullName}. ` : ''}
+                “אמר/ה שפנוי/ה” = כך כתוב בפרופיל שלהם, לא אישור לתאריך הזה.{s.canEdit ? ' אפשר לשבץ ישר, או לסמן “ביקשתי” ולאשר אחרי שענו.' : ''}
               </p>
               {candidates.length ? (
                 <ul className="flex flex-col gap-2">
@@ -143,8 +145,12 @@ export default async function DayPage({ params, searchParams }: { params: { slot
                     <li key={c.volunteer.id} className={rowCls}>
                       <CandidateInfo c={c} weekday={d.slot.weekday} />
                       <Phone phone={c.volunteer.phone} />
-                      <ActButton action={assignAction} args={{ ...base, volunteerId: c.volunteer.id, status: 'confirmed' as const, replaces }} label="שיבוץ" small tone="strong" />
-                      <ActButton action={assignAction} args={{ ...base, volunteerId: c.volunteer.id, status: 'tentative' as const, replaces }} label="ביקשתי, ממתין/ה" small />
+                      {s.canEdit ? (
+                        <>
+                          <ActButton action={assignAction} args={{ ...base, volunteerId: c.volunteer.id, status: 'confirmed' as const, replaces }} label="שיבוץ" small tone="strong" />
+                          <ActButton action={assignAction} args={{ ...base, volunteerId: c.volunteer.id, status: 'tentative' as const, replaces }} label="ביקשתי, ממתין/ה" small />
+                        </>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -157,7 +163,7 @@ export default async function DayPage({ params, searchParams }: { params: { slot
         </>
       )}
 
-      {past ? null : <ClosureForm slotId={d.slot.id} date={d.date} closed={d.closed} />}
+      {edit ? <ClosureForm slotId={d.slot.id} date={d.date} closed={d.closed} /> : null}
     </div>
   )
 }
@@ -168,7 +174,7 @@ function Person({ p, name }: { p: PersonOnDay; name: Map<string, string> }) {
   return (
     <>
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-ink">{p.volunteer.fullName}</p>
+        <p className="font-semibold text-ink">{p.volunteer.fullName}<Reservist on={p.volunteer.reservist} /></p>
         <p className="text-xs text-muted">{tag}{p.why === 'inactive' ? ' · חשבון לא פעיל' : ''}</p>
       </div>
       <Phone phone={p.volunteer.phone} />
@@ -179,7 +185,7 @@ function Person({ p, name }: { p: PersonOnDay; name: Map<string, string> }) {
 function CandidateInfo({ c, weekday }: { c: Candidate; weekday: number }) {
   return (
     <div className="min-w-0 flex-1 basis-40">
-      <p className="font-semibold text-ink">{c.volunteer.fullName}</p>
+      <p className="font-semibold text-ink">{c.volunteer.fullName}<Reservist on={c.volunteer.reservist} /></p>
       <p className="text-xs text-muted">
         {c.availability === 'declared' ? <span className="text-forest">אמר/ה שפנוי/ה בימי {WEEKDAY_HE[weekday]}</span> : 'אין מידע על זמינות'}
         {c.regularWeekdays.length ? ` · קבוע/ה בימי ${c.regularWeekdays.map((w) => WEEKDAY_HE[w]).join(', ')}` : ''}

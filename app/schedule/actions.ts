@@ -3,6 +3,8 @@
 import { z } from 'zod'
 import { act, type ActResult } from '@/lib/schedule/act'
 import { isDate } from '@/lib/volunteers/schedule'
+import { getVolunteerStore } from '@/lib/volunteer-store'
+import { israeliMobile, isFullName, normalizeEmail } from '@/lib/volunteers/model'
 
 const id = z.string().min(1).max(64)
 const date = z.string().refine(isDate, 'date')
@@ -68,4 +70,49 @@ export async function setClosureAction(raw: { slotId: string; date: string; clos
   const p = z.object({ slotId: id, date, closed: z.boolean(), reason }).safeParse(raw)
   if (!p.success) return bad
   return act(p.data.closed ? 'close' : 'reopen', `slot:${p.data.slotId}:${p.data.date}`, p.data, p.data.closed ? 'היום סומן כסגור.' : 'היום נפתח מחדש.', (st) => st.setClosure(p.data.slotId, p.data.date, p.data.closed, p.data.reason ?? null))
+}
+
+// ── People ─────────────────────────────────────────────────────────────────
+
+/** The reservist mark next to a name (migration 0012). A scheduler only; written with the volunteer store. */
+export async function setReservistAction(raw: { volunteerId: string; on: boolean }): Promise<ActResult> {
+  const p = z.object({ volunteerId: id, on: z.boolean() }).safeParse(raw)
+  if (!p.success) return bad
+  return act('reservist', `volunteer:${p.data.volunteerId}`, p.data, p.data.on ? 'סומן/ה כמילואים.' : 'הסימון הוסר.', async () => {
+    await getVolunteerStore().updateVolunteer(p.data.volunteerId, { reservist: p.data.on })
+  })
+}
+
+export type NewVolunteerResult = ActResult & { volunteerId?: string }
+
+/**
+ * A new volunteer, registered by the scheduler (phone call, paper, word of mouth),
+ * and optionally made a regular on one weekday at once. They sign in to the
+ * volunteer app later with the same email. Weekly reminders are on: being a
+ * regular is what the reminder is about; they can turn it off in the app.
+ */
+export async function addVolunteerAction(raw: { fullName: string; phone: string; email: string; adult: boolean; agreed: boolean; reservist: boolean; slotId: string | null; from: string }): Promise<NewVolunteerResult> {
+  const fullName = String(raw?.fullName ?? '').trim()
+  const email = normalizeEmail(String(raw?.email ?? ''))
+  const phone = israeliMobile(String(raw?.phone ?? ''))
+  if (!isFullName(fullName)) return { ok: false, message: 'נא לכתוב שם פרטי ושם משפחה.' }
+  if (!phone) return { ok: false, message: 'נא לכתוב מספר נייד ישראלי, למשל 050-1234567.' }
+  if (!email) return { ok: false, message: 'נדרשת כתובת מייל: דרכה נכנסים לאפליקציה ומקבלים תזכורות.' }
+  if (!raw.agreed) return { ok: false, message: 'נא לאשר שהמתנדב/ת הסכים/ה להירשם ושהוא/היא בן/בת 16 ומעלה.' }
+  const slot = raw.slotId ? id.safeParse(raw.slotId) : null
+  if (slot && !slot.success) return bad
+  if (raw.slotId && !isDate(raw.from)) return bad
+  let created: string | undefined
+  const reg = await act('new_volunteer', 'volunteer:new', { source: 'schedule', slotId: raw.slotId }, `${fullName} נרשם/ה.`, async (_st, who) => {
+    const v = await getVolunteerStore().register({
+      fullName, email, phone, adult: Boolean(raw.adult), areas: [], availability: [], skills: [], transport: 'none', about: null,
+      notifyReminders: true, notifyOpportunities: false, consentWhatsapp: false, source: 'staff', actor: `${who} (schedule)`,
+    })
+    created = v.id
+    if (raw.reservist) await getVolunteerStore().updateVolunteer(v.id, { reservist: true }).catch(() => undefined)
+  })
+  if (!reg.ok || !created) return reg
+  if (!raw.slotId) return { ...reg, volunteerId: created }
+  const added = await addRegularAction({ slotId: raw.slotId, volunteerId: created, from: raw.from })
+  return added.ok ? { ok: true, message: `${fullName} נרשם/ה ונוסף/ה לקבועים.`, volunteerId: created } : { ok: false, message: `${fullName} נרשם/ה, אבל ההוספה לקבועים נכשלה: ${added.message}`, volunteerId: created }
 }

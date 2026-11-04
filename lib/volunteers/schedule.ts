@@ -17,6 +17,19 @@ export interface SchedLocation {
   slug: string
   name: string
   active: boolean
+  /** The caller's access (migration 0012): 'schedule' changes it, 'view' only sees it. Absent = not known (treated as schedule before 0012). */
+  access?: 'schedule' | 'view'
+}
+
+/** One "please tell us if you can't come" send (migration 0012). */
+export interface SchedReminder {
+  id: string
+  locationId: string
+  weekStart: string
+  channel: 'email' | 'whatsapp'
+  recipients: number
+  sentBy: string
+  createdAt: string
 }
 
 export interface SchedSlot {
@@ -81,6 +94,8 @@ export interface SchedVolunteer {
   phone: string | null
   availability: AvailabilitySlot[]
   status: VolunteerStatus
+  /** Military reservist (migration 0012). Shown next to the name; nothing is computed from it. */
+  reservist?: boolean
 }
 
 export interface ScheduleData {

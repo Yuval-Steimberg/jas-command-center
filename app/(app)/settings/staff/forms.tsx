@@ -83,17 +83,26 @@ function DangerSubmit() {
   return <button disabled={pending} className="h-10 rounded-full border border-bad/40 px-4 text-sm font-medium text-bad hover:bg-bad/10 disabled:opacity-60">{pending ? 'Deleting…' : 'Delete'}</button>
 }
 
-export function LocationAdminForm({ location, profile, on, label, people }: { location: string; profile?: string; on: boolean; label: string; people?: Opt[] }) {
+export function LocationAdminForm({ location, profile, on, label, people, access }: { location: string; profile?: string; on: boolean; label: string; people?: Opt[]; access?: 'schedule' | 'view' }) {
   const [state, action] = useFormState<StaffState, FormData>(setLocationAdminAction, {})
   return (
     <form action={action} className="flex flex-col gap-1">
       <input type="hidden" name="location" value={location} />
       <input type="hidden" name="on" value={on ? '1' : '0'} />
+      {access && !people ? <input type="hidden" name="access" value={access} /> : null}
       <div className="flex flex-wrap items-center gap-2">
         {people ? (
-          <label><span className="sr-only">Person</span>
-            <select name="profile" required defaultValue="" className="h-10 rounded-md border border-line bg-surface px-2 text-sm"><option value="" disabled>Pick a person…</option>{people.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
-          </label>
+          <>
+            <label><span className="sr-only">Person</span>
+              <select name="profile" required defaultValue="" className="h-10 rounded-md border border-line bg-surface px-2 text-sm"><option value="" disabled>Pick a person…</option>{people.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
+            </label>
+            <label><span className="sr-only">Access</span>
+              <select name="access" defaultValue="schedule" className="h-10 rounded-md border border-line bg-surface px-2 text-sm">
+                <option value="schedule">Schedules (changes it)</option>
+                <option value="view">Location manager (sees it only)</option>
+              </select>
+            </label>
+          </>
         ) : <input type="hidden" name="profile" value={profile} />}
         <Submit label={label} busy="Saving…" />
       </div>

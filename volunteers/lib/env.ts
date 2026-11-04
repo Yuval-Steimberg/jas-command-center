@@ -33,6 +33,8 @@ export function env() {
     replyTo: read('VOLUNTEER_REPLY_TO'),
     teamPhone: read('VOLUNTEER_TEAM_PHONE') ?? '058-787-6549',
     cronSecret: read('CRON_SECRET'),
+    /** The Command Center's public URL: the link in the scheduler's "X will not come" email. Optional. */
+    commandCenterUrl: origin('COMMAND_CENTER_URL'),
     /**
      * 'on' = volunteers may browse activities and sign themselves up for shifts
      * (the phase-1 app). Off by default: scheduling is the scheduler's job, and
