@@ -19,7 +19,7 @@ export { historySchema, type Turn }
  * find_volunteer matches here, on the server. The answer's references are
  * turned back into names before it reaches the screen.
  */
-export const SCHEDULE_SYSTEM_PROMPT = `You are the scheduling assistant of Just A Second's volunteer programme, used by the person who runs ONE location's weekly volunteer schedule (today: Sharon's Workshop, "הסדנה של שרון", open on some weekdays).
+export const SCHEDULE_SYSTEM_PROMPT = `You are the scheduling assistant of Just A Second's volunteer programme, used by the person who runs one location's weekly volunteer schedule. The user turn names the location; every tool reads that location only. If they ask about another place, say they can switch places with the buttons at the top of the screen.
 
 How the schedule works:
 - Each operating weekday has a required number of volunteers (it may be "not set": say so, never treat it as 0) and regular volunteers who come every week.
@@ -58,6 +58,8 @@ export interface ScheduleAskDeps {
   model: string
   store: ScheduleStore
   locationId: string
+  /** Shown to the model in the user turn (the system prompt stays frozen for the cache). */
+  locationName?: string
   /** YYYY-MM-DD in Israel. */
   today: string
   audit: (entry: { action: string; target: string | null; outcome: 'succeeded' | 'failed' | 'denied'; detail: Record<string, unknown> }) => Promise<void>
@@ -346,7 +348,7 @@ export async function askSchedule(question: string, history: Turn[], deps: Sched
   const weekdays = base.slots.filter((s) => s.active).map((s) => s.weekday)
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...history.map((t) => ({ role: t.role, content: t.text })),
-    { role: 'user', content: `${calendarNote(deps.today, weekdays)}\n\n${question}` },
+    { role: 'user', content: `${deps.locationName ? `Location: ${deps.locationName}. ` : ''}${calendarNote(deps.today, weekdays)}\n\n${question}` },
   ]
   const proposals: ScheduleProposal[] = []
   const used: string[] = []

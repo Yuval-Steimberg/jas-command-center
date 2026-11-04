@@ -34,6 +34,19 @@ export async function loadDay(s: Scheduler, slotId: string, date: string): Promi
   return { day: buildDay(data, slot, date), data, today: israelDate() }
 }
 
+/** Which of the person's OTHER places runs this slot (null when none does). */
+export async function placeOfSlot(s: Scheduler, slotId: string, date: string): Promise<string | null> {
+  for (const l of s.locations) {
+    if (l.id === s.location.id) continue
+    try {
+      if (await loadDay({ ...s, location: l }, slotId, date)) return l.id
+    } catch {
+      // Not readable for them: not theirs.
+    }
+  }
+  return null
+}
+
 /** What the browser needs to listen to Realtime as the signed-in person (both values are public). */
 /** Staff who read through the service role are not on the location's list, so Realtime (RLS) would send them nothing: they poll. */
 export function realtimeConfig(s?: { via: 'location' | 'staff' }): { url: string | null; anonKey: string | null } {

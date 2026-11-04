@@ -261,3 +261,7 @@ Volunteer scheduling (`docs/VOLUNTEERS.md` "Scheduling", migration `0011_volunte
   Weekly reminder `/schedule/remind`: email via outbox (dedupe per volunteer per week) + WhatsApp share link (no sending account);
   history in `cc_vol_reminders` (logged by `cc_vol_sched_log_reminder` BEFORE queueing). Volunteer-reported absence emails the
   location's schedulers (`alertSchedulers`, volunteer app). Builders are pure in `lib/volunteers/schedule-reminder.ts`.
+- 0013: three places, Sunday–Friday (בית המלאכה של שרון = Dafna; מתחם כללי = Gil, reservists; חנות הגלריה = Liat). Data only.
+  A person with several places gets a chip row (`PlaceSwitcher`); the choice is the `cc_sched_loc` cookie set by `/schedule/place`
+  (a preference only, validated against their own places; the database still decides). A day link of another of their places
+  (absence email) switches place first (`placeOfSlot`). Absence alerts go to every scheduler of THAT place.

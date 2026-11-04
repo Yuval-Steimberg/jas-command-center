@@ -1,12 +1,14 @@
 import 'server-only'
 import { cache } from 'react'
+import { cookies } from 'next/headers'
 import { authMode } from '@/lib/auth/mode'
 import { supabaseAdmin, supabaseUserClient } from '@/lib/supabase'
 import { getSession, type CurrentUser } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { memoryVolunteerData } from '@/lib/volunteer-store'
-import { memoryScheduleStore, seedSchedule, supabaseScheduleStore, type MemorySchedData, type ScheduleStore } from '@/lib/volunteers/schedule-store'
+import { memoryScheduleStore, seedPlaces, supabaseScheduleStore, type MemorySchedData, type ScheduleStore } from '@/lib/volunteers/schedule-store'
 import type { SchedLocation, SchedVolunteer } from '@/lib/volunteers/schedule'
+import { pickLocation } from './places'
 import type { Volunteer } from '@/lib/volunteers/model'
 
 const g = globalThis as unknown as { __ccSchedData?: MemorySchedData }
@@ -14,7 +16,7 @@ const g = globalThis as unknown as { __ccSchedData?: MemorySchedData }
 /** Dev login only: the memory schedule, the dev owner as Sharon's Workshop's scheduler, and a few demo volunteers. */
 function devData(email: string): MemorySchedData {
   if (!g.__ccSchedData) {
-    g.__ccSchedData = seedSchedule()
+    g.__ccSchedData = seedPlaces()
     const vd = memoryVolunteerData()
     if (!vd.volunteers.length) {
       const t = new Date().toISOString()
@@ -51,10 +53,23 @@ export interface Scheduler {
   user: CurrentUser
   store: ScheduleStore
   location: SchedLocation
+  /** Every place this person may open (the switcher shows when there is more than one). */
+  locations: SchedLocation[]
   /** Shows the buttons that change the schedule. The database decides regardless (only a 'schedule' access can write). */
   canEdit: boolean
   /** How this person sees it: a scheduler or location manager of the place, or Command Center staff with volunteers:read (read-only, everything). */
   via: 'location' | 'staff'
+}
+
+/** The cookie that remembers which place the person last opened (a preference only: the database decides access). */
+export const LOCATION_COOKIE = 'cc_sched_loc'
+
+function preferredLocation(): string | null {
+  try {
+    return cookies().get(LOCATION_COOKIE)?.value ?? null
+  } catch {
+    return null
+  }
 }
 
 /** The signed-in scheduler and their location, or null (not signed in, or schedules nothing). One per request. */
@@ -63,17 +78,17 @@ export const currentScheduler = cache(async (): Promise<Scheduler | { error: 'si
   if (!s) return { error: 'signed_out' }
   const store = scheduleStoreFor(s.user)
   try {
-    // Phase 1 has one location. A second one would add a picker here, nothing else.
     const mine = await store.myLocations()
-    const location = mine.find((l) => l.access !== 'view') ?? mine[0]
-    if (location) return { user: s.user, store, location, canEdit: location.access !== 'view', via: 'location' }
+    const location = pickLocation(mine, preferredLocation())
+    if (location) return { user: s.user, store, location, locations: mine, canEdit: location.access !== 'view', via: 'location' }
     // Command Center staff who may see volunteers' names (volunteers:read_pii) see every location, read-only. Read with the
     // service role (they are not on the location's list, so RLS shows them nothing); the database
     // refuses the service role every schedule write, so this store cannot change anything.
     if (authMode().kind === 'supabase' && can(s.user.role, 'volunteers:read_pii', s.overrides)) {
       const all = supabaseScheduleStore(supabaseAdmin())
-      const [first] = await all.myLocations()
-      if (first) return { user: s.user, store: all, location: { ...first, access: 'view' }, canEdit: false, via: 'staff' }
+      const every = (await all.myLocations()).map((l) => ({ ...l, access: 'view' as const }))
+      const chosen = pickLocation(every, preferredLocation())
+      if (chosen) return { user: s.user, store: all, location: chosen, locations: every, canEdit: false, via: 'staff' }
     }
     return { error: 'not_scheduler' }
   } catch (e) {
@@ -91,7 +106,7 @@ export interface LocationAdmins {
 /** Written with the service role: granting is staff management (users:manage), not scheduling. */
 export async function listLocationAdmins(): Promise<LocationAdmins[]> {
   if (authMode().kind !== 'supabase') {
-    const d = g.__ccSchedData ?? seedSchedule()
+    const d = g.__ccSchedData ?? seedPlaces()
     return d.locations.map((location) => ({ location, admins: d.admins.filter((a) => a.locationId === location.id).map((a) => ({ profileId: a.email, email: a.email, name: a.email, access: a.access ?? 'schedule' })) }))
   }
   const db = supabaseAdmin()

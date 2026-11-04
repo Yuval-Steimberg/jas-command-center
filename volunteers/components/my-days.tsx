@@ -41,7 +41,7 @@ export function MyDays({ data, volunteerId, today, justReported, back }: { data:
                       : d.absence ? <Pill tone="warn"><CalendarX aria-hidden className="h-3.5 w-3.5" />לא מגיעים</Pill>
                       : <Pill tone="ok"><CalendarCheck aria-hidden className="h-3.5 w-3.5" />{d.basis === 'assigned' ? 'שובצתם' : 'מגיעים'}</Pill>}
                   </div>
-                  {d.closed ? <p className="mt-2 text-sm text-slate">הסדנה סגורה ביום הזה{d.closed.reason ? ` (${d.closed.reason})` : ''}. אין צורך להגיע.</p>
+                  {d.closed ? <p className="mt-2 text-sm text-slate">סגור ביום הזה{d.closed.reason ? ` (${d.closed.reason})` : ''}. אין צורך להגיע.</p>
                     : d.absence ? <div className="mt-3"><p className="mb-1 text-sm text-slate">נרשם שלא תגיעו{d.absence.reason ? `: ${d.absence.reason}` : ''}.</p><WithdrawAbsence absenceId={d.absence.id} /></div>
                     : <div className="mt-3"><ReportAbsence slotId={d.slot.id} date={d.date} label={label} /></div>}
                 </Card>

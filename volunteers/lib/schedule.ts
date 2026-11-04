@@ -54,7 +54,7 @@ export async function alertSchedulers(a: { id: string; slotId: string; volunteer
     const emails = await st.schedulerEmails(a.slotId)
     if (!emails.length) return
     let day: DayView | null = null
-    let locationName = 'הסדנה'
+    let locationName = 'המקום'
     try {
       // The volunteer's own rows name the location; the whole day (service role) gives the counts.
       const own = await st.loadForVolunteer(a.volunteerId, a.onDate, a.onDate)

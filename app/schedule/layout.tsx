@@ -6,6 +6,7 @@ import { currentScheduler } from '@/lib/schedule/store'
 import { signOut } from '@/app/login/actions'
 import { ScheduleBack, ScheduleTabBar } from '@/components/schedule/nav'
 import { ViewOnly } from '@/components/schedule/bits'
+import { PlaceSwitcher } from '@/components/schedule/places'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,7 +18,8 @@ export const metadata: Metadata = {
 }
 
 /**
- * Schedule mode: the weekly volunteer schedule of ONE location, laid out for a
+ * Schedule mode: the weekly volunteer schedule of one location at a time (a row of
+ * place chips when the person has several), laid out for a
  * phone like shop mode. Hebrew, big targets, three tabs. Who may see and change
  * it is decided by the database (migration 0011), not by this layout: the
  * layout only says so when the signed-in person schedules nothing.
@@ -48,6 +50,7 @@ export default async function ScheduleLayout({ children }: { children: React.Rea
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-5">
         {'error' in s ? <NoAccess setup={s.error === 'setup' ? s.message ?? '' : null} /> : (
           <>
+            <PlaceSwitcher locations={s.locations} current={s.location.id} />
             {s.canEdit ? null : <div className="mb-4"><ViewOnly /></div>}
             {children}
           </>

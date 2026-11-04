@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type Anthropic from '@anthropic-ai/sdk'
-import { memoryScheduleStore, seedSchedule, ScheduleForbiddenError } from '@/lib/volunteers/schedule-store'
-import { buildDay, type SchedVolunteer } from '@/lib/volunteers/schedule'
+import { memoryScheduleStore, seedPlaces, seedSchedule, ScheduleForbiddenError } from '@/lib/volunteers/schedule-store'
+import { pickLocation } from '@/lib/schedule/places'
+import { buildDay, type SchedLocation, type SchedVolunteer } from '@/lib/volunteers/schedule'
 import { absenceAlertEmails, reminderDedupeKey, reminderEmail, reminderRecipients, reminderWeek, reminderWhatsappText, weekDays, whatsappShareUrl } from '@/lib/volunteers/schedule-reminder'
 import { emptyVolData, memoryVolunteerStore } from '@/lib/volunteers/store'
 import { askSchedule, EXEC_PARAMS, executeProposal, volunteerRef, type CreateMessage } from '@/lib/schedule/assistant'
@@ -155,5 +156,43 @@ describe('the assistant for a location manager', () => {
     const p = res.ok ? res.proposals![0]! : null
     await executeProposal(p!.kind, EXEC_PARAMS[p!.kind].parse(p!.params), dafna)
     expect((await dafna.load(loc, TODAY, '2026-11-10')).regulars.map((r) => [r.slotId, r.volunteerId])).toEqual([[tue.id, ruti.id]])
+  })
+})
+
+describe('several places (0013)', () => {
+  it('seeds the three places Sunday to Friday, with required only where unset', () => {
+    const d = seedPlaces()
+    expect(d.locations.map((l) => l.name)).toEqual(['בית המלאכה של שרון', 'מתחם כללי', 'חנות הגלריה'])
+    for (const l of d.locations) expect(d.slots.filter((s) => s.locationId === l.id).map((s) => s.weekday).sort()).toEqual([0, 1, 2, 3, 4, 5])
+    expect(new Set(d.slots.map((s) => s.id)).size).toBe(d.slots.length)
+    expect(d.slots.filter((s) => s.locationId === d.locations[0]!.id).every((s) => s.required === 10)).toBe(true)
+  })
+
+  it('Dafna schedules every place, Liat only the store, Sharon only sees the workshop; the database decides each write', async () => {
+    const d = seedPlaces()
+    const [workshop, compound, store] = d.locations as [SchedLocation, SchedLocation, SchedLocation]
+    for (const l of d.locations) d.admins.push({ locationId: l.id, email: 'dafna@x' })
+    d.admins.push({ locationId: store.id, email: 'liat@x' }, { locationId: compound.id, email: 'gil@x' }, { locationId: workshop.id, email: 'sharon@x', access: 'view' })
+    const as = (email: string) => memoryScheduleStore(d, { kind: 'admin', email }, () => people, () => NOW)
+    const mine = await as('dafna@x').myLocations()
+    expect(mine.map((l) => l.id).sort()).toEqual(d.locations.map((l) => l.id).sort())
+    expect((await as('liat@x').myLocations()).map((l) => l.id)).toEqual([store.id])
+    const storeTue = d.slots.find((s) => s.locationId === store.id && s.weekday === 2)!
+    const shopTue = d.slots.find((s) => s.locationId === workshop.id && s.weekday === 2)!
+    await as('liat@x').addRegular(storeTue.id, yossi.id, TODAY)
+    await expect(as('liat@x').addRegular(shopTue.id, ruti.id, TODAY)).rejects.toBeInstanceOf(ScheduleForbiddenError)
+    await expect(as('sharon@x').addRegular(shopTue.id, ruti.id, TODAY)).rejects.toBeInstanceOf(ScheduleForbiddenError)
+    // An absence alert reaches the schedulers of THAT place only.
+    expect((await as('dafna@x').schedulerEmails(storeTue.id)).sort()).toEqual(['dafna@x', 'liat@x'])
+    expect(await as('dafna@x').schedulerEmails(shopTue.id)).toEqual(['dafna@x'])
+  })
+
+  it('opens the remembered place if it is still theirs, else the first they schedule', () => {
+    const ls = [{ id: 'a', access: 'view' as const }, { id: 'b', access: 'schedule' as const }, { id: 'c', access: 'schedule' as const }]
+    expect(pickLocation(ls, 'c')?.id).toBe('c')
+    expect(pickLocation(ls, 'gone')?.id).toBe('b')
+    expect(pickLocation(ls, null)?.id).toBe('b')
+    expect(pickLocation([{ id: 'a', access: 'view' as const }], null)?.id).toBe('a')
+    expect(pickLocation([], 'a')).toBeUndefined()
   })
 })

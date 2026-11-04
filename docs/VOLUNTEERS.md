@@ -160,6 +160,13 @@ shown until they exist.
   location managers and staff (no `propose_*` tools offered, refused if called).
 - Days Sunday–Friday need no code: a slot row per weekday per location.
 
+### Three places (migration 0013)
+
+- בית המלאכה של שרון (Dafna, ~10 a day), מתחם כללי (Gil, mostly reservists, ~2–4), חנות הגלריה (Liat, ~2–3); all Sunday–Friday.
+- Dafna coordinates every place: grant her **Schedules** on all three; Gil and Liat **Schedules** on their own; Sharon **Location manager** on the workshop.
+- Required per day starts at 10 / 2 / 2 only where unset; changed on קבועים.
+- Several places → chips at the top of /schedule; the last one opened is remembered (cookie, per device).
+
 ### Owner setup for scheduling
 
 1. Supabase (Command Center project) → SQL Editor → run
