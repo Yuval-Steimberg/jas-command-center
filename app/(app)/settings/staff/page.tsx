@@ -4,7 +4,8 @@ import { requirePageAccess } from '@/lib/auth/session'
 import { authMode } from '@/lib/auth/mode'
 import { ROLES, ROLE_LABELS } from '@/lib/auth/rbac'
 import { listStaff } from '@/lib/staff/store'
-import { ActiveForm, DeleteForm, InviteForm, ResendForm, RoleForm } from './forms'
+import { listLocationAdmins } from '@/lib/schedule/store'
+import { ActiveForm, DeleteForm, InviteForm, LocationAdminForm, ResendForm, RoleForm } from './forms'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,6 +26,13 @@ export default async function StaffPage() {
     staff = await listStaff()
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
+  }
+  let schedulers: Awaited<ReturnType<typeof listLocationAdmins>> | null = null
+  let schedError: string | null = null
+  try {
+    schedulers = await listLocationAdmins()
+  } catch (e) {
+    schedError = e instanceof Error ? e.message : String(e)
   }
   return (
     <>
@@ -56,6 +64,34 @@ export default async function StaffPage() {
                     ) : null}
                   </li>
                 ))}
+              </ul>
+            )}
+          </CardBody>
+        </Card>
+        <Card>
+          <CardHeader title="Volunteer scheduling" meta="Who builds the volunteer schedule at each location (/schedule). Give them the Volunteer scheduler role, then add them here. The database refuses schedule changes from anyone not listed." />
+          <CardBody>
+            {schedError ? <p role="alert" className="text-sm text-bad">Could not read schedulers: {schedError}. Has migration 0011 been run?</p> : !schedulers?.length ? <p className="text-sm text-muted">No locations yet (migration 0011 creates Sharon&apos;s Workshop).</p> : (
+              <ul className="divide-y divide-line/70">
+                {schedulers.map(({ location, admins }) => {
+                  const people = (staff ?? []).filter((s) => s.active && !admins.some((x) => x.profileId === s.id)).map((s) => ({ id: s.id, label: s.name ? `${s.name} (${s.email})` : s.email }))
+                  return (
+                    <li key={location.id} className="flex flex-col gap-2 py-3">
+                      <div dir="auto" className="text-sm font-medium">{location.name}</div>
+                      {admins.length ? (
+                        <ul className="flex flex-col gap-2">
+                          {admins.map((x) => (
+                            <li key={x.profileId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                              <span><span dir="auto">{x.name}</span> <span dir="ltr" className="text-xs text-muted">{x.email}</span></span>
+                              <LocationAdminForm location={location.id} profile={x.profileId} on={false} label="Remove" />
+                            </li>
+                          ))}
+                        </ul>
+                      ) : <p className="text-xs text-warn">Nobody schedules this location yet.</p>}
+                      {people.length ? <LocationAdminForm location={location.id} on label="Add scheduler" people={people} /> : null}
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </CardBody>

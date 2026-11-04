@@ -1,3 +1,5 @@
+import { env } from '@/lib/env'
+import { redirect } from 'next/navigation'
 import type { Metadata } from 'next'
 import { SlidersHorizontal } from 'lucide-react'
 import { AREAS, AREA_HE, KINDS, KIND_HE, PARTS, PART_HE, SKILLS, SKILL_HE, type Area, type ActivityKind, type DayPart, type Skill } from '@shared/volunteers/model'
@@ -17,6 +19,8 @@ type When = keyof typeof WHEN
 const one = <T extends string>(all: readonly T[], v: unknown): T | null => (typeof v === 'string' && (all as readonly string[]).includes(v) ? (v as T) : null)
 
 export default async function Activities({ searchParams }: { searchParams: Record<string, string | undefined> }) {
+  // Volunteers do not browse or pick shifts unless open sign-up is on (VOLUNTEER_OPEN_SIGNUP=on).
+  if (!env().openSignup) redirect('/')
   const when = (one(Object.keys(WHEN) as When[], searchParams.when) ?? 'all') as When
   const area = one<Area>(AREAS, searchParams.area)
   const kind = one<ActivityKind>(KINDS, searchParams.kind)

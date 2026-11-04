@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next'
 import { BottomNav } from '@/components/nav'
 import { RegisterServiceWorker } from '@/components/sw-register'
 import { currentVolunteer } from '@/lib/session'
+import { env } from '@/lib/env'
 
 export const metadata: Metadata = {
   title: { default: 'JAS Volunteers · מתנדבים ב-Just A Second', template: '%s · JAS Volunteers' },
@@ -26,7 +27,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-dvh font-sans text-base">
         <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:right-3 focus:top-3 focus:z-50 focus:rounded-full focus:bg-forest focus:px-4 focus:py-2 focus:text-ground">לדילוג לתוכן</a>
         <div id="main">{children}</div>
-        <BottomNav signedIn={Boolean(v)} />
+        <BottomNav signedIn={Boolean(v)} openSignup={env().openSignup} />
         <RegisterServiceWorker />
       </body>
     </html>

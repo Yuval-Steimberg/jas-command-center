@@ -82,6 +82,58 @@ The Command Center's `vercel.json` skips its own build when only `volunteers/`
 changed; the volunteer app's `vercel.json` skips its build unless `volunteers/`
 or the shared library changed.
 
+## Scheduling (Sharon's Workshop) — migration 0011
+
+Phase 1: one location (הסדנה של שרון, Mon/Tue/Wed), one scheduler (Dafna). The
+model already has locations, activities per location and admins per location,
+so the store (Liat) and Gil's workshop are rows, not code. Nothing about them is
+shown until they exist.
+
+- **Who does what.** Volunteers never schedule themselves: in the volunteer app
+  they see their days for the next 6 weeks and report (or undo) an absence for
+  one date. The scheduler works in **schedule mode** (`/schedule`, Hebrew, RTL,
+  built like `/shop`): the week, one day, the regulars per weekday, and a
+  Hebrew assistant. Role `scheduler` has no console permissions; `/` sends it
+  to `/schedule`. Owners/admins can open `/schedule` too only if they are also
+  listed as that location's scheduler.
+- **Where it is enforced.** In the database, not the screen. Every write is a
+  `cc_vol_sched_*` security-definer function that checks `auth.uid()` against
+  `cc_vol_location_admins`; a trigger refuses any direct write to the five
+  schedule tables. The service role (which the volunteer app holds) is NOT a
+  scheduler: it can only report or withdraw the signed-in volunteer's own
+  absence. Reads go through RLS with the scheduler's own Supabase session, which
+  is also what makes realtime (`supabase_realtime`) safe; the screen falls back
+  to a 30 s refresh if the socket drops.
+- **The numbers.** `buildDay` in `lib/volunteers/schedule.ts` is the one
+  definition. Coming = regulars on that date who are not absent + confirmed
+  one-date assignments. Missing = max(0, required − coming); `null` (shown as
+  "לא נקבע יעד") until the scheduler sets the number, never 0. Tentative
+  ("ביקשתי, ממתין/ה") is shown apart and not counted. A closed day has no
+  missing. Paused/blocked regulars are listed and not counted.
+- **Candidates** only rank: "declared" = the volunteer ticked that weekday in
+  their profile (self-reported, unverified); everyone else active is listed as
+  "no information". Nothing is assigned automatically.
+- **Assistant** (`lib/schedule/assistant.ts`, `ANTHROPIC_API_KEY`): read tools
+  over the same store plus `propose_*` tools. Volunteers are `V-xxxxxx` refs in
+  everything sent to the model; names are matched on the server and put back in
+  the answer. A proposal changes nothing until the scheduler presses Confirm,
+  which re-validates and calls the same store function as the buttons. Every
+  question and every write is audited (`volunteers.schedule.*`, via assistant).
+- **Self sign-up** to activities is hidden in the volunteer app (spec: volunteers
+  do not schedule themselves). `VOLUNTEER_OPEN_SIGNUP=on` on the volunteer app
+  brings the activities pages and open registration back.
+
+### Owner setup for scheduling
+
+1. Supabase (Command Center project) → SQL Editor → run
+   `supabase/migrations/0011_volunteer_schedule.sql` (idempotent; needs 0005).
+2. `/settings/staff` → invite Dafna with the role **Volunteer scheduler**.
+3. Same page → **Volunteer scheduling** → Sharon's Workshop → Add scheduler → Dafna.
+4. Dafna opens the Command Center on her phone (add to home screen), goes to
+   קבועים, sets how many are needed each day and adds the regulars.
+5. Check: the volunteer app's `/api/health` now includes `schedule: ok`, and
+   the production check shows "Volunteer schedule (migration 0011)" ok.
+
 ## Assistant, analytics, production check
 
 - **Assistant** (`lib/assistant/volunteer-tools.ts`, `volunteer-proposals.ts`): `get_volunteer_overview`
@@ -112,6 +164,11 @@ or the shared library changed.
   Command Center database. A Postgres role limited to `cc_vol_*` and
   `cc_contacts` would shrink that; it is not set up.
 - Email codes are rate-limited per address (`countLoginCodes`), not per IP.
+- Schedule: the volunteer app can report an absence for any volunteer id it is
+  given (it holds the service key). The database limits it to absences, never
+  assignments, and every report is a `cc_vol_events` row naming its source.
+- Schedule: volunteers are not emailed when they are assigned as a replacement
+  or when an absence is recorded for them by the scheduler. The scheduler calls.
 - Reminders go out within an hour of their time only if the hourly sweep
   workflow runs; Vercel Hobby cron alone is daily.
 
@@ -121,4 +178,7 @@ or the shared library changed.
   time zones (DST), paging, matching, permissions, on the memory store.
 - `tests/integration/volunteers-postgrest.test.ts` — the Supabase store against a
   real PostgREST + Postgres (opt-in, see `tests/sql/README.md`).
-- `tests/sql/` — the SQL functions under real concurrency.
+- `tests/sql/` — the SQL functions under real concurrency (`schedule.sql` +
+  `schedule-concurrency.sh` for 0011).
+- `tests/integration/schedule*.test.ts` — the schedule rules and the assistant
+  (references only, nothing changes before Confirm), on the memory store.

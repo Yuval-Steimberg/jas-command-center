@@ -19,6 +19,7 @@ const PAGES = [
   '/volunteers', '/volunteers/activities', '/volunteers/activities/new', '/volunteers/calendar', '/volunteers/calendar?view=month', '/volunteers/people', '/volunteers/reports',
   '/settings', '/settings/staff', '/settings/notifications',
   '/shop', '/shop/sell', '/shop/new', '/shop/scan', '/shop/items', '/shop/sales', '/shop/deliveries', '/shop/labels',
+  '/schedule', '/schedule/team', '/schedule/assistant', '/schedule/day/00000000-0000-4000-8000-00000000b002/2026-11-10',
 ]
 
 // Only the local login; every source and Supabase variable is blanked so nothing real is reached.

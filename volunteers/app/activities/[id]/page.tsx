@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { Backpack, ClipboardList, Dumbbell, MapPin, Navigation, Phone, UserRound } from 'lucide-react'
 import { KIND_HE, SIGNUP_STATUS_HE, SKILL_HE } from '@shared/volunteers/model'
 import { loadActivity } from '@shared/volunteers/views'
@@ -21,6 +21,8 @@ export async function generateMetadata({ params }: { params: { id: string } }): 
 const joinBtn = 'inline-flex min-h-12 w-full items-center justify-center rounded-full bg-forest px-5 text-base font-bold text-ground transition hover:bg-forest/90 active:scale-[0.98] disabled:opacity-60'
 
 export default async function ActivityPage({ params }: { params: { id: string } }) {
+  // Volunteers do not browse or pick shifts unless open sign-up is on (VOLUNTEER_OPEN_SIGNUP=on).
+  if (!env().openSignup) redirect('/')
   const v = await currentVolunteer().catch(() => null)
   const res = await load(async () => {
     const d = await loadActivity(getStore(), params.id)

@@ -33,6 +33,12 @@ export function env() {
     replyTo: read('VOLUNTEER_REPLY_TO'),
     teamPhone: read('VOLUNTEER_TEAM_PHONE') ?? '058-787-6549',
     cronSecret: read('CRON_SECRET'),
+    /**
+     * 'on' = volunteers may browse activities and sign themselves up for shifts
+     * (the phase-1 app). Off by default: scheduling is the scheduler's job, and
+     * a volunteer only reports the dates they cannot come (migration 0011).
+     */
+    openSignup: read('VOLUNTEER_OPEN_SIGNUP') === 'on',
   }
 }
 

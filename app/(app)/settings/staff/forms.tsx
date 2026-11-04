@@ -1,7 +1,7 @@
 'use client'
 
 import { useFormState, useFormStatus } from 'react-dom'
-import { deleteAction, inviteAction, resendAction, setActiveAction, setRoleAction, type StaffState } from './actions'
+import { deleteAction, inviteAction, resendAction, setActiveAction, setLocationAdminAction, setRoleAction, type StaffState } from './actions'
 
 function Submit({ label, busy }: { label: string; busy: string }) {
   const { pending } = useFormStatus()
@@ -81,4 +81,23 @@ export function DeleteForm({ id, email }: { id: string; email: string }) {
 function DangerSubmit() {
   const { pending } = useFormStatus()
   return <button disabled={pending} className="h-10 rounded-full border border-bad/40 px-4 text-sm font-medium text-bad hover:bg-bad/10 disabled:opacity-60">{pending ? 'Deleting…' : 'Delete'}</button>
+}
+
+export function LocationAdminForm({ location, profile, on, label, people }: { location: string; profile?: string; on: boolean; label: string; people?: Opt[] }) {
+  const [state, action] = useFormState<StaffState, FormData>(setLocationAdminAction, {})
+  return (
+    <form action={action} className="flex flex-col gap-1">
+      <input type="hidden" name="location" value={location} />
+      <input type="hidden" name="on" value={on ? '1' : '0'} />
+      <div className="flex flex-wrap items-center gap-2">
+        {people ? (
+          <label><span className="sr-only">Person</span>
+            <select name="profile" required defaultValue="" className="h-10 rounded-md border border-line bg-surface px-2 text-sm"><option value="" disabled>Pick a person…</option>{people.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}</select>
+          </label>
+        ) : <input type="hidden" name="profile" value={profile} />}
+        <Submit label={label} busy="Saving…" />
+      </div>
+      <Result state={state} />
+    </form>
+  )
 }

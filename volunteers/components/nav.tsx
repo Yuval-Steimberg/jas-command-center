@@ -6,9 +6,20 @@ import { CalendarCheck, Compass, Home, LogIn, UserRound } from 'lucide-react'
 import { cn } from '@/lib/cn'
 
 /** The bottom tab bar: four places, always in the same order, thumb-reachable. */
-export function BottomNav({ signedIn }: { signedIn: boolean }) {
+export function BottomNav({ signedIn, openSignup }: { signedIn: boolean; openSignup: boolean }) {
   const path = usePathname()
-  const tabs = signedIn
+  // Without open sign-up there is nothing to browse: home is "my days", and the profile.
+  const tabs = !openSignup
+    ? signedIn
+      ? [
+          { href: '/', label: 'הימים שלי', icon: CalendarCheck },
+          { href: '/profile', label: 'פרופיל', icon: UserRound },
+        ]
+      : [
+          { href: '/', label: 'בית', icon: Home },
+          { href: '/login', label: 'כניסה', icon: LogIn },
+        ]
+    : signedIn
     ? [
         { href: '/', label: 'בית', icon: Home },
         { href: '/activities', label: 'פעילויות', icon: Compass },
