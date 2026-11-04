@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 
-const TABLES = ['cc_vol_absences', 'cc_vol_assignments', 'cc_vol_regulars', 'cc_vol_slots', 'cc_vol_closures'] as const
+const TABLES = ['cc_vol_absences', 'cc_vol_assignments', 'cc_vol_regulars', 'cc_vol_slots', 'cc_vol_closures'] as const // readable by the location's schedulers and managers (0011, 0012)
 const FALLBACK_MS = 30_000
 
 /**

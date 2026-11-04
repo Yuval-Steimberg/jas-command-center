@@ -13,7 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   operations_manager: 'Operations manager',
   project_manager: 'Project manager',
   volunteer_coordinator: 'Volunteer coordinator',
-  scheduler: 'Volunteer scheduler',
+  scheduler: 'Volunteer schedule (scheduler or location manager)',
   seller: 'Shop seller',
   viewer: 'Read-only viewer',
 }
@@ -25,7 +25,7 @@ export const ROLE_LABELS_HE: Record<Role, string> = {
   operations_manager: 'מנהל/ת תפעול',
   project_manager: 'מנהל/ת פרויקטים',
   volunteer_coordinator: 'רכז/ת מתנדבים',
-  scheduler: 'שיבוץ מתנדבים',
+  scheduler: 'לוח מתנדבים (שיבוץ או מנהל/ת מקום)',
   seller: 'מוכר/ת בחנות',
   viewer: 'צפייה בלבד',
 }

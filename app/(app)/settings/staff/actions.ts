@@ -143,20 +143,21 @@ export async function deleteAction(_prev: StaffState, form: FormData): Promise<S
 export async function setLocationAdminAction(_prev: StaffState, form: FormData): Promise<StaffState> {
   const a = await actor()
   if ('error' in a) return { ok: false, message: a.error }
-  const input = z.object({ location: z.string().uuid(), profile: z.string().uuid(), on: z.enum(['1', '0']) }).safeParse({ location: form.get('location'), profile: form.get('profile'), on: form.get('on') })
+  const input = z.object({ location: z.string().uuid(), profile: z.string().uuid(), on: z.enum(['1', '0']), access: z.enum(['schedule', 'view']).default('schedule') })
+    .safeParse({ location: form.get('location'), profile: form.get('profile'), on: form.get('on'), access: form.get('access') ?? undefined })
   if (!input.success) return { ok: false, message: 'Pick a person.' }
-  const { location, profile } = input.data
+  const { location, profile, access } = input.data
   const on = input.data.on === '1'
   const target = (await listStaff()).find((s) => s.id === profile)
   if (!target) return { ok: false, message: 'That person is not on the staff list.' }
   if (on && !target.active) return { ok: false, message: `${target.email} is deactivated.` }
-  const detail = { location, email: target.email, on }
+  const detail = { location, email: target.email, on, access }
   await audit(a.user, { action: 'staff.schedule_admin', product: 'volunteers', target: target.email, outcome: 'requested', detail })
   try {
-    await setLocationAdmin(location, profile, on, a.user.email)
+    await setLocationAdmin(location, profile, on, a.user.email, access)
     await audit(a.user, { action: 'staff.schedule_admin', product: 'volunteers', target: target.email, outcome: 'succeeded', detail })
     revalidatePath('/settings/staff')
-    return { ok: true, message: on ? `${target.email} can now schedule this location.` : `${target.email} no longer schedules this location.` }
+    return { ok: true, message: !on ? `${target.email} no longer has access to this location's schedule.` : access === 'view' ? `${target.email} can now see this location's schedule (no changes).` : `${target.email} can now schedule this location.` }
   } catch (e) {
     await audit(a.user, { action: 'staff.schedule_admin', product: 'volunteers', target: target.email, outcome: 'failed', detail: { ...detail, error: fail(e) } })
     return { ok: false, message: `Not changed: ${fail(e)}` }

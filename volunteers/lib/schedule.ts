@@ -1,6 +1,10 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { memoryScheduleStore, seedSchedule, supabaseScheduleStore, type MemorySchedData, type ScheduleStore } from '@shared/volunteers/schedule-store'
+import { buildDay, type DayView } from '@shared/volunteers/schedule'
+import { absenceAlertEmails } from '@shared/volunteers/schedule-reminder'
+import { afterQuietHours } from '@shared/volunteers/time'
+import { notify } from './mail'
 import { env } from './env'
 import { getStore, NotConfiguredError } from './store'
 
@@ -36,4 +40,38 @@ export function getScheduleStore(): ScheduleStore {
     throw new NotConfiguredError('The volunteer database is not configured (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY).')
   }
   return g.__jvSched
+}
+
+/**
+ * A volunteer reported they will not come: email the people who schedule that
+ * location, at once (or after quiet hours when the day is more than a day and a
+ * half away). Best-effort: the absence is already recorded and shown live on the
+ * schedule; a failed email never undoes it or shows the volunteer an error.
+ */
+export async function alertSchedulers(a: { id: string; slotId: string; volunteerId: string; onDate: string; reason: string | null }, volunteerName: string): Promise<void> {
+  try {
+    const st = getScheduleStore()
+    const emails = await st.schedulerEmails(a.slotId)
+    if (!emails.length) return
+    let day: DayView | null = null
+    let locationName = 'הסדנה'
+    try {
+      // The volunteer's own rows name the location; the whole day (service role) gives the counts.
+      const own = await st.loadForVolunteer(a.volunteerId, a.onDate, a.onDate)
+      const loc = own.slots.find((x) => x.id === a.slotId)?.locationId
+      locationName = own.locations.find((l) => l.id === loc)?.name ?? locationName
+      if (loc) {
+        const data = await st.load(loc, a.onDate, a.onDate)
+        const slot = data.slots.find((x) => x.id === a.slotId)
+        day = slot ? buildDay(data, slot, a.onDate) : null
+      }
+    } catch {
+      // The counts are a courtesy; the email goes without them.
+    }
+    const soon = Date.parse(`${a.onDate}T00:00:00Z`) - Date.now() < 36 * 3_600_000
+    const notBefore = new Date(soon ? Date.now() : afterQuietHours(Date.now())).toISOString()
+    await notify(absenceAlertEmails(emails, { absenceId: a.id, volunteerName, date: a.onDate, reason: a.reason, locationName, slotId: a.slotId, day, ccUrl: env().commandCenterUrl ?? null, notBefore }))
+  } catch (e) {
+    console.error('scheduler alert failed (the absence is recorded):', e instanceof Error ? e.message : e)
+  }
 }

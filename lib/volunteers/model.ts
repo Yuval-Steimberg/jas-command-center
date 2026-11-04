@@ -152,6 +152,8 @@ export interface Volunteer {
   lastSeenAt: string | null
   createdAt: string
   updatedAt: string
+  /** Military reservist (migration 0012; absent before it). */
+  reservist?: boolean
 }
 
 export interface Activity {
@@ -281,7 +283,7 @@ export interface RegistrationInput {
   actor?: string
 }
 
-export type ProfilePatch = Partial<Pick<Volunteer, 'fullName' | 'phone' | 'adult' | 'areas' | 'availability' | 'skills' | 'transport' | 'about' | 'notifyReminders' | 'notifyOpportunities' | 'consentWhatsapp'>>
+export type ProfilePatch = Partial<Pick<Volunteer, 'fullName' | 'phone' | 'adult' | 'areas' | 'availability' | 'skills' | 'transport' | 'about' | 'notifyReminders' | 'notifyOpportunities' | 'consentWhatsapp' | 'reservist'>>
 
 export type ActivityInput = Pick<Activity, 'title' | 'kind'> &
   Partial<Pick<Activity,

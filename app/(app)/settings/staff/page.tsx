@@ -69,7 +69,7 @@ export default async function StaffPage() {
           </CardBody>
         </Card>
         <Card>
-          <CardHeader title="Volunteer scheduling" meta="Who builds the volunteer schedule at each location (/schedule). Give them the Volunteer scheduler role, then add them here. The database refuses schedule changes from anyone not listed." />
+          <CardHeader title="Volunteer schedule" meta="Who sees each location's volunteer schedule (/schedule). A scheduler changes it (Dafna); a location manager only sees it (Sharon, Gil, Liat). Give them the Volunteer schedule role, then add them here. The database enforces it: nobody else can change a schedule." />
           <CardBody>
             {schedError ? <p role="alert" className="text-sm text-bad">Could not read schedulers: {schedError}. Has migration 0011 been run?</p> : !schedulers?.length ? <p className="text-sm text-muted">No locations yet (migration 0011 creates Sharon&apos;s Workshop).</p> : (
               <ul className="divide-y divide-line/70">
@@ -82,13 +82,16 @@ export default async function StaffPage() {
                         <ul className="flex flex-col gap-2">
                           {admins.map((x) => (
                             <li key={x.profileId} className="flex flex-wrap items-center justify-between gap-2 text-sm">
-                              <span><span dir="auto">{x.name}</span> <span dir="ltr" className="text-xs text-muted">{x.email}</span></span>
-                              <LocationAdminForm location={location.id} profile={x.profileId} on={false} label="Remove" />
+                              <span><span dir="auto">{x.name}</span> <span dir="ltr" className="text-xs text-muted">{x.email}</span> <span className="text-xs text-muted">· {x.access === 'view' ? 'location manager (sees only)' : 'schedules'}</span></span>
+                              <span className="flex flex-wrap gap-2">
+                                <LocationAdminForm location={location.id} profile={x.profileId} on access={x.access === 'view' ? 'schedule' : 'view'} label={x.access === 'view' ? 'Let them schedule' : 'Make view-only'} />
+                                <LocationAdminForm location={location.id} profile={x.profileId} on={false} label="Remove" />
+                              </span>
                             </li>
                           ))}
                         </ul>
-                      ) : <p className="text-xs text-warn">Nobody schedules this location yet.</p>}
-                      {people.length ? <LocationAdminForm location={location.id} on label="Add scheduler" people={people} /> : null}
+                      ) : <p className="text-xs text-warn">Nobody has access to this location&apos;s schedule yet.</p>}
+                      {people.length ? <LocationAdminForm location={location.id} on label="Add" people={people} /> : null}
                     </li>
                   )
                 })}

@@ -5,6 +5,7 @@ import { LayoutDashboard, LogOut } from 'lucide-react'
 import { currentScheduler } from '@/lib/schedule/store'
 import { signOut } from '@/app/login/actions'
 import { ScheduleBack, ScheduleTabBar } from '@/components/schedule/nav'
+import { ViewOnly } from '@/components/schedule/bits'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,9 +46,14 @@ export default async function ScheduleLayout({ children }: { children: React.Rea
         </div>
       </header>
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-5">
-        {'error' in s ? <NoAccess setup={s.error === 'setup' ? s.message ?? '' : null} /> : children}
+        {'error' in s ? <NoAccess setup={s.error === 'setup' ? s.message ?? '' : null} /> : (
+          <>
+            {s.canEdit ? null : <div className="mb-4"><ViewOnly /></div>}
+            {children}
+          </>
+        )}
       </main>
-      {'error' in s ? null : <ScheduleTabBar />}
+      {'error' in s ? null : <ScheduleTabBar canEdit={s.canEdit} />}
     </div>
   )
 }
@@ -59,7 +65,7 @@ function NoAccess({ setup }: { setup: string | null }) {
       <p className="mt-1 text-sm text-muted" dir="auto">
         {setup
           ? /0011/.test(setup) ? 'טבלאות השיבוץ עוד לא הותקנו: יש להריץ את supabase/migrations/0011_volunteer_schedule.sql במסד הנתונים של מערכת הניהול.' : `לא ניתן היה לטעון את הלוח: ${setup}`
-          : 'רק מי שהוגדר/ה כאחראי/ת שיבוץ של מקום יכול/ה לראות ולשנות את הלוח שלו. הבעלים מגדירים את זה בהגדרות → צוות.'}
+          : 'רק מי שהוגדר/ה לאחד המקומות (אחראי/ת שיבוץ, או מנהל/ת המקום לצפייה) רואה את הלוח שלו. הבעלים מגדירים את זה בהגדרות → צוות.'}
       </p>
     </div>
   )

@@ -256,3 +256,8 @@ Volunteer scheduling (`docs/VOLUNTEERS.md` "Scheduling", migration `0011_volunte
 - `buildDay` (`lib/volunteers/schedule.ts`) is the one definition of coming / missing (null until required is set) / candidates.
 - Assistant `lib/schedule/assistant.ts`: `V-xxxxxx` refs only, proposals run on Confirm through the same store calls.
 - Schedulers are granted per location on `/settings/staff` (users:manage, audited `staff.schedule_admin`).
+- 0012: access `schedule` (writes) vs `view` (location managers: Sharon, Gil, Liat) on `cc_vol_location_admins`; `cc_vol__admin()`
+  accepts only `schedule`. Staff with `volunteers:read_pii` see `/schedule` read-only via the service role (polling, no Realtime).
+  Weekly reminder `/schedule/remind`: email via outbox (dedupe per volunteer per week) + WhatsApp share link (no sending account);
+  history in `cc_vol_reminders` (logged by `cc_vol_sched_log_reminder` BEFORE queueing). Volunteer-reported absence emails the
+  location's schedulers (`alertSchedulers`, volunteer app). Builders are pure in `lib/volunteers/schedule-reminder.ts`.

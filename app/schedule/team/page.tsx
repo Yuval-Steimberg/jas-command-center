@@ -1,11 +1,11 @@
 import { currentScheduler } from '@/lib/schedule/store'
 import { israelDate } from '@/lib/time'
 import { scheduleErrorHe } from '@/lib/volunteers/schedule-messages'
-import { plusDays, shortDate, WEEKDAY_HE } from '@/lib/volunteers/schedule'
-import { endRegularAction } from '@/app/schedule/actions'
+import { hhmm, plusDays, shortDate, WEEKDAY_HE } from '@/lib/volunteers/schedule'
+import { endRegularAction, setReservistAction } from '@/app/schedule/actions'
 import { ActButton } from '@/components/schedule/act-button'
-import { Phone, empty, rowCls } from '@/components/schedule/bits'
-import { AddRegularForm, HoursForm, RequiredForm } from '@/components/schedule/forms'
+import { Phone, Reservist, empty, rowCls } from '@/components/schedule/bits'
+import { AddRegularForm, HoursForm, NewVolunteerForm, RequiredForm } from '@/components/schedule/forms'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,8 +32,9 @@ export default async function TeamPage() {
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-bold text-ink">קבועים</h1>
-        <p className="text-sm text-muted">מי מגיע כל שבוע, וכמה צריך בכל יום. שינוי כאן חוזר כל שבוע; שינוי של תאריך אחד עושים במסך של אותו יום.</p>
+        <p className="text-sm text-muted">מי מגיע כל שבוע, וכמה צריך בכל יום.{s.canEdit ? ' שינוי כאן חוזר כל שבוע; שינוי של תאריך אחד עושים במסך של אותו יום.' : ''}</p>
       </div>
+      {s.canEdit ? <NewVolunteerForm today={today} slots={data.slots.filter((x) => x.active).map((x) => ({ id: x.id, label: WEEKDAY_HE[x.weekday] ?? '' }))} /> : null}
       {data.slots.filter((x) => x.active).map((slot) => {
         const regs = data.regulars.filter((r) => r.slotId === slot.id && (r.endsOn === null || r.endsOn >= today)).sort((a, b) => (vol.get(a.volunteerId)?.fullName ?? '').localeCompare(vol.get(b.volunteerId)?.fullName ?? '', 'he'))
         const taken = new Set(regs.map((r) => r.volunteerId))
@@ -43,8 +44,12 @@ export default async function TeamPage() {
               <h2 className="text-lg font-bold text-ink">ימי {WEEKDAY_HE[slot.weekday]}</h2>
               <span className="num text-sm text-muted">{regs.length} קבועים{slot.required !== null ? ` · נדרשים ${slot.required}` : ''}</span>
             </div>
-            <RequiredForm slotId={slot.id} version={slot.version} required={slot.required} />
-            <HoursForm slotId={slot.id} version={slot.version} startsAt={slot.startsAt} endsAt={slot.endsAt} />
+            {s.canEdit ? (
+              <>
+                <RequiredForm slotId={slot.id} version={slot.version} required={slot.required} />
+                <HoursForm slotId={slot.id} version={slot.version} startsAt={slot.startsAt} endsAt={slot.endsAt} />
+              </>
+            ) : <p className="text-sm text-muted">נדרשים: {slot.required ?? 'לא נקבע'}{slot.startsAt && slot.endsAt ? <> · <span className="num" dir="ltr">{hhmm(slot.startsAt)}–{hhmm(slot.endsAt)}</span></> : null}</p>}
             {regs.length ? (
               <ul className="flex flex-col gap-2">
                 {regs.map((r) => {
@@ -52,7 +57,7 @@ export default async function TeamPage() {
                   return (
                     <li key={r.id} className={rowCls}>
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-ink">{v?.fullName ?? 'מתנדב/ת'}</p>
+                        <p className="font-semibold text-ink">{v?.fullName ?? 'מתנדב/ת'}<Reservist on={v?.reservist} /></p>
                         <p className="text-xs text-muted">
                           {r.startsOn > today ? `מתחיל/ה ב-${shortDate(r.startsOn)}` : 'כל שבוע'}
                           {r.endsOn ? ` · עד ${shortDate(r.endsOn)}` : ''}
@@ -60,13 +65,14 @@ export default async function TeamPage() {
                         </p>
                       </div>
                       <Phone phone={v?.phone ?? null} />
-                      <ActButton action={endRegularAction} args={{ regularId: r.id, last: yesterday }} label="הסרה מהקבועים" small tone="danger" confirm={`להסיר את ${v?.fullName ?? 'המתנדב/ת'} מהקבועים של ימי ${WEEKDAY_HE[slot.weekday]}, החל מהיום? שבועות שעברו נשמרים.`} />
+                      {s.canEdit && v ? <ActButton action={setReservistAction} args={{ volunteerId: v.id, on: !v.reservist }} label={v.reservist ? 'לא במילואים' : 'מילואים'} small /> : null}
+                      {s.canEdit ? <ActButton action={endRegularAction} args={{ regularId: r.id, last: yesterday }} label="הסרה מהקבועים" small tone="danger" confirm={`להסיר את ${v?.fullName ?? 'המתנדב/ת'} מהקבועים של ימי ${WEEKDAY_HE[slot.weekday]}, החל מהיום? שבועות שעברו נשמרים.`} /> : null}
                     </li>
                   )
                 })}
               </ul>
             ) : empty(`עוד אין קבועים בימי ${WEEKDAY_HE[slot.weekday]}.`)}
-            <AddRegularForm slotId={slot.id} today={today} options={active.filter((v) => !taken.has(v.id)).map((v) => ({ id: v.id, name: v.fullName }))} />
+            {s.canEdit ? <AddRegularForm slotId={slot.id} today={today} options={active.filter((v) => !taken.has(v.id)).map((v) => ({ id: v.id, name: v.fullName }))} /> : null}
           </section>
         )
       })}

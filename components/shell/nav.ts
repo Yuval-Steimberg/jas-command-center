@@ -53,6 +53,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: '/crm', label: 'Customers', hint: 'Contacts, leads and their history', icon: 'crm', permission: 'crm:read' },
       { href: '/volunteers', label: 'Volunteers', hint: 'Activities, shifts and attendance', icon: 'volunteers', permission: 'volunteers:read' },
+      { href: '/schedule', label: 'Weekly schedule', hint: "Who comes each workshop day, absences, replacements (schedule mode)", icon: 'volunteers', permission: 'volunteers:read_pii' },
       { href: '/tasks', label: 'Tasks', hint: 'To-dos for the team, including automatic ones', icon: 'tasks', permission: 'inventory:read' },
     ],
   },
@@ -154,6 +155,7 @@ export const SECTIONS: { base: string; tabs: SectionTab[] }[] = [
       { href: '/volunteers/calendar', label: 'Calendar' },
       { href: '/volunteers/people', label: 'Volunteers' },
       { href: '/volunteers/reports', label: 'Reports' },
+      { href: '/schedule', label: 'Weekly schedule', permission: 'volunteers:read_pii' },
     ],
   },
   {

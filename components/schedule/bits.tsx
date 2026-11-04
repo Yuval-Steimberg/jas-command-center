@@ -37,3 +37,13 @@ export function Section({ title, count, children, tone }: { title: string; count
 
 export const rowCls = 'flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2.5'
 export const empty = (t: string) => <p className="rounded-lg border border-dashed border-line px-4 py-3 text-center text-sm text-muted">{t}</p>
+
+/** "מילואים" next to a reservist's name: a word, not a colour. */
+export function Reservist({ on }: { on?: boolean }) {
+  return on ? <span className="ms-2 inline-flex items-center rounded-full bg-sage-soft px-2 py-0.5 align-middle text-meta font-semibold text-forest">מילואים</span> : null
+}
+
+/** Said once at the top of every screen a location manager (or Command Center staff) opens. */
+export function ViewOnly() {
+  return <p className="rounded-lg bg-sunken px-4 py-2.5 text-sm text-muted">צפייה בלבד: הלוח מתעדכן בזמן אמת, והשינויים נעשים על ידי אחראי/ת השיבוץ.</p>
+}

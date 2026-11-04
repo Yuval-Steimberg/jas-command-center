@@ -28,7 +28,7 @@ How the schedule works:
 - missing = max(0, required − coming). A closed date (holiday) expects nobody.
 - "Available" candidates are volunteers whose PROFILE says they are free that weekday: self-declared, never verified for that date. Say "said they are usually free", never "available" as a fact.
 
-Tools: read with get_schedule, find_volunteer and get_candidates. To change anything, call a propose_ tool: it shows the person a confirmation card and NOTHING happens unless they press Confirm. After proposing, say in one short sentence what the card will do and that it needs their confirmation; never say it is done. Propose only what was asked, at most three per answer. When a name matches several volunteers, or none, ask which one rather than guessing.
+Tools: read with get_schedule, find_volunteer and get_candidates. If no propose_ tools are offered, the person may only view this schedule: answer, and say that changes are made by the location's scheduler. To change anything, call a propose_ tool: it shows the person a confirmation card and NOTHING happens unless they press Confirm. After proposing, say in one short sentence what the card will do and that it needs their confirmation; never say it is done. Propose only what was asked, at most three per answer. When a name matches several volunteers, or none, ask which one rather than guessing.
 
 Rules:
 - Every fact and number must come from a tool result in this conversation. Never guess who is scheduled.
@@ -62,6 +62,8 @@ export interface ScheduleAskDeps {
   today: string
   audit: (entry: { action: string; target: string | null; outcome: 'succeeded' | 'failed' | 'denied'; detail: Record<string, unknown> }) => Promise<void>
   now?: () => number
+  /** A location manager or Command Center staff: read tools only (the database would refuse the change anyway). */
+  readOnly?: boolean
 }
 
 export type ScheduleAskResult = { ok: true; answer: string; proposals?: ScheduleProposal[] } | { ok: false; message: string }
@@ -112,7 +114,7 @@ const describeDay = (d: DayView) => ({
 const date = z.string().refine(isDate, 'must be YYYY-MM-DD')
 const ref = z.string().trim().min(3).max(12)
 
-type ProposalKind = 'replace' | 'assign' | 'absence' | 'cancel_assignment' | 'withdraw_absence' | 'set_required'
+type ProposalKind = 'replace' | 'assign' | 'absence' | 'cancel_assignment' | 'withdraw_absence' | 'set_required' | 'add_regular'
 
 interface Tool {
   name: string
@@ -257,6 +259,24 @@ export const SCHEDULE_TOOLS: Tool[] = [
     },
   },
   {
+    name: 'propose_add_regular',
+    description: 'Propose: make a volunteer a REGULAR on an operating weekday, every week from a date (default: today). For one date only, use propose_assign instead.',
+    input: z.object({ weekday: z.number().int().min(0).max(6), ref, from: date }).strict(),
+    schema: obj({ weekday: { type: 'integer', description: '0 = Sunday … 6 = Saturday' }, ref: str('V-xxxxxx'), from: str('First date, YYYY-MM-DD, today or later (today unless the person said otherwise)') }, ['weekday', 'ref', 'from']),
+    propose: async (i: { weekday: number; ref: string; from: string }, deps) => {
+      const from = i.from
+      if (from < deps.today) return { ok: false, reason: 'A regular day starts today or later.' }
+      const { data } = await loadRange(deps, deps.today, deps.today)
+      const slot = data.slots.find((s) => s.active && s.weekday === i.weekday)
+      if (!slot) return { ok: false, reason: `The location is not open on ${WEEKDAY_EN[i.weekday]}.` }
+      const v = resolveRef(data, i.ref)
+      if (typeof v === 'string') return { ok: false, reason: v }
+      if (v.status !== 'active') return { ok: false, reason: `${i.ref}'s account is not active.` }
+      if (data.regulars.some((r) => r.slotId === slot.id && r.volunteerId === v.id && (r.endsOn === null || r.endsOn >= from))) return { ok: false, reason: `${i.ref} is already a regular on ${WEEKDAY_EN[i.weekday]}.` }
+      return { ok: true, proposal: { kind: 'add_regular', params: { slotId: slot.id, volunteerId: v.id, from }, summary: `${v.fullName} יגיע/תגיע כל שבוע בימי ${WEEKDAY_HE[i.weekday]}, החל מ${dayLabelHe(from)}.` }, forModel: `${i.ref} regular on ${WEEKDAY_EN[i.weekday]} from ${from}.` }
+    },
+  },
+  {
     name: 'propose_set_required',
     description: 'Propose: change how many volunteers an operating weekday needs, every week.',
     input: z.object({ weekday: z.number().int().min(0).max(6), required: z.number().int().min(0).max(200) }).strict(),
@@ -270,7 +290,7 @@ export const SCHEDULE_TOOLS: Tool[] = [
   },
 ]
 
-const toolDefs = (): Anthropic.Beta.BetaTool[] => SCHEDULE_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.schema, strict: true }))
+const toolDefs = (readOnly = false): Anthropic.Beta.BetaTool[] => SCHEDULE_TOOLS.filter((t) => !readOnly || !t.propose).map((t) => ({ name: t.name, description: t.description, input_schema: t.schema, strict: true }))
 
 /** The confirmation's parameters, re-validated on Confirm (they come back from the browser). */
 export const EXEC_PARAMS: Record<ProposalKind, z.ZodType<Record<string, unknown>>> = {
@@ -280,6 +300,7 @@ export const EXEC_PARAMS: Record<ProposalKind, z.ZodType<Record<string, unknown>
   cancel_assignment: z.object({ assignmentId: z.string().min(1) }).strict(),
   withdraw_absence: z.object({ absenceId: z.string().min(1) }).strict(),
   set_required: z.object({ slotId: z.string().min(1), version: z.number().int(), required: z.number().int().min(0).max(200) }).strict(),
+  add_regular: z.object({ slotId: z.string().min(1), volunteerId: z.string().min(1), from: date }).strict(),
 }
 export const isProposalKind = (k: unknown): k is ProposalKind => typeof k === 'string' && k in EXEC_PARAMS
 
@@ -293,6 +314,7 @@ export function executeProposal(kind: ProposalKind, p: Record<string, unknown>, 
     case 'cancel_assignment': return store.cancelAssignment(s('assignmentId'), null)
     case 'withdraw_absence': return store.withdrawAbsence(s('absenceId'), 'admin', null)
     case 'set_required': return store.updateSlot(s('slotId'), p.version as number, { required: p.required as number })
+    case 'add_regular': return store.addRegular(s('slotId'), s('volunteerId'), s('from'))
   }
 }
 
@@ -338,7 +360,7 @@ export async function askSchedule(question: string, history: Turn[], deps: Sched
         model: deps.model,
         max_tokens: 8000,
         system: SCHEDULE_SYSTEM_PROMPT,
-        tools: toolDefs(),
+        tools: toolDefs(deps.readOnly),
         messages,
         output_config: { effort: 'medium' },
         cache_control: { type: 'ephemeral' },
@@ -391,6 +413,7 @@ async function runTool(block: Anthropic.Beta.BetaToolUseBlock, deps: ScheduleAsk
   if (!parsed.success) return fail('failed', `Invalid input: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'} ${i.message}`).join('; ')}`)
   try {
     if (tool.propose) {
+      if (deps.readOnly) return fail('denied', 'This person can only view the schedule; changes are made by its scheduler.')
       if (proposals.length >= MAX_PROPOSALS) return fail('denied', `At most ${MAX_PROPOSALS} changes can be proposed in one answer.`)
       const r = await tool.propose(parsed.data as never, deps)
       if (!r.ok) return fail('failed', `Cannot propose this: ${r.reason}`)

@@ -39,6 +39,21 @@ export async function probeVolunteers(now = new Date()): Promise<Probe[]> {
         return `${days.length} operating days (required set on ${set}), ${admins.count ?? 0} scheduler grant(s)`
       }).then((p): Probe => (p.state === 'error' && /0011/.test(p.detail) ? { ...p, state: 'not_configured' } : p))
 
+  // Location managers, reminders, reservists (0012). Counts only.
+  const access: Promise<Probe> = authMode().kind !== 'supabase'
+    ? Promise.resolve({ section: 'volunteers', name: 'Volunteer schedule access + reminders (migration 0012)', state: 'not_configured', latencyMs: null, detail: 'no database in this mode' })
+    : fromCall('volunteers', 'Volunteer schedule access + reminders (migration 0012)', async () => {
+        const db = supabaseAdmin()
+        const [grants, reminders] = await Promise.all([
+          db.from('cc_vol_location_admins').select('access'),
+          db.from('cc_vol_reminders').select('id', { count: 'exact', head: true }),
+        ])
+        const err = grants.error ?? reminders.error
+        if (err) throw new Error(/does not exist|schema cache|PGRST205|42703/i.test(err.message) ? 'run 0012_volunteer_schedule_access.sql' : err.message)
+        const g = (grants.data ?? []) as { access: string }[]
+        return `${g.filter((x) => x.access !== 'view').length} scheduler(s), ${g.filter((x) => x.access === 'view').length} location manager(s), ${reminders.count ?? 0} reminder(s) sent`
+      }).then((p): Probe => (p.state === 'error' && /0012/.test(p.detail) ? { ...p, state: 'not_configured' } : p))
+
   const base = env().volunteers.appUrl
   const app: Promise<Probe> = !base
     ? Promise.resolve({ section: 'volunteers', name: 'Volunteer app (/api/health)', state: 'not_configured', latencyMs: null, detail: 'needs VOLUNTEER_APP_URL on the Command Center' })
@@ -51,5 +66,5 @@ export async function probeVolunteers(now = new Date()): Promise<Probe[]> {
         return line
       })
 
-  return Promise.all([tables, app, schedule])
+  return Promise.all([tables, app, schedule, access])
 }

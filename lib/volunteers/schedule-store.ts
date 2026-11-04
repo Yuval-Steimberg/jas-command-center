@@ -15,7 +15,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { ConflictError } from '../ops/store'
 import { OpsSetupError } from '../ops/store'
 import { israelDay } from './time'
-import type { AssignmentStatus, SchedAbsence, SchedAssignment, SchedClosure, SchedLocation, SchedRegular, SchedSlot, SchedVolunteer, ScheduleData } from './schedule'
+import type { AssignmentStatus, SchedReminder, SchedAbsence, SchedAssignment, SchedClosure, SchedLocation, SchedRegular, SchedSlot, SchedVolunteer, ScheduleData } from './schedule'
 import { regularOn, weekdayOf } from './schedule'
 
 export { ConflictError }
@@ -52,6 +52,13 @@ export interface ScheduleStore {
   setAssignmentStatus(assignmentId: string, status: AssignmentStatus): Promise<SchedAssignment>
   cancelAssignment(assignmentId: string, reason: string | null): Promise<SchedAssignment>
   setClosure(slotId: string, date: string, closed: boolean, reason: string | null): Promise<boolean>
+
+  /** Record a reminder send (a scheduler of the location only; the database checks). Before the emails are queued. */
+  logReminder(locationId: string, weekStart: string, channel: SchedReminder['channel'], recipients: number): Promise<SchedReminder>
+  /** The newest reminder sends of a location (schedulers and viewers). Empty before migration 0012. */
+  listReminders(locationId: string, limit?: number): Promise<SchedReminder[]>
+  /** The emails of the people who SCHEDULE the location of this slot (volunteer app, service role): told about a new absence. */
+  schedulerEmails(slotId: string): Promise<string[]>
 }
 
 // ── Supabase ───────────────────────────────────────────────────────────────
@@ -74,7 +81,10 @@ export function scheduleFail(error: PgError): never {
   throw new Error(msg)
 }
 
-const VOL_COLS = 'id, full_name, phone, availability, status'
+const VOL_COLS = 'id, full_name, phone, availability, status, reservist'
+const VOL_COLS_0011 = 'id, full_name, phone, availability, status'
+/** A column added by a later migration than the one the database has: PostgREST fails the whole query (42703). */
+const missingColumn = (e: unknown) => e instanceof Error && /column .*reservist.* does not exist|42703/i.test(e.message)
 
 export function supabaseScheduleStore(db: SupabaseClient): ScheduleStore {
   async function rows<T>(p: PromiseLike<{ data: unknown; error: PgError }>): Promise<T[]> {
@@ -113,8 +123,15 @@ export function supabaseScheduleStore(db: SupabaseClient): ScheduleStore {
     kind: 'supabase',
 
     async myLocations() {
-      // RLS returns only the locations the signed-in person administers.
-      return rows<SchedLocation>(db.from('cc_vol_locations').select('id, slug, name, active').eq('active', true).order('name'))
+      // RLS returns only the locations the signed-in person schedules or views.
+      const [locs, access] = await Promise.all([
+        rows<SchedLocation>(db.from('cc_vol_locations').select('id, slug, name, active').eq('active', true).order('name')),
+        db.rpc('cc_vol_my_access'),
+      ])
+      // Before migration 0012 there is no view access: everyone listed schedules.
+      if (access.error) return locs.map((l) => ({ ...l, access: 'schedule' as const }))
+      const by = new Map(((access.data ?? []) as { location_id: string; access: 'schedule' | 'view' }[]).map((a) => [a.location_id, a.access]))
+      return locs.map((l) => ({ ...l, access: by.get(l.id) ?? 'view' }))
     },
 
     async load(locationId, from, to) {
@@ -125,7 +142,10 @@ export function supabaseScheduleStore(db: SupabaseClient): ScheduleStore {
       if (!locations.length) throw new ScheduleForbiddenError('you do not schedule this location')
       const [rest, volunteers] = await Promise.all([
         bySlots(slots.map((s) => s.id), from, to),
-        paged<SchedVolunteer>((a, b) => db.from('cc_volunteers').select(VOL_COLS).neq('status', 'deleted').order('id').range(a, b)),
+        paged<SchedVolunteer>((a, b) => db.from('cc_volunteers').select(VOL_COLS).neq('status', 'deleted').order('id').range(a, b)).catch((e) => {
+          if (!missingColumn(e)) throw e
+          return paged<SchedVolunteer>((a, b) => db.from('cc_volunteers').select(VOL_COLS_0011).neq('status', 'deleted').order('id').range(a, b))
+        }),
       ])
       return { locations, slots: slots.map(fixSlot), volunteers: volunteers.map((v) => ({ ...v, availability: v.availability ?? [] })), ...rest }
     },
@@ -165,7 +185,38 @@ export function supabaseScheduleStore(db: SupabaseClient): ScheduleStore {
       if (error) scheduleFail(error)
       return Boolean(data)
     },
+    logReminder: (locationId, weekStart, channel, recipients) => rpc('cc_vol_sched_log_reminder', { p_location: locationId, p_week: weekStart, p_channel: channel, p_recipients: recipients }),
+    async listReminders(locationId, limit = 10) {
+      try {
+        return await rows<SchedReminder>(db.from('cc_vol_reminders').select('id, location_id, week_start, channel, recipients, sent_by, created_at').eq('location_id', locationId).order('created_at', { ascending: false }).limit(limit))
+      } catch (e) {
+        if (e instanceof OpsSetupError) return [] // before migration 0012
+        throw e
+      }
+    },
+    async schedulerEmails(slotId) {
+      const slot = await rows<{ locationId: string }>(db.from('cc_vol_slots').select('location_id').eq('id', slotId))
+      if (!slot[0]) return []
+      const r = await db.from('cc_vol_location_admins').select('access, cc_profiles!profile_id(email, is_active)').eq('location_id', slot[0].locationId)
+      if (r.error) {
+        // Before 0012 there is no access column: everyone listed schedules.
+        if (!/access/.test(r.error.message ?? '')) scheduleFail(r.error)
+        const old = await db.from('cc_vol_location_admins').select('cc_profiles!profile_id(email, is_active)').eq('location_id', slot[0].locationId)
+        if (old.error) scheduleFail(old.error)
+        return emailsOf((old.data ?? []) as Row[])
+      }
+      return emailsOf(((r.data ?? []) as Row[]).filter((x) => x.access !== 'view'))
+    },
   }
+}
+
+function emailsOf(list: Row[]): string[] {
+  const out = new Set<string>()
+  for (const x of list) {
+    const p = (Array.isArray(x.cc_profiles) ? x.cc_profiles[0] : x.cc_profiles) as { email?: string; is_active?: boolean } | null
+    if (p?.email && p.is_active !== false) out.add(p.email.toLowerCase())
+  }
+  return [...out]
 }
 
 // ── Memory ─────────────────────────────────────────────────────────────────
@@ -177,8 +228,9 @@ export interface MemorySchedData {
   absences: SchedAbsence[]
   assignments: (SchedAssignment & { createdBy: string; cancelledBy?: string | null; cancelReason?: string | null })[]
   closures: (SchedClosure & { createdBy: string })[]
-  /** location id → admin emails. */
-  admins: { locationId: string; email: string }[]
+  /** location id → admin emails. access 'view' = sees the schedule, changes nothing (absent = schedule). */
+  admins: { locationId: string; email: string; access?: 'schedule' | 'view' }[]
+  reminders?: SchedReminder[]
   events: { at: string; volunteerId: string | null; kind: string; actor: string; detail: Record<string, unknown> }[]
 }
 
@@ -203,7 +255,7 @@ export function memoryScheduleStore(d: MemorySchedData, caller: MemoryCaller, vo
   const event = (volunteerId: string | null, kind: string, actor: string, detail: Record<string, unknown>) => d.events.push({ at: iso(), volunteerId, kind, actor, detail })
 
   const admin = (locationId: string) => {
-    if (caller.kind !== 'admin' || !d.admins.some((a) => a.locationId === locationId && a.email === caller.email)) {
+    if (caller.kind !== 'admin' || !d.admins.some((a) => a.locationId === locationId && a.email === caller.email && a.access !== 'view')) {
       throw new ScheduleForbiddenError("only this location's scheduling administrator can change its schedule")
     }
     return caller.email
@@ -251,6 +303,7 @@ export function memoryScheduleStore(d: MemorySchedData, caller: MemoryCaller, vo
     async myLocations() {
       if (caller.kind !== 'admin') return []
       return copy(d.locations.filter((l) => l.active && d.admins.some((a) => a.locationId === l.id && a.email === caller.email)))
+        .map((l) => ({ ...l, access: d.admins.some((a) => a.locationId === l.id && a.email === caller.email && a.access !== 'view') ? 'schedule' as const : 'view' as const }))
     },
 
     async load(locationId, from, to) {
@@ -433,6 +486,21 @@ export function memoryScheduleStore(d: MemorySchedData, caller: MemoryCaller, vo
       } else if (i >= 0) d.closures.splice(i, 1)
       event(null, isClosed ? 'schedule.closed' : 'schedule.reopened', actor, { slot: slotId, date })
       return isClosed
+    },
+
+    async logReminder(locationId, weekStart, channel, recipients) {
+      const actor = admin(locationId)
+      if (weekdayOf(weekStart) !== 0) conflict('a reminder is about a week starting on Sunday')
+      const r: SchedReminder = { id: uid(), locationId, weekStart, channel, recipients: Math.max(0, recipients), sentBy: actor, createdAt: iso() }
+      ;(d.reminders ??= []).push(r)
+      return copy(r)
+    },
+    async listReminders(locationId, limit = 10) {
+      return copy((d.reminders ?? []).filter((r) => r.locationId === locationId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit))
+    },
+    async schedulerEmails(slotId) {
+      const s = d.slots.find((x) => x.id === slotId)
+      return s ? [...new Set(d.admins.filter((a) => a.locationId === s.locationId && a.access !== 'view').map((a) => a.email.toLowerCase()))] : []
     },
   }
 }

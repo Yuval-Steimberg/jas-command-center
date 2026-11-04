@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import type { ActResult } from '@/lib/schedule/act'
-import { addRegularAction, setClosureAction, setHoursAction, setRequiredAction } from '@/app/schedule/actions'
+import { addRegularAction, addVolunteerAction, setClosureAction, setHoursAction, setRequiredAction } from '@/app/schedule/actions'
 
 function Result({ res }: { res: ActResult | null }) {
   if (!res) return null
@@ -95,6 +95,45 @@ export function ClosureForm({ slotId, date, closed }: { slotId: string; date: st
     <form className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3" onSubmit={(e) => { e.preventDefault(); if (window.confirm('לסמן שהסדנה סגורה? אף אחד לא ייספר כחסר, והמתנדבים יראו שהיום סגור.')) run(() => setClosureAction({ slotId, date, closed: true, reason: reason || null })) }}>
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="סיבה (לא חובה), למשל: חג" maxLength={200} aria-label="סיבה" className={`${field} flex-1`} />
       <button type="submit" disabled={pending} className={btn}>{pending ? 'שומר…' : 'סימון כסגור'}</button>
+      <Result res={res} />
+    </form>
+  )
+}
+
+/** A new volunteer, registered by the scheduler, optionally a regular on one weekday straight away. */
+export function NewVolunteerForm({ slots, today }: { slots: { id: string; label: string }[]; today: string }) {
+  const [open, setOpen] = useState(false)
+  const [f, setF] = useState({ fullName: '', phone: '', email: '', adult: true, agreed: false, reservist: false, slotId: '' })
+  const { pending, res, run } = useAct()
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF({ ...f, [k]: e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value })
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className="inline-flex min-h-12 items-center justify-center rounded-full border border-line bg-surface px-5 text-base font-semibold text-ink hover:bg-sunken">+ מתנדב/ת חדש/ה</button>
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-4 shadow-card"
+      onSubmit={(e) => {
+        e.preventDefault()
+        run(async () => {
+          const r = await addVolunteerAction({ ...f, slotId: f.slotId || null, from: today })
+          if (r.ok) setF({ fullName: '', phone: '', email: '', adult: true, agreed: false, reservist: false, slotId: '' })
+          return r
+        })
+      }}
+    >
+      <h2 className="text-lg font-bold text-ink">מתנדב/ת חדש/ה</h2>
+      <input value={f.fullName} onChange={set('fullName')} placeholder="שם פרטי ומשפחה" aria-label="שם מלא" autoComplete="off" required className={field} dir="auto" />
+      <input value={f.phone} onChange={set('phone')} placeholder="נייד, למשל 050-1234567" aria-label="טלפון נייד" inputMode="tel" required className={field} dir="ltr" />
+      <input value={f.email} onChange={set('email')} placeholder="מייל (לכניסה לאפליקציה ולתזכורות)" aria-label="מייל" type="email" required className={field} dir="ltr" />
+      <select value={f.slotId} onChange={set('slotId')} aria-label="יום קבוע" className={field}>
+        <option value="">בלי יום קבוע כרגע</option>
+        {slots.map((s) => <option key={s.id} value={s.id}>קבוע/ה בימי {s.label} מהיום</option>)}
+      </select>
+      <label className="flex min-h-11 items-center gap-2 text-sm text-ink"><input type="checkbox" checked={f.reservist} onChange={set('reservist')} className="h-5 w-5" />במילואים</label>
+      <label className="flex min-h-11 items-center gap-2 text-sm text-ink"><input type="checkbox" checked={f.adult} onChange={set('adult')} className="h-5 w-5" />בן/בת 18 ומעלה</label>
+      <label className="flex min-h-11 items-start gap-2 text-sm text-ink"><input type="checkbox" checked={f.agreed} onChange={set('agreed')} required className="mt-0.5 h-5 w-5" />המתנדב/ת הסכים/ה להירשם ובן/בת 16 ומעלה. יקבל/תקבל תזכורת שבועית במייל (אפשר לבטל באפליקציה).</label>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" disabled={pending} className={btn}>{pending ? 'רושם…' : 'רישום'}</button>
+        <button type="button" onClick={() => setOpen(false)} className="text-sm text-muted underline underline-offset-4">סגירה</button>
+      </div>
       <Result res={res} />
     </form>
   )
