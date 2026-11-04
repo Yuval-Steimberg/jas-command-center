@@ -85,14 +85,14 @@ export function ClosureForm({ slotId, date, closed }: { slotId: string; date: st
   if (closed) {
     return (
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={pending} onClick={() => run(() => setClosureAction({ slotId, date, closed: false }))} className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink hover:bg-sunken disabled:opacity-60">{pending ? 'רגע…' : 'הסדנה כן פתוחה ביום הזה'}</button>
+        <button type="button" disabled={pending} onClick={() => run(() => setClosureAction({ slotId, date, closed: false }))} className="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-sm font-semibold text-ink hover:bg-sunken disabled:opacity-60">{pending ? 'רגע…' : 'פתוח ביום הזה'}</button>
         <Result res={res} />
       </div>
     )
   }
-  if (!open) return <button type="button" onClick={() => setOpen(true)} className="self-start text-sm font-medium text-muted underline underline-offset-4">הסדנה סגורה ביום הזה (חג, אירוע)…</button>
+  if (!open) return <button type="button" onClick={() => setOpen(true)} className="self-start text-sm font-medium text-muted underline underline-offset-4">סגור ביום הזה (חג, אירוע)…</button>
   return (
-    <form className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3" onSubmit={(e) => { e.preventDefault(); if (window.confirm('לסמן שהסדנה סגורה? אף אחד לא ייספר כחסר, והמתנדבים יראו שהיום סגור.')) run(() => setClosureAction({ slotId, date, closed: true, reason: reason || null })) }}>
+    <form className="flex flex-wrap items-center gap-2 rounded-lg border border-line bg-surface p-3" onSubmit={(e) => { e.preventDefault(); if (window.confirm('לסמן שסגור ביום הזה? אף אחד לא ייספר כחסר, והמתנדבים יראו שהיום סגור.')) run(() => setClosureAction({ slotId, date, closed: true, reason: reason || null })) }}>
       <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="סיבה (לא חובה), למשל: חג" maxLength={200} aria-label="סיבה" className={`${field} flex-1`} />
       <button type="submit" disabled={pending} className={btn}>{pending ? 'שומר…' : 'סימון כסגור'}</button>
       <Result res={res} />

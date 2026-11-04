@@ -10,7 +10,7 @@ const RULES: [RegExp, string][] = [
   [/take the absence back/, 'דיווח/ה שלא יגיע/תגיע ביום הזה. אפשר לבטל את ההיעדרות במקום לשבץ.'],
   [/account is not active/, 'החשבון של המתנדב/ת לא פעיל.'],
   [/that day has passed/, 'היום הזה כבר עבר.'],
-  [/closed/, 'הסדנה סגורה ביום הזה.'],
+  [/closed/, 'המקום סגור ביום הזה.'],
   [/not scheduled on that day/, 'לא משובץ/ת ביום הזה.'],
   [/person being replaced is not scheduled/, 'מי שמוחלף/ת לא משובץ/ת ביום הזה.'],
   [/cannot replace themselves/, 'אי אפשר להחליף מישהו בעצמו.'],

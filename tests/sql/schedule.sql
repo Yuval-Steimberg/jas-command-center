@@ -21,8 +21,8 @@ insert into cc_volunteers (id, full_name, email, phone, availability, status) va
   ('b0000000-0000-4000-8000-000000000004', 'מושהה', 'paused@x.test', '0500000004', '{}', 'paused') on conflict do nothing;
 
 create temp table t_ctx as
-  select (select id from cc_vol_slots where weekday = 2) as tue,
-         (select id from cc_vol_slots where weekday = 1) as mon,
+  select (select s.id from cc_vol_slots s join cc_vol_locations l on l.id = s.location_id where l.slug = 'sharon_workshop' and s.weekday = 2) as tue,
+         (select s.id from cc_vol_slots s join cc_vol_locations l on l.id = s.location_id where l.slug = 'sharon_workshop' and s.weekday = 1) as mon,
          -- a Tuesday at least a week ahead, so "today" never interferes
          cc_vol__today() + 7 + ((2 - extract(dow from cc_vol__today())::int + 7) % 7) as d;
 grant select on t_ctx to authenticated, service_role, anon;
@@ -50,8 +50,8 @@ $$;
 -- ── Dafna sets up Tuesday ──────────────────────────────────────────────────
 select pg_temp.as_dafna();
 set role authenticated;
-select count(*) = 3 as sees_three_days from cc_vol_slots \gset
-\if :sees_three_days \else \echo 'FAIL: Dafna should see 3 slots' \quit \endif
+select count(*) = 6 as sees_three_days from cc_vol_slots \gset
+\if :sees_three_days \else \echo 'FAIL: Dafna should see only her place 6 slots (0013)' \quit \endif
 select required from cc_vol_sched_update_slot((select tue from t_ctx), null, '{"required":"3","starts_at":"09:00","ends_at":"13:00"}');
 select pg_temp.expect_fail($$select cc_vol_sched_update_slot((select tue from t_ctx), 1, '{"required":"4"}')$$, 'changed this day');
 select count(*) from cc_vol_sched_add_regular((select tue from t_ctx), 'b0000000-0000-4000-8000-000000000001', cc_vol__today());

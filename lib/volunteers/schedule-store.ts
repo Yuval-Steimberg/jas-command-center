@@ -241,6 +241,26 @@ export function seedSchedule(): MemorySchedData {
   return { locations: [loc], slots: [slot(1), slot(2), slot(3)], regulars: [], absences: [], assignments: [], closures: [], admins: [], events: [] }
 }
 
+/** Migration 0013 on top of the seed: the three places, Sunday to Friday (dev login and tests). */
+export function seedPlaces(): MemorySchedData {
+  const d = seedSchedule()
+  d.locations[0]!.name = 'בית המלאכה של שרון'
+  const more: [string, string, string, string, number][] = [
+    ['00000000-0000-4000-8000-00000000a002', 'general_compound', 'מתחם כללי', 'general', 2],
+    ['00000000-0000-4000-8000-00000000a003', 'gallery_store', 'חנות הגלריה', 'store', 2],
+  ]
+  for (const [id, slug, name] of more) d.locations.push({ id, slug, name, active: true })
+  const places: [string, string, number][] = [[d.locations[0]!.id, 'workshop', 10], ...more.map(([id, , , activity, req]) => [id, activity, req] as [string, string, number])]
+  places.forEach(([locationId, activity, required], i) => {
+    for (let weekday = 0; weekday <= 5; weekday++) {
+      const have = d.slots.find((x) => x.locationId === locationId && x.weekday === weekday)
+      if (have) { have.required ??= required; continue }
+      d.slots.push({ id: `00000000-0000-4000-8000-0000000c${i}${String(weekday).padStart(3, '0')}`, locationId, activity, weekday, startsAt: null, endsAt: null, required, active: true, version: 1 })
+    }
+  })
+  return d
+}
+
 /** Who is calling the memory store: an admin (by email) or the volunteer app's server. */
 export type MemoryCaller = { kind: 'admin'; email: string } | { kind: 'service' }
 

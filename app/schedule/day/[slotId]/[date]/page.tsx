@@ -1,7 +1,7 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { currentScheduler } from '@/lib/schedule/store'
-import { loadDay, realtimeConfig } from '@/lib/schedule/load'
+import { loadDay, placeOfSlot, realtimeConfig } from '@/lib/schedule/load'
 import { scheduleErrorHe } from '@/lib/volunteers/schedule-messages'
 import { dayLabelHe, hhmm, WEEKDAY_HE, type Candidate, type PersonOnDay } from '@/lib/volunteers/schedule'
 import { assignAction, cancelAssignmentAction, markAbsentAction, setAssignmentStatusAction, withdrawAbsenceAction } from '@/app/schedule/actions'
@@ -28,7 +28,12 @@ export default async function DayPage({ params, searchParams }: { params: { slot
   } catch (e) {
     return <p role="alert" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{scheduleErrorHe(e)}</p>
   }
-  if (!res) notFound()
+  if (!res) {
+    // A link to a day of another of their places (an absence email): open that place, then the day.
+    const other = await placeOfSlot(s, params.slotId, params.date)
+    if (other) redirect(`/schedule/place?id=${encodeURIComponent(other)}&next=${encodeURIComponent(`/schedule/day/${params.slotId}/${params.date}`)}`)
+    notFound()
+  }
   const { day: d, today } = res
   const past = d.date < today
   /** Buttons only for a scheduler, and only for today or later. The database refuses anything else anyway. */

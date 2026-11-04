@@ -31,6 +31,7 @@ export async function askScheduleAction(raw: { question: string; history: unknow
       model,
       store: s.store,
       locationId: s.location.id,
+      locationName: s.location.name,
       today: israelDate(),
       readOnly: !s.canEdit,
       audit: (entry) => audit(s.user, { ...entry, product: 'volunteers', via: 'assistant' }),

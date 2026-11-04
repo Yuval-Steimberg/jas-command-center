@@ -13,7 +13,7 @@ update cc_volunteers set reservist = true where id = 'b0000000-0000-4000-8000-00
 
 create temp table t2 as
   select (select id from cc_vol_locations where slug = 'sharon_workshop') as loc,
-         (select id from cc_vol_slots where weekday = 2) as tue,
+         (select s.id from cc_vol_slots s join cc_vol_locations l on l.id = s.location_id where l.slug = 'sharon_workshop' and s.weekday = 2) as tue,
          cc_vol__today() + 14 + ((2 - extract(dow from cc_vol__today())::int + 7) % 7) as d,
          (cc_vol__today() - extract(dow from cc_vol__today())::int + 7) as next_sun;
 grant select on t2 to authenticated, service_role, anon;
@@ -39,8 +39,8 @@ create or replace function pg_temp.as_service() returns void language sql as $$
 -- ── Sharon (viewer) sees everything about her location … ──────────────────
 select pg_temp.as_sharon();
 set role authenticated;
-select count(*) = 3 as ok from cc_vol_slots \gset
-\if :ok \else \echo 'FAIL: viewer should see 3 slots' \quit \endif
+select count(*) = 6 as ok from cc_vol_slots \gset
+\if :ok \else \echo 'FAIL: viewer should see only her place 6 slots' \quit \endif
 select count(*) >= 1 as ok from cc_vol_regulars \gset
 \if :ok \else \echo 'FAIL: viewer should see the regulars' \quit \endif
 select count(*) = 1 as ok from cc_volunteers where reservist \gset
