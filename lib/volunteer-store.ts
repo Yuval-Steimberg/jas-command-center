@@ -61,3 +61,8 @@ export async function loadVolunteerWindow(fromIso: string, toIso: string, now = 
   ])
   return { shifts, volunteers, activities, signups, views: buildShiftViews(activities, shifts, signups, now) }
 }
+
+/** The local-development memory data (dev login only), shared with the schedule store's dev mode. */
+export function memoryVolunteerData(): MemoryVolData {
+  return (g.__ccVolData ??= emptyVolData())
+}

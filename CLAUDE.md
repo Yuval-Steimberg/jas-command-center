@@ -247,3 +247,12 @@ Shop card terminal (`docs/GROW_TERMINAL.md`, migration `0007_terminal_charges.sq
 - One tap: with the terminal on, checkout's "card" = the terminal (`basket.terminal`, never with `payment`). The sell tap opens a named
   tab (`components/sales/terminal-tab.ts`, a browser only allows tabs from a tap); the sale page fills it with Grow's link. After a
   full reload the handle is gone and the sale page's manual button remains.
+
+Volunteer scheduling (`docs/VOLUNTEERS.md` "Scheduling", migration `0011_volunteer_schedule.sql`, `app/schedule/`, `lib/schedule/`):
+- Schedule mode `/schedule` (Hebrew, phone, like /shop) for a location's scheduler (role `scheduler` → `/` redirects there).
+  Volunteers only see their days and report absences in the volunteer app; self sign-up is off unless `VOLUNTEER_OPEN_SIGNUP=on`.
+- Enforced in SQL: `cc_vol_sched_*` functions check `auth.uid()` ∈ `cc_vol_location_admins`; a trigger refuses direct writes.
+  The service role is NOT a scheduler (volunteer-source absences only). Reads use the user's own session (RLS) → realtime.
+- `buildDay` (`lib/volunteers/schedule.ts`) is the one definition of coming / missing (null until required is set) / candidates.
+- Assistant `lib/schedule/assistant.ts`: `V-xxxxxx` refs only, proposals run on Confirm through the same store calls.
+- Schedulers are granted per location on `/settings/staff` (users:manage, audited `staff.schedule_admin`).

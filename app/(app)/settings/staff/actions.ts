@@ -9,6 +9,7 @@ import { authMode } from '@/lib/auth/mode'
 import { ROLES, type Role } from '@/lib/auth/rbac'
 import { refuseInvite, refuseResend, refuseStaffChange } from '@/lib/staff/rules'
 import { deleteStaff, invite, listStaff, resendAccess, setActive, setRole } from '@/lib/staff/store'
+import { setLocationAdmin } from '@/lib/schedule/store'
 
 export type StaffState = { ok?: boolean; message?: string }
 
@@ -135,5 +136,29 @@ export async function deleteAction(_prev: StaffState, form: FormData): Promise<S
   } catch (e) {
     await audit(a.user, { action: 'staff.delete', product: null, target: `profile:${id.data}`, outcome: 'failed', detail: { ...detail, error: fail(e) } })
     return { ok: false, message: `Not deleted: ${fail(e)}` }
+  }
+}
+
+/** Who schedules volunteers at a location (Dafna for Sharon's Workshop). The database checks this on every schedule write. */
+export async function setLocationAdminAction(_prev: StaffState, form: FormData): Promise<StaffState> {
+  const a = await actor()
+  if ('error' in a) return { ok: false, message: a.error }
+  const input = z.object({ location: z.string().uuid(), profile: z.string().uuid(), on: z.enum(['1', '0']) }).safeParse({ location: form.get('location'), profile: form.get('profile'), on: form.get('on') })
+  if (!input.success) return { ok: false, message: 'Pick a person.' }
+  const { location, profile } = input.data
+  const on = input.data.on === '1'
+  const target = (await listStaff()).find((s) => s.id === profile)
+  if (!target) return { ok: false, message: 'That person is not on the staff list.' }
+  if (on && !target.active) return { ok: false, message: `${target.email} is deactivated.` }
+  const detail = { location, email: target.email, on }
+  await audit(a.user, { action: 'staff.schedule_admin', product: 'volunteers', target: target.email, outcome: 'requested', detail })
+  try {
+    await setLocationAdmin(location, profile, on, a.user.email)
+    await audit(a.user, { action: 'staff.schedule_admin', product: 'volunteers', target: target.email, outcome: 'succeeded', detail })
+    revalidatePath('/settings/staff')
+    return { ok: true, message: on ? `${target.email} can now schedule this location.` : `${target.email} no longer schedules this location.` }
+  } catch (e) {
+    await audit(a.user, { action: 'staff.schedule_admin', product: 'volunteers', target: target.email, outcome: 'failed', detail: { ...detail, error: fail(e) } })
+    return { ok: false, message: `Not changed: ${fail(e)}` }
   }
 }

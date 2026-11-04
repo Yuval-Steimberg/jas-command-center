@@ -11,13 +11,23 @@ import { Card, Empty, Notice, Page, Pill, Section, primaryBtn, secondaryBtn } fr
 import { placeHe, relativeDayHe, whenHe } from '@/lib/format'
 import { SIGNUP_STATUS_HE } from '@shared/volunteers/model'
 import { env } from '@/lib/env'
+import { getScheduleStore } from '@/lib/schedule'
+import { MyDays, WEEKS_AHEAD } from '@/components/my-days'
+import { israelDay } from '@shared/volunteers/time'
+import { emptySchedule, isDate, plusDays } from '@shared/volunteers/schedule'
 
-export default async function Home({ searchParams }: { searchParams: { deleted?: string } }) {
+export default async function Home({ searchParams }: { searchParams: { deleted?: string; absent?: string; back?: string } }) {
   const v = await currentVolunteer().catch(() => null)
+  const open = env().openSignup
+  const today = israelDay()
   const res = await load(async () => {
     const store = getStore()
-    const [up, mine] = await Promise.all([loadUpcoming(store), v ? loadMine(store, v.id) : Promise.resolve([])])
-    return { up, mine }
+    const [up, mine, schedule] = await Promise.all([
+      open ? loadUpcoming(store) : Promise.resolve({ views: [] } as unknown as Awaited<ReturnType<typeof loadUpcoming>>),
+      v ? loadMine(store, v.id) : Promise.resolve([]),
+      v ? getScheduleStore().loadForVolunteer(v.id, today, plusDays(today, WEEKS_AHEAD * 7)) : Promise.resolve(emptySchedule()),
+    ])
+    return { up, mine, schedule }
   })
 
   if (!v) {
@@ -32,7 +42,7 @@ export default async function Home({ searchParams }: { searchParams: { deleted?:
             <Image src="/logo.png" alt="Just A Second" width={180} height={34} className="mb-auto h-auto w-40 self-end brightness-0 invert md:self-auto" />
             <p className="text-sm font-semibold tracking-[0.14em]">JAS VOLUNTEERS</p>
             <h1 className="mt-2 font-display text-[2.4rem] leading-[1.08]">מתנדבים איתנו, נותנים לדברים חיים שניים</h1>
-            <p className="mt-3 max-w-md text-lg leading-relaxed text-ground/90">איסוף רהיטים מבניינים לפני פינוי, מיון, הכנה לשימוש חוזר ואירועים קהילתיים. בוחרים משמרת שמתאימה לכם, ונרשמים בלחיצה.</p>
+            <p className="mt-3 max-w-md text-lg leading-relaxed text-ground/90">{open ? 'איסוף רהיטים מבניינים לפני פינוי, מיון, הכנה לשימוש חוזר ואירועים קהילתיים. בוחרים משמרת שמתאימה לכם, ונרשמים בלחיצה.' : 'מתנדבים בסדנה, נותנים לרהיטים וחפצים חיים שניים. נרשמים פעם אחת, והצוות שלנו קובע איתכם ימים קבועים.'}</p>
           </div>
         </section>
         <Page className="pt-6">
@@ -40,22 +50,26 @@ export default async function Home({ searchParams }: { searchParams: { deleted?:
           <Link href="/login" className={primaryBtn}>אני רוצה להתנדב</Link>
           <p className="mt-3 text-center text-base text-slate">כבר רשומים? <Link href="/login" className="font-semibold text-forest underline underline-offset-4">כניסה</Link></p>
           <ol className="mt-8 grid gap-3">
-            {[
+            {(open ? [
               { icon: Search, t: 'בוחרים פעילות', d: 'רואים מה פתוח, איפה ומתי, ובלי להירשם קודם.' },
               { icon: CalendarCheck, t: 'נרשמים למשמרת', d: 'שם, טלפון ואימייל. זה הכול, ואפשר לבטל עד תחילת המשמרת.' },
               { icon: HandHeart, t: 'מגיעים ועושים טוב', d: 'מקבלים תזכורת יום לפני, והשעות נרשמות אחרי שהגעתם.' },
-            ].map((s, i) => (
+            ] : [
+              { icon: Search, t: 'נרשמים', d: 'שם, טלפון ואימייל, וגם באילו ימים ושעות נוח לכם.' },
+              { icon: CalendarCheck, t: 'מקבלים ימים קבועים', d: 'צוות השיבוץ קובע איתכם את הימים, והם מופיעים כאן באפליקציה.' },
+              { icon: HandHeart, t: 'יום שלא מתאים? מסמנים', d: 'לחיצה אחת כדי לסמן מראש תאריך שבו לא תוכלו להגיע.' },
+            ]).map((s, i) => (
               <li key={s.t} className="flex gap-3 rounded-lg border border-line bg-paper p-4 shadow-1">
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sage-soft text-forest"><s.icon aria-hidden className="h-5 w-5" strokeWidth={1.75} /></span>
                 <div><p className="font-bold text-forest">{i + 1}. {s.t}</p><p className="text-base leading-relaxed text-slate">{s.d}</p></div>
               </li>
             ))}
           </ol>
-          <Section title="פעילויות קרובות" action={<Link href="/activities" className="inline-flex min-h-11 items-center gap-1 text-base font-semibold text-forest underline-offset-4 hover:underline">לכולן <ArrowLeft aria-hidden className="h-4 w-4" /></Link>}>
+          {open ? <Section title="פעילויות קרובות" action={<Link href="/activities" className="inline-flex min-h-11 items-center gap-1 text-base font-semibold text-forest underline-offset-4 hover:underline">לכולן <ArrowLeft aria-hidden className="h-4 w-4" /></Link>}>
             {!res.ok ? <Notice tone="bad">{res.message}</Notice> : res.data.up.views.length === 0 ? <Empty title="אין כרגע פעילויות פתוחות">פעילויות חדשות נפתחות כל הזמן. כדאי להירשם, ונעדכן כשתיפתח פעילות באזור שלכם.</Empty> : (
               <div className="grid gap-3">{byActivity(res.data.up.views).slice(0, 3).map((g) => <ActivityCard key={g[0]!.activity.id} views={g} href={`/activities/${g[0]!.activity.id}`} />)}</div>
             )}
-          </Section>
+          </Section> : null}
           <Footer />
         </Page>
       </>
@@ -73,7 +87,23 @@ export default async function Home({ searchParams }: { searchParams: { deleted?:
         <Image src="/logo.png" alt="Just A Second" width={120} height={22} className="h-auto w-28 opacity-90" />
       </header>
       {!res.ok ? <Notice tone="bad">{res.message}</Notice> : (() => {
-        const { up, mine } = res.data
+        const { up, mine, schedule } = res.data
+        const days = <MyDays data={schedule} volunteerId={v.id} today={today} justReported={isDate(searchParams.absent) ? searchParams.absent : undefined} back={searchParams.back === '1'} />
+        if (!open) {
+          const minutes = recordedMinutes(mine.map((m) => m.signup))
+          return (
+            <>
+              {days}
+              {minutes > 0 ? (
+                <Section title="ההתנדבות שלך">
+                  <Card><p className="text-sm text-slate">שעות שנרשמו</p><p className="num text-3xl font-bold text-forest">{hoursText(minutes)}</p></Card>
+                  <Link href="/my" className="mt-2 inline-flex min-h-11 items-center text-base font-semibold text-forest underline underline-offset-4">ההיסטוריה ואישור ההתנדבות</Link>
+                </Section>
+              ) : null}
+              <Footer />
+            </>
+          )
+        }
         const now = Date.now()
         const invites = mine.filter((m) => m.signup.status === 'invited' && Date.parse(m.shift.startsAt) > now)
         const upcoming = mine.filter((m) => (m.signup.status === 'confirmed' || m.signup.status === 'waitlisted') && Date.parse(m.shift.endsAt) > now && m.shift.status === 'open')
@@ -93,6 +123,7 @@ export default async function Home({ searchParams }: { searchParams: { deleted?:
         const recommended = picks.filter((p) => (seen.has(p.x.activity.id) ? false : (seen.add(p.x.activity.id), true))).slice(0, 3)
         return (
           <>
+            {schedule.slots.length ? days : null}
             {invites.length ? (
               <Section title="הוזמנת">
                 <div className="grid gap-3">

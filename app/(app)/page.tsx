@@ -78,6 +78,8 @@ export default async function OverviewPage({ searchParams }: { searchParams?: Re
   const user = await requireUser()
   // A shop seller's home is shop mode.
   if (user.role === 'seller') redirect('/shop')
+  // A volunteer scheduler's home is schedule mode.
+  if (user.role === 'scheduler') redirect('/schedule')
   const overrides = (await getSession())?.overrides
   const sees = (p: Product) => can(user.role, `${p}:read`, overrides)
   const range = resolveRange(presetFrom(searchParams))

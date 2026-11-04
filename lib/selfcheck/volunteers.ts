@@ -1,6 +1,8 @@
 import 'server-only'
 import { env } from '@/lib/env'
 import { getVolunteerStore } from '@/lib/volunteer-store'
+import { authMode } from '@/lib/auth/mode'
+import { supabaseAdmin } from '@/lib/supabase'
 import { fromCall, type Probe } from './probe'
 
 /**
@@ -21,6 +23,22 @@ export async function probeVolunteers(now = new Date()): Promise<Probe[]> {
     return `${vols.length} active volunteers, ${acts.length} published activities, ${shifts.length} shifts in the next 14 days, 0 failed emails in 7 days`
   }).then((p): Probe => (p.state === 'error' && /0005_volunteers/.test(p.detail) ? { ...p, state: 'not_configured', detail: 'run 0005_volunteers.sql' } : p))
 
+  // The weekly schedule (0011): its days exist and someone is allowed to run them. Counts only.
+  const schedule: Promise<Probe> = authMode().kind !== 'supabase'
+    ? Promise.resolve({ section: 'volunteers', name: 'Volunteer schedule (migration 0011)', state: 'not_configured', latencyMs: null, detail: 'no database in this mode' })
+    : fromCall('volunteers', 'Volunteer schedule (migration 0011)', async () => {
+        const db = supabaseAdmin()
+        const [slots, admins] = await Promise.all([
+          db.from('cc_vol_slots').select('id, required').eq('active', true),
+          db.from('cc_vol_location_admins').select('location_id', { count: 'exact', head: true }),
+        ])
+        const err = slots.error ?? admins.error
+        if (err) throw new Error(/does not exist|schema cache|PGRST205/i.test(err.message) ? 'run 0011_volunteer_schedule.sql' : err.message)
+        const days = slots.data ?? []
+        const set = days.filter((d) => d.required !== null).length
+        return `${days.length} operating days (required set on ${set}), ${admins.count ?? 0} scheduler grant(s)`
+      }).then((p): Probe => (p.state === 'error' && /0011/.test(p.detail) ? { ...p, state: 'not_configured' } : p))
+
   const base = env().volunteers.appUrl
   const app: Promise<Probe> = !base
     ? Promise.resolve({ section: 'volunteers', name: 'Volunteer app (/api/health)', state: 'not_configured', latencyMs: null, detail: 'needs VOLUNTEER_APP_URL on the Command Center' })
@@ -33,5 +51,5 @@ export async function probeVolunteers(now = new Date()): Promise<Probe[]> {
         return line
       })
 
-  return Promise.all([tables, app])
+  return Promise.all([tables, app, schedule])
 }

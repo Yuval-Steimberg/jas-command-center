@@ -4,7 +4,7 @@
  * every server action and route calls assertPermission itself.
  */
 
-export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'seller', 'viewer'] as const
+export const ROLES = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'scheduler', 'seller', 'viewer'] as const
 export type Role = (typeof ROLES)[number]
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -13,6 +13,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   operations_manager: 'Operations manager',
   project_manager: 'Project manager',
   volunteer_coordinator: 'Volunteer coordinator',
+  scheduler: 'Volunteer scheduler',
   seller: 'Shop seller',
   viewer: 'Read-only viewer',
 }
@@ -24,12 +25,13 @@ export const ROLE_LABELS_HE: Record<Role, string> = {
   operations_manager: 'מנהל/ת תפעול',
   project_manager: 'מנהל/ת פרויקטים',
   volunteer_coordinator: 'רכז/ת מתנדבים',
+  scheduler: 'שיבוץ מתנדבים',
   seller: 'מוכר/ת בחנות',
   viewer: 'צפייה בלבד',
 }
 
 /** Most privileged first: a user with several roles acts with the first one listed here. */
-const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'seller', 'viewer']
+const RANK: Role[] = ['owner', 'admin', 'operations_manager', 'project_manager', 'volunteer_coordinator', 'scheduler', 'seller', 'viewer']
 
 /**
  * The five source systems, plus the modules whose data the command center
@@ -129,6 +131,14 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'map:read',
     'assistant:use',
   ]),
+  /**
+   * Runs a location's weekly volunteer schedule through /schedule and nothing
+   * else. The role grants NO console permission: which location a scheduler
+   * runs is a database grant (cc_vol_location_admins, migration 0011) that the
+   * scheduling functions and RLS check themselves. The role only decides that
+   * their home is schedule mode.
+   */
+  scheduler: new Set<Permission>([]),
   /**
    * Works the shop floor through /shop: takes items in (photo, AI fields),
    * sells, records payments, hands over and takes returns, and adds customers.

@@ -9,6 +9,7 @@ import { currentVolunteer, endSession } from '@/lib/session'
 import { getStore } from '@/lib/store'
 import { notify, notifyContext } from '@/lib/mail'
 import { heMessage } from '@/lib/errors'
+import { env } from '@/lib/env'
 
 export type State = { ok?: boolean; message?: string }
 
@@ -31,6 +32,13 @@ const refresh = () => {
  */
 export async function joinAction(_p: State, f: FormData): Promise<State> {
   const v = await me()
+  // Volunteers do not schedule themselves unless open sign-up is switched on (VOLUNTEER_OPEN_SIGNUP=on).
+  // An invitation from the team is still accepted: that is the team's decision, not the volunteer's.
+  if (!env().openSignup) {
+    const sid = uuidish.safeParse(f.get('shiftId'))
+    const invited = sid.success && (await getStore().listSignups({ shiftIds: [sid.data], volunteerId: v.id }))[0]?.status === 'invited'
+    if (!invited) return { ok: false, message: 'השיבוץ נעשה על ידי צוות השיבוץ. אפשר לסמן כאן רק ימים שבהם לא תוכלו להגיע.' }
+  }
   const shiftId = uuidish.safeParse(f.get('shiftId'))
   if (!shiftId.success) return { ok: false, message: 'משמרת לא מוכרת.' }
   const store = getStore()

@@ -36,3 +36,20 @@ VOL_PGRST_URL=http://127.0.0.1:3399 VOL_PGRST_JWT_SECRET=<same secret> npx vites
 ```
 
 Without the two variables the suite is skipped.
+
+## 0011 (volunteer scheduling)
+
+0011 checks `auth.uid()` and the JWT role, so the database needs Supabase's
+roles and `auth.uid()` stubbed. On top of the setup above:
+
+```sh
+psql ... -d t <<'SQL'
+create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+create or replace function auth.uid() returns uuid language sql stable as $$
+  select nullif(current_setting('request.jwt.claims', true)::json->>'sub', '')::uuid $$;
+create publication supabase_realtime;
+SQL
+psql ... -d t -f supabase/migrations/0011_volunteer_schedule.sql
+psql ... -d t -f tests/sql/schedule.sql                       # rules, RLS, the write guard
+PGHOST=/tmp/claude-0/pg PGPORT=5544 PGDB=t sh tests/sql/schedule-concurrency.sh   # races
+```
