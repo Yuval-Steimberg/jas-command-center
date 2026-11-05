@@ -1,4 +1,5 @@
 import 'server-only'
+import type { DuplicateCandidate } from '../inventory/duplicates'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ConflictError, OpsSetupError, type OpsStore } from './store'
 import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Task } from './types'
@@ -135,11 +136,10 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
         throw e
       }
     },
-    async photoHashes() {
-      type H = Pick<Item, 'id' | 'sku' | 'title' | 'photoUrl' | 'status' | 'photoHash'>
-      const out: H[] = []
+    async listDuplicateCandidates() {
+      const out: DuplicateCandidate[] = []
       for (let from = 0; from < 50_000; from += 1000) {
-        const page = await many<H>(db.from('cc_inventory_items').select('id,sku,title,photo_url,status,photo_hash').not('photo_hash', 'is', null).order('id').range(from, from + 999))
+        const page = await many<DuplicateCandidate>(db.from('cc_inventory_items').select('id,sku,title,category,colors,material,description,photo_url,photo_hash,status,location_id').order('id').range(from, from + 999))
         out.push(...page)
         if (page.length < 1000) break
       }

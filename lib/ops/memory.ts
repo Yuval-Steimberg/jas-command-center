@@ -128,8 +128,8 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
     async renewalLevelReady() {
       return true
     },
-    async photoHashes() {
-      return copy(d.items.filter((i) => i.photoHash).map((i) => ({ id: i.id, sku: i.sku, title: i.title, photoUrl: i.photoUrl, status: i.status, photoHash: i.photoHash })))
+    async listDuplicateCandidates() {
+      return copy(d.items.map((i) => ({ id: i.id, sku: i.sku, title: i.title, category: i.category, colors: i.colors ?? null, material: i.material, description: i.description, photoUrl: i.photoUrl, photoHash: i.photoHash ?? null, status: i.status, locationId: i.locationId })))
     },
     async movements(itemId) {
       return copy(d.movements.filter((m) => m.itemId === itemId).sort((a, b) => b.at.localeCompare(a.at)))

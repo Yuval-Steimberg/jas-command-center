@@ -221,6 +221,9 @@ Shop sales + shop mode (`docs/CRM_INVENTORY.md`, migration `0006_shop_sales.sql`
 - `/shop` is Hebrew, RTL, for the counter; it shares components with the console (`components/sales/`, `components/inventory/item-form.tsx`).
   Server pages must not call functions from a `'use client'` module: form defaults live in `item-values.ts`.
 - `seller` role → `/` redirects to `/shop`; `/inventory/[id]` redirects to `/shop/items/[id]`. Manifest + icon are excluded from the middleware.
+- "Already have this?" on the add-item form: `lib/inventory/duplicates.ts` (pure, tested) via `similarItemsAction`. Photo hash (any status) OR name + one more
+  agreeing detail (active items only; a clashing category/colour/material rules it out). Runs by itself (debounced), only warns, never blocks a save.
+  Items imported from the sheet / adopted from the website have no photo hash, so for them only the text half can match.
 - Photo AI: `lib/inventory/ai.ts` (`PHOTO_AI_MODEL`, default claude-sonnet-5-5) returns suggestions only; duplicate photos warn, never block.
 - runAct for product `inventory` revalidates the `/sales`, `/shop` and `/inventory` trees.
 - Shop look: `data-shop` on the layout scopes `globals.css` rules (16px fields so iOS does not zoom, 44px fields/buttons, RTL

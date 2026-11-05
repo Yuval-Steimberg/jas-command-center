@@ -1,13 +1,13 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFormState } from 'react-dom'
 import Link from 'next/link'
 import { Camera, ImagePlus, Sparkles, X } from 'lucide-react'
 import { Submit, input } from '@/app/(app)/website/forms'
 import { Outcome } from '@/app/(app)/inventory/forms'
 import { createItemAction, editItemAction } from '@/app/(app)/inventory/actions'
-import { describeItemPhotoAction, similarPhotosAction, uploadItemPhotoAction, type SimilarItem } from '@/app/(app)/inventory/photo-actions'
+import { describeItemPhotoAction, similarItemsAction, uploadItemPhotoAction, type SimilarItem } from '@/app/(app)/inventory/photo-actions'
 import type { ActionState } from '@/lib/ops/act'
 import { HASH_H, HASH_W, differenceHash, toGrey } from '@/lib/inventory/photo-hash'
 import { COPY, type Lang } from '@/components/sales/copy'
@@ -18,6 +18,7 @@ import { RENEWAL_LEVELS } from '@/lib/ops/types'
 import { RENEWAL_LABEL, RENEWAL_LABEL_HE } from '@/lib/inventory/renewal'
 import { DEFAULT_PLACE, PLACES, PLACE_LABEL, PLACE_LABEL_HE, type Place } from '@/lib/inventory/places'
 import { ITEM_CATEGORIES } from '@/lib/inventory/categories'
+import { STATUS_LABEL, STATUS_LABEL_HE } from '@/lib/inventory/model'
 
 const MAX_EDGE = 1600
 
@@ -75,6 +76,9 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
   const [similar, setSimilar] = useState<SimilarItem[]>([])
+  /** Items the person already said are a different piece: never shown again on this form. */
+  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set())
+  const checkSeq = useRef(0)
   const blobRef = useRef<Blob | null>(null)
   const camRef = useRef<HTMLInputElement>(null)
   const galRef = useRef<HTMLInputElement>(null)
@@ -134,16 +138,15 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
     setBusy('upload')
     setError('')
     setNote('')
-    setSimilar([])
     let blob: Blob | null = null
     try {
       const prepared = await prepare(file)
       blob = prepared.blob
       blobRef.current = blob
-      const [up, sim] = await Promise.all([uploadItemPhotoAction(asForm(blob)), similarPhotosAction(prepared.hash)])
+      const up = await uploadItemPhotoAction(asForm(blob))
       if (!up.ok || !up.url) throw new Error(up.message ?? 'Upload failed')
+      // Setting the hash runs the "already have this?" check below.
       set({ photoUrl: up.url, photoHash: prepared.hash })
-      setSimilar(sim.items.filter((s) => !hidden.id || s.id !== hidden.id))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
       blob = null
@@ -161,6 +164,33 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
     setNote('')
     await describe(blobRef.current, true)
   }
+
+  /**
+   * "Do we already have this?" — runs by itself, never a step: after the photo
+   * uploads, after the AI fills the name, and when someone types it (debounced).
+   * The name and details are compared only when adding; an edit compares the photo.
+   * A failed check shows nothing, and saving is never blocked.
+   */
+  const excludeId = typeof hidden.id === 'string' ? hidden.id : undefined
+  const textQuery = mode === 'create' ? { title: v.title, category: v.category, colors: v.colors, material: v.material } : null
+  const queryKey = JSON.stringify([v.photoHash, textQuery])
+  useEffect(() => {
+    const seq = ++checkSeq.current
+    const q = { photoHash: v.photoHash || undefined, ...(textQuery ?? {}), description: mode === 'create' ? v.description : undefined }
+    if (!q.photoHash && !(q.title ?? '').trim()) {
+      setSimilar([])
+      return
+    }
+    const timer = setTimeout(() => {
+      similarItemsAction(q, excludeId)
+        .then((r) => { if (seq === checkSeq.current && r.ok) setSimilar(r.items) })
+        .catch(() => {})
+    }, 700)
+    return () => clearTimeout(timer)
+    // The query is keyed by value; description is sent but deliberately does not re-trigger a check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey])
+  const shown = similar.filter((s) => !dismissed.has(s.id))
 
   async function onBefore(files: FileList | null) {
     const file = files?.[0]
@@ -241,22 +271,6 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
           <summary className="cursor-pointer text-muted">{t.photoLink}</summary>
           <input value={v.photoUrl} onChange={(e) => set({ photoUrl: e.target.value.trim(), photoHash: '' })} dir="ltr" maxLength={2000} placeholder="https://" aria-label={t.photoLink} className={`${input} mt-2`} />
         </details>
-        {similar.length ? (
-          <div role="status" className="rounded-md border border-warn/50 bg-warn/5 p-2 text-sm">
-            <p className="font-medium text-warn">{t.dupTitle}</p>
-            <ul className="mt-2 flex flex-col gap-2">
-              {similar.map((s) => (
-                <li key={s.id} className="flex items-center gap-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  {s.photoUrl ? <img src={s.photoUrl} alt="" className="h-12 w-12 rounded object-cover" /> : null}
-                  <span className="min-w-0 flex-1 truncate" dir="auto"><span dir="ltr">{s.sku}</span> · {s.title} · {s.status.replace('_', ' ')}</span>
-                  <Link href={base === '/shop' ? `/shop/items/${s.id}` : `/inventory/${s.id}`} className="underline underline-offset-2">{t.dupSame}</Link>
-                </li>
-              ))}
-            </ul>
-            <button type="button" onClick={() => setSimilar([])} className="mt-2 text-sm underline underline-offset-2">{t.dupNew}</button>
-          </div>
-        ) : null}
         <div className="flex flex-col gap-2">
           <p className="text-sm text-muted">{t.morePhotos}</p>
           <div className="flex flex-wrap gap-2">
@@ -295,6 +309,31 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
 
       <section className="grid gap-3 rounded-lg border border-line bg-surface p-3 sm:grid-cols-2">
         {field(t.title, <input name="title" required value={v.title} onChange={(e) => set({ title: e.target.value })} dir="auto" maxLength={200} className={input} />, true)}
+        {shown.length ? (
+          <div role="status" className="rounded-md border border-warn/50 bg-warn/5 p-3 text-sm sm:col-span-2">
+            <p className="font-medium text-warn">{t.dupTitle}</p>
+            <p className="mt-1 text-muted">{t.dupHint}</p>
+            <ul className="mt-2 flex flex-col gap-2">
+              {shown.map((s) => (
+                <li key={s.id}>
+                  <Link href={base === '/shop' ? `/shop/items/${s.id}` : `/inventory/${s.id}`} className="flex min-h-14 items-center gap-3 rounded-md border border-line bg-surface p-2 hover:bg-sunken">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    {s.photoUrl ? <img src={s.photoUrl} alt="" className="h-14 w-14 shrink-0 rounded object-cover" /> : <span className="h-14 w-14 shrink-0 rounded bg-sunken" />}
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-medium text-ink" dir="auto">{s.title}</span>
+                      <span className="truncate text-xs text-muted" dir="auto">
+                        <span dir="ltr">{s.sku}</span> · {(lang === 'he' ? STATUS_LABEL_HE : STATUS_LABEL)[s.status]}{s.location ? ` · ${s.location}` : ''}
+                      </span>
+                      <span className="truncate text-xs text-muted">{s.reasons.map((r) => (r === 'photo' ? t.dupPhoto : t.dupDetails)).join(' · ')}</span>
+                    </span>
+                    <span className="shrink-0 text-sm underline underline-offset-2">{t.dupOpen}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <button type="button" onClick={() => setDismissed((d) => new Set([...d, ...shown.map((s) => s.id)]))} className="mt-2 inline-flex min-h-11 items-center text-sm underline underline-offset-2">{t.dupNew}</button>
+          </div>
+        ) : null}
         {field(t.category, (
           <>
             {/* An older item's category off the list stays selectable until someone picks a new one. */}
