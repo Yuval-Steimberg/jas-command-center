@@ -1,5 +1,5 @@
 import 'server-only'
-import type { DuplicateCandidate } from '@/lib/inventory/duplicates'
+import type { DuplicateCandidate } from '../inventory/duplicates'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { ConflictError, OpsSetupError, type OpsStore } from './store'
 import type { Contact, Deal, Delivery, Interaction, Item, Location, Movement, Task } from './types'

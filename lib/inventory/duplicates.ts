@@ -14,9 +14,9 @@
  *
  * It only ever WARNS. A person decides, and saving is never blocked.
  */
-import { normalize } from '@/lib/search/match'
+import { normalize } from '../search/match'
 import { similarPhotos } from './photo-hash'
-import type { ItemStatus } from '@/lib/ops/types'
+import type { ItemStatus } from '../ops/types'
 
 export interface DuplicateCandidate {
   id: string

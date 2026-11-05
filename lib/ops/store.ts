@@ -1,4 +1,4 @@
-import type { DuplicateCandidate } from '@/lib/inventory/duplicates'
+import type { DuplicateCandidate } from '../inventory/duplicates'
 import type {
   Contact, ContactInput, ContactRole, Deal, DealInput, DealStage, Delivery, DeliveryInput, DeliveryStatus, Interaction, InteractionInput,
   Item, ItemPatch, ItemStatus, Location, Movement, MovementInput, NewItem, Task, TaskInput,
