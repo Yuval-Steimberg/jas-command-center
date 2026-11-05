@@ -8,7 +8,7 @@ import { invalidate } from '@/lib/integrations/cache'
  * known read counts as a write: a new method can only make the cache emptier.
  */
 export const OPS_CACHE = 'ops:'
-const READ = /^(list|get|find|movements$|photoHashes$|recentMovements$|ruleSettings$|lines|paymentsOf$|openLines$|itemsFrom$|check)/
+const READ = /^(list|get|find|movements$|recentMovements$|ruleSettings$|lines|paymentsOf$|openLines$|itemsFrom$|check)/
 
 export function dropsCacheOnWrite<T extends object>(store: T): T {
   return new Proxy(store, {

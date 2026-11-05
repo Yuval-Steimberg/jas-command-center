@@ -5,11 +5,13 @@ import { audit } from '@/lib/audit/audit'
 import { getOpsStore } from '@/lib/ops'
 import { describePhoto, type PhotoAiError, type PhotoFields } from '@/lib/inventory/ai'
 import { MAX_PHOTO_BYTES, PHOTO_TYPES, uploadInventoryPhoto } from '@/lib/inventory/photos'
-import { isPhotoHash, similarPhotos } from '@/lib/inventory/photo-hash'
+import { isPhotoHash } from '@/lib/inventory/photo-hash'
+import { findDuplicates, type DuplicateQuery, type DuplicateReason } from '@/lib/inventory/duplicates'
+import type { ItemStatus } from '@/lib/ops/types'
 
 /**
  * The photo half of intake (console and shop): store the photo, ask the AI
- * for suggested fields, and look for an item whose photo looks the same.
+ * for suggested fields, and look for an item we may already have.
  * Nothing here creates or changes an item; the form is saved separately.
  */
 
@@ -61,21 +63,43 @@ export interface SimilarItem {
   sku: string
   title: string
   photoUrl: string | null
-  status: string
-  distance: number
+  status: ItemStatus
+  location: string | null
+  /** Why it was shown: the photo looks the same, and/or the name and details agree. */
+  reasons: DuplicateReason[]
 }
 
-/** Items whose main photo looks like this one (a warning, never a block). */
-export async function similarPhotosAction(hash: string): Promise<{ ok: boolean; items: SimilarItem[] }> {
+const text = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '')
+
+/**
+ * Items that may be the one being added: same-looking photo and/or the same
+ * name and details (lib/inventory/duplicates.ts). A warning, never a block:
+ * any failure answers "nothing found" and the form carries on.
+ */
+export async function similarItemsAction(query: DuplicateQuery, excludeId?: string): Promise<{ ok: boolean; items: SimilarItem[] }> {
   try {
     await requirePermission('inventory:read')
   } catch {
     return { ok: false, items: [] }
   }
-  if (!isPhotoHash(hash)) return { ok: true, items: [] }
+  const q: DuplicateQuery = {
+    photoHash: isPhotoHash(query?.photoHash) ? query.photoHash : undefined,
+    title: text(query?.title, 200),
+    category: text(query?.category, 100),
+    colors: text(query?.colors, 200),
+    material: text(query?.material, 200),
+    description: text(query?.description, 2000),
+  }
+  if (!q.photoHash && !q.title?.trim()) return { ok: true, items: [] }
   try {
-    const items = await getOpsStore().photoHashes()
-    return { ok: true, items: similarPhotos(hash, items).slice(0, 3).map((i) => ({ id: i.id, sku: i.sku, title: i.title, photoUrl: i.photoUrl, status: i.status, distance: i.distance })) }
+    const store = getOpsStore()
+    const [items, locations] = await Promise.all([store.listDuplicateCandidates(), store.listLocations()])
+    const where = new Map(locations.map((l) => [l.id, l.name]))
+    const found = findDuplicates(q, items, typeof excludeId === 'string' ? excludeId : undefined)
+    return {
+      ok: true,
+      items: found.map(({ item, reasons }) => ({ id: item.id, sku: item.sku, title: item.title, photoUrl: item.photoUrl, status: item.status, location: item.locationId ? (where.get(item.locationId) ?? null) : null, reasons })),
+    }
   } catch {
     return { ok: false, items: [] }
   }
