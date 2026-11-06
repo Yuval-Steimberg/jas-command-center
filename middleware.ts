@@ -23,8 +23,10 @@ export async function middleware(req: NextRequest) {
   }
   if (!signedIn && !req.nextUrl.pathname.startsWith('/login')) {
     const to = req.nextUrl.clone()
+    const next = req.nextUrl.pathname + req.nextUrl.search
     to.pathname = '/login'
-    to.search = ''
+    // Where they were going (a shared portal link, say), so signing in lands there. Checked again by safeNext.
+    to.search = next !== '/' && next.length <= 500 ? `?next=${encodeURIComponent(next)}` : ''
     return NextResponse.redirect(to)
   }
   return res
@@ -52,5 +54,5 @@ export const config = {
   // Everything except static assets, the public liveness probe, the cron routes (Bearer CRON_SECRET), the
   // Grow terminal webhook (?token=GROW_WEBHOOK_SECRET)
   // and the shop app's manifest + icon (no data; a browser fetches them without the session cookie).
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/webhooks|shop-manifest.webmanifest|schedule-manifest.webmanifest|shop-icon).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/webhooks|shop-manifest.webmanifest|schedule-manifest.webmanifest|portal-manifest.webmanifest|shop-icon).*)'],
 }

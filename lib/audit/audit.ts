@@ -67,12 +67,15 @@ export async function audit(
   if (error) throw new Error(`Audit write failed: ${error.message}`)
 }
 
-export async function listAudit(limit = 100, filter: { via?: AuditEntry['via']; actorId?: string } = {}): Promise<AuditEntry[]> {
+export async function listAudit(limit = 100, filter: { via?: AuditEntry['via']; actorId?: string; product?: string } = {}): Promise<AuditEntry[]> {
   if (authMode().kind === 'dev')
-    return (g.__ccDevAudit ?? []).filter((a) => (!filter.via || a.via === filter.via) && (!filter.actorId || a.actorId === filter.actorId)).slice(0, limit)
+    return (g.__ccDevAudit ?? [])
+      .filter((a) => (!filter.via || a.via === filter.via) && (!filter.actorId || a.actorId === filter.actorId) && (!filter.product || a.product === filter.product))
+      .slice(0, limit)
   let q = supabaseAdmin().from('cc_audit_log').select('*')
   if (filter.via) q = q.eq('via', filter.via)
   if (filter.actorId) q = q.eq('actor_profile_id', filter.actorId)
+  if (filter.product) q = q.eq('product', filter.product)
   const { data, error } = await q.order('at', { ascending: false }).limit(limit)
   if (error) throw new Error(error.message)
   return (data ?? []).map((r) => ({

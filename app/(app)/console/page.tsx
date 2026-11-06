@@ -76,9 +76,8 @@ async function Health() {
 
 export default async function OverviewPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const user = await requireUser()
-  // A shop seller's home is shop mode.
+  // A shop seller's home is shop mode, a volunteer scheduler's schedule mode.
   if (user.role === 'seller') redirect('/shop')
-  // A volunteer scheduler's home is schedule mode.
   if (user.role === 'scheduler') redirect('/schedule')
   const overrides = (await getSession())?.overrides
   const sees = (p: Product) => can(user.role, `${p}:read`, overrides)

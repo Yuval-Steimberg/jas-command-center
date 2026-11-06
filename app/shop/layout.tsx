@@ -37,8 +37,8 @@ export default async function ShopLayout({ children }: { children: React.ReactNo
           <Link href="/shop" className="inline-flex h-11 items-center rounded-full px-2 text-base font-bold text-ink">JAS חנות</Link>
           <span className="flex-1" />
           {s.user.role !== 'seller' ? (
-            <Link href="/" className="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-sm text-muted hover:bg-sunken hover:text-ink">
-              <LayoutDashboard aria-hidden className="h-4 w-4" />מערכת מלאה
+            <Link href="/portal" className="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-sm text-muted hover:bg-sunken hover:text-ink">
+              <LayoutDashboard aria-hidden className="h-4 w-4" />פורטל הצוות
             </Link>
           ) : null}
           <form action={signOut}>

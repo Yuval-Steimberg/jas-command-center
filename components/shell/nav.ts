@@ -13,7 +13,7 @@ import type { Permission } from '@/lib/auth/rbac'
 
 export type NavIcon =
   | 'home' | 'crm' | 'inventory' | 'sales' | 'shop' | 'truck' | 'tasks' | 'supplier' | 'volunteers' | 'website' | 'agent' | 'furniture'
-  | 'map' | 'gift' | 'analytics' | 'report' | 'assistant' | 'bell' | 'plug' | 'settings' | 'guide'
+  | 'map' | 'gift' | 'analytics' | 'report' | 'assistant' | 'bell' | 'plug' | 'settings' | 'guide' | 'console'
 
 export interface NavItem {
   href: string
@@ -31,7 +31,13 @@ export interface NavGroup {
 }
 
 export const NAV: NavGroup[] = [
-  { section: '', items: [{ href: '/', label: 'Home', hint: 'Start a task and see what needs you', icon: 'home' }] },
+  {
+    section: '',
+    items: [
+      { href: '/portal', label: 'Team portal (Hebrew)', hint: 'The simple start page: six work areas, search, share a link', icon: 'home' },
+      { href: '/console', label: 'Console home', hint: 'Start a task and see what needs you', icon: 'console' },
+    ],
+  },
   {
     section: 'Sell',
     items: [

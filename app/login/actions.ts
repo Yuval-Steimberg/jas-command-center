@@ -9,6 +9,7 @@ import { supabaseUserClient } from '@/lib/supabase'
 import { resolveProfile, SetupError } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
 import { allowAttempt, clearAttempts } from '@/lib/auth/rate-limit'
+import { safeNext } from '@/lib/portal/model'
 
 export type LoginState = { error?: string }
 
@@ -49,7 +50,7 @@ export async function signIn(_prev: LoginState, form: FormData): Promise<LoginSt
     await audit(s.user, { action: 'auth.login', product: null, target: null, outcome: 'succeeded', detail: { ip } })
   }
   clearAttempts(`login:${ip}`)
-  redirect('/')
+  redirect(safeNext(String(form.get('next') ?? '')) ?? '/')
 }
 
 export async function signOut() {
