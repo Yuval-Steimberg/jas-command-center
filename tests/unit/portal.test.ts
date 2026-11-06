@@ -13,6 +13,7 @@ const APPS: AppUrls = {
   volunteers: 'https://volunteers.example.org',
   website: 'https://shop.example.org',
   map: 'https://map.example.org',
+  gift_cards: 'https://gift.example.org',
 }
 
 const seen = (role: Role, apps = APPS) => portalFor(seedData(), { role }, apps)
@@ -43,8 +44,21 @@ describe('destinations', () => {
 describe('who sees what', () => {
   it('a shop seller sees the shop and customer work only', () => {
     // Intake: a seller may take collected items into storage (inventory:operate), listed under mapping where the job starts.
-    expect(ids('seller')).toEqual(['intake', 'item-search', 'sale', 'item-new', 'customer-new', 'shop-link', 'map-open'])
-    expect(seen('seller').map((c) => c.id)).toEqual(['mapping', 'inventory', 'map'])
+    expect(ids('seller')).toEqual(['intake', 'gift-buy-link', 'item-search', 'sale', 'item-new', 'customer-new', 'shop-link', 'map-open'])
+    expect(seen('seller').map((c) => c.id)).toEqual(['mapping', 'gift-cards', 'inventory', 'map'])
+  })
+
+  it('gift cards: redeeming, finding and the admin follow the gift card permissions; the buy link is for everyone', () => {
+    const gift = (r: Role, apps = APPS) => ids(r, apps).filter((x) => x.startsWith('gift-'))
+    expect(gift('owner')).toEqual(['gift-redeem', 'gift-find', 'gift-buy-link', 'gift-admin'])
+    expect(gift('operations_manager')).toEqual(['gift-redeem', 'gift-find', 'gift-buy-link'])
+    expect(gift('viewer')).toEqual(['gift-find', 'gift-buy-link'])
+    expect(gift('seller')).toEqual(['gift-buy-link'])
+    for (const r of ROLES) expect(gift(r).includes('gift-admin'), r).toBe(can(r, 'gift_cards:write'))
+    // The gift card system's address not configured: its two links are hidden, never dead buttons.
+    const { gift_cards: _, ...noGift } = APPS
+    expect(gift('owner', noGift)).toEqual(['gift-find', 'gift-buy-link'])
+    expect(resolveDestination('app:gift_cards/employee', APPS)).toMatchObject({ ok: true, href: 'https://gift.example.org/employee' })
   })
 
   it('a volunteer coordinator sees volunteers, not money or customers', () => {
@@ -118,11 +132,11 @@ describe('the seeded links', () => {
   it('ids are unique and every category exists', () => {
     expect(new Set(SEED_ACTIONS.map((a) => a.id)).size).toBe(SEED_ACTIONS.length)
     for (const a of SEED_ACTIONS) expect(SEED_CATEGORIES.some((c) => c.id === a.categoryId), a.id).toBe(true)
-    expect(SEED_CATEGORIES).toHaveLength(6)
+    expect(SEED_CATEGORIES).toHaveLength(7)
   })
 
-  it('the migration inserts exactly the same first set', () => {
-    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/0014_portal.sql'), 'utf8')
+  it('the migrations insert exactly the same set', () => {
+    const sql = ['0014_portal.sql', '0015_portal_gift_cards.sql'].map((f) => readFileSync(join(process.cwd(), 'supabase/migrations', f), 'utf8')).join('\n')
     const q = (s: string | null) => (s === null ? 'null' : `'${s.replace(/'/g, "''")}'`)
     for (const c of SEED_CATEGORIES) expect(sql, c.id).toContain(`(${q(c.id)}, ${q(c.title)}, ${q(c.subtitle)}, ${q(c.icon)}, ${c.sort}, ${c.active})`)
     for (const a of SEED_ACTIONS)

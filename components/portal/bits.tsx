@@ -1,4 +1,4 @@
-import { Building2, HandHeart, Link2, MapPin, Package, Palette, Settings, type LucideIcon } from 'lucide-react'
+import { Building2, Gift, HandHeart, Link2, MapPin, Package, Palette, Settings, type LucideIcon } from 'lucide-react'
 import { AUDIENCE_LABEL, type Audience, type PortalIcon } from '@/lib/portal/model'
 import { cn } from '@/lib/cn'
 
@@ -9,6 +9,7 @@ export const PORTAL_ICON: Record<PortalIcon, LucideIcon> = {
   design: Palette,
   map: MapPin,
   admin: Settings,
+  gift: Gift,
   link: Link2,
 }
 
@@ -19,6 +20,7 @@ export const ICON_LABEL: Record<PortalIcon, string> = {
   design: 'עיצוב',
   map: 'מפה',
   admin: 'ניהול',
+  gift: 'שוברי מתנה',
   link: 'קישור',
 }
 

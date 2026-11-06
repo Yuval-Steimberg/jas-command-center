@@ -14,7 +14,7 @@ import { roleHe } from '@/lib/portal/who'
 export const dynamic = 'force-dynamic'
 
 /**
- * Spec page 1 (computer) and page 2 (phone): a greeting, one search, six
+ * Spec page 1 (computer) and page 2 (phone): a greeting, one search, the
  * category cards, one primary action. On a computer each card also lists its
  * actions, so a common job is one tap; on a phone a card is one big button
  * that opens its category, so the screen is never a wall of links.
@@ -51,7 +51,7 @@ export default async function PortalHome({ searchParams }: { searchParams?: { as
           </h1>
           <p className="mt-1 text-base text-muted">מה עושים היום?</p>
         </div>
-        {/* Computer: top corner. Phone: under the cards (spec page 2), so the six categories are the first thing seen. */}
+        {/* Computer: top corner. Phone: under the cards (spec page 2), so the categories are the first thing seen. */}
         <div className="hidden sm:block">
           <SharePortalButton />
         </div>
