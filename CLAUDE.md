@@ -269,11 +269,11 @@ Volunteer scheduling (`docs/VOLUNTEERS.md` "Scheduling", migration `0011_volunte
   (a preference only, validated against their own places; the database still decides). A day link of another of their places
   (absence email) switches place first (`placeOfSlot`). Absence alerts go to every scheduler of THAT place.
 
-Team portal (`/portal`, `lib/portal/`, `app/portal/`, migration `0014_portal.sql`; spec JAS_portal_spec.pdf, owner 2026-11-06):
+Team portal (`/portal`, `lib/portal/`, `app/portal/`, migrations `0014_portal.sql` + `0015_portal_gift_cards.sql`; spec JAS_portal_spec.pdf, owner 2026-11-06):
 - The HOME PAGE for everyone (`app/page.tsx` redirects `/` → `/portal`; seller → `/shop`, scheduler → `/schedule` as before).
   The English console home moved to `/console`. Hebrew, RTL, phone-first, installable (`/portal-manifest.webmanifest`).
-- Six categories of actions from a link REGISTRY (`cc_portal_categories` / `cc_portal_actions`), never hardcoded in pages.
-  `lib/portal/seed.ts` = the first set, inserted by 0014 (a unit test keeps the two identical); until 0014 runs, the
+- Seven categories (the spec's six + שוברי מתנה, 0015) of actions from a link REGISTRY (`cc_portal_categories` / `cc_portal_actions`), never hardcoded in pages.
+  `lib/portal/seed.ts` = the first set, inserted by 0014 + 0015 (a unit test keeps them identical; a new seeded row needs a NEW migration, since 0014 already ran in production); until 0014 runs, the
   portal shows the seed and `/portal/manage` is read-only and says what to run.
 - `model.ts` is pure: `resolveDestination` (internal `/path`, `https://`, or `app:<key>/path` from env: FURNITURE_APP_URL,
   VOLUNTEER_APP_URL, WEBSITE_URL, MAP_SITE_URL, GIFT_CARDS_URL), `portalFor` (role filter; an action with no address or

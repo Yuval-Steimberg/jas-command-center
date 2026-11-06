@@ -4,7 +4,8 @@ import type { Permission } from '@/lib/auth/rbac'
 /**
  * The portal's first set of categories and actions (spec page 3, adjusted to
  * what exists, see the plan). The SAME rows are inserted by
- * supabase/migrations/0014_portal.sql (a test keeps the two in step); after
+ * supabase/migrations/0014_portal.sql and 0015_portal_gift_cards.sql (a test
+ * keeps them in step); after
  * that, link management edits the database and this file only serves the
  * local development login and a database the migration has not reached yet.
  */
@@ -32,6 +33,8 @@ export const SEED_CATEGORIES: PortalCategory[] = [
   cat('design', 'עיצוב ותקשורת', 'הודעות, תזכורות וחומרי עבודה', 'design', 4),
   cat('map', 'מפה אזורית', 'המקומות בשכונה', 'map', 5),
   cat('admin', 'ניהול', 'קישורים, צוות ומצב המערכות', 'admin', 6),
+  // 0015. Same sort as inventory: the id puts it just before it, next to the other selling work.
+  cat('gift-cards', 'שוברי מתנה', 'בדיקה, מימוש ומכירה של שוברים', 'gift', 3),
 ]
 
 export const SEED_ACTIONS: PortalAction[] = [
@@ -67,6 +70,11 @@ export const SEED_ACTIONS: PortalAction[] = [
   act('admin', 2, 'staff', 'צוות והרשאות', 'הזמנת אנשים ושינוי תפקיד', '/settings/staff', 'users:manage', 'manager'),
   act('admin', 3, 'systems', 'מצב המערכות', 'האם כל מערכת עובדת עכשיו', '/integrations', 'integrations:read', 'manager'),
   act('admin', 4, 'console', 'מערכת הניהול המלאה', 'כל המסכים המפורטים (באנגלית)', '/console', 'integrations:read', 'manager'),
+  // 0015. Redeeming and the gift card admin are in the gift card system itself, behind its own sign-in.
+  act('gift-cards', 1, 'gift-redeem', 'מימוש שובר', 'בקופה, במערכת השוברים (כניסה עם המשתמש שלך שם)', 'app:gift_cards/employee', 'gift_cards:operate'),
+  act('gift-cards', 2, 'gift-find', 'חיפוש שובר', 'יתרה, מצב ומשלוח של שובר לפי קוד', '/gift-cards', 'gift_cards:read'),
+  act('gift-cards', 3, 'gift-buy-link', 'קישור לקניית שובר', 'שולחים ללקוח שרוצה לקנות שובר מתנה', 'https://gift.justasecond.co.il/gift-cards', null, 'customer'),
+  act('gift-cards', 4, 'gift-admin', 'ניהול מערכת השוברים', 'מכירות, החזרים, הגדרות וצוות', 'app:gift_cards/admin', 'gift_cards:write', 'manager'),
 ]
 
 export const seedData = (): PortalData => ({

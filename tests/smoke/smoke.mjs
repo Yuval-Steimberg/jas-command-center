@@ -12,7 +12,8 @@ const PORT = Number(process.env.SMOKE_PORT ?? 3123)
 const BASE = `http://localhost:${PORT}`
 const PASSWORD = 'smoke-test-password'
 const PAGES = [
-  '/', '/console', '/portal', '/portal/c/inventory', '/portal/c/volunteers', '/portal/manage', '/portal/a/item-search', '/portal/a/no-such-link', '/guide', '/notifications', '/search?q=test', '/analytics', '/reports', '/assistant', '/integrations',
+  '/', '/console', '/portal', '/portal/c/inventory', '/portal/c/volunteers',
+  '/portal/c/gift-cards', '/portal/manage', '/portal/a/item-search', '/portal/a/no-such-link', '/guide', '/notifications', '/search?q=test', '/analytics', '/reports', '/assistant', '/integrations',
   '/website', '/website/orders', '/website/products', '/website/content', '/website/reviews', '/website/blog', '/website/marketing', '/website/inquiries',
   '/gift-cards', '/furniture', '/furniture/new', '/design-agent', '/map',
   '/crm', '/crm/new', '/crm/pipeline', '/inventory', '/inventory/new', '/inventory/intake', '/inventory/website', '/inventory/online', '/inventory/locations', '/inventory/scan', '/inventory/labels', '/sales', '/sales/new', '/deliveries', '/tasks', '/suppliers', '/suppliers/orders/new',

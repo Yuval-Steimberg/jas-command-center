@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { can, type Permission, type PermissionOverrides, type Role } from '@/lib/auth/rbac'
 
 /**
- * The team portal (/portal): six work categories, each a short list of
+ * The team portal (/portal): seven work categories, each a short list of
  * actions that open the page or app that does the job. Pure (no I/O), shared
  * by the pages, the server actions and the tests.
  *
@@ -13,7 +13,7 @@ import { can, type Permission, type PermissionOverrides, type Role } from '@/lib
  * (tests/unit/portal.test.ts checks every seeded internal destination).
  */
 
-export const PORTAL_ICONS = ['volunteers', 'mapping', 'inventory', 'design', 'map', 'admin', 'link'] as const
+export const PORTAL_ICONS = ['volunteers', 'mapping', 'inventory', 'design', 'map', 'admin', 'gift', 'link'] as const
 export type PortalIcon = (typeof PORTAL_ICONS)[number]
 
 /**
