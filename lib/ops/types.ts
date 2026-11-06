@@ -95,6 +95,18 @@ export interface Item {
   refurbLevel?: RefurbLevel | null
   refurbContactId?: string | null
   refurbInstructions?: string | null
+  /**
+   * Migration 0016; undefined until it runs (then null/false). The catalog photo is
+   * the studio version of `photoUrl` and never replaces it; `catalogPhotoFrom` is the
+   * photo it was made from, so a new main photo makes it stale.
+   */
+  catalogPhotoUrl?: string | null
+  catalogPhotoFrom?: string | null
+  /** Staff chose "use the original photo" on the website. */
+  catalogPhotoOff?: boolean | null
+  catalogPhotoError?: string | null
+  /** Should be on the website shop: goes up by itself once ready (lib/inventory/catalog.ts). */
+  websiteWanted?: boolean | null
   version: number
   createdBy: string
   createdAt: string

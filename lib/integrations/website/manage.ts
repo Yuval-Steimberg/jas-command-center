@@ -140,7 +140,8 @@ export const setWebsiteOrderStatus = (id: number, from: string, to: string) =>
 export const setWebsiteOrderNotes = (id: number, notes: string) =>
   write('order-set-notes', { id, notes }, (d) => z.object({ order: z.object({ id: z.number() }).passthrough() }).parse(d).order)
 
-export type ProductPatch = { price?: number; original_price?: number | null; quantity?: number; featured?: boolean; published?: boolean }
+/** `image_url` / `images` need website PR "product-update: photos" (https links only); an older website answers 422. */
+export type ProductPatch = { price?: number; original_price?: number | null; quantity?: number; featured?: boolean; published?: boolean; image_url?: string; images?: string[] }
 
 export const updateWebsiteProduct = (id: number, patch: ProductPatch, expectUpdatedAt: string) =>
   write('product-update', { id, patch, expectUpdatedAt }, (d) => z.object({ product: websiteProduct }).parse(d).product)

@@ -1,3 +1,5 @@
+import { WebsitePhotoPanel } from '@/components/inventory/website-photo'
+import { photoroomConfigured } from '@/lib/inventory/photoroom'
 import Link from 'next/link'
 import { renewalLabel } from '@/lib/inventory/renewal'
 import { notFound, redirect } from 'next/navigation'
@@ -93,8 +95,8 @@ export default async function ItemPage({ params, searchParams }: { params: { id:
         actions={<div className="flex flex-wrap gap-2"><Link href="/inventory" className={btn}>All items</Link><Link href={`/inventory/labels?ids=${item.id}`} className={btn}>Print label</Link></div>}
       />
       {searchParams?.website ? (
-        <p role="status" dir="auto" className={`mb-4 rounded-md border p-2 text-sm ${searchParams.website === 'ok' ? 'border-ok/40 text-ok' : 'border-warn/50 bg-warn/5 text-warn'}`}>
-          {searchParams.website === 'ok' ? 'On the website shop now.' : `Saved, but not put on the website: ${searchParams.website}`}
+        <p role="status" dir="auto" className={`mb-4 rounded-md border p-2 text-sm ${searchParams.website.startsWith('ok') ? 'border-ok/40 text-ok' : 'border-warn/50 bg-warn/5 text-warn'}`}>
+          {searchParams.website.startsWith('ok') ? `On the website shop now.${searchParams.website.length > 3 ? ` ${searchParams.website.slice(3)}` : ''}` : `Saved, but not put on the website: ${searchParams.website}`}
         </p>
       ) : null}
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
@@ -168,6 +170,8 @@ export default async function ItemPage({ params, searchParams }: { params: { id:
               )}
             </CardBody>
           </Card>
+
+          <WebsitePhotoPanel item={item} lang="en" locations={locations} canWrite={may('inventory:write')} photoroom={photoroomConfigured()} cancelButton={may('inventory:write') && may('website:write')} />
 
           <Card>
             <CardHeader title="History" meta="Every change, oldest at the bottom. Append-only." />

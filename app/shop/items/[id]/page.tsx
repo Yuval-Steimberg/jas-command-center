@@ -21,6 +21,8 @@ import { CONDITION_LABEL_HE, OPS, REFURB_LEVEL_LABEL_HE, REFURB_STATUS_LABEL_HE,
 import { getSalesStore } from '@/lib/sales/store'
 import { keptQty } from '@/lib/sales/model'
 import { formatAgorot } from '@/lib/money'
+import { WebsitePhotoPanel } from '@/components/inventory/website-photo'
+import { photoroomConfigured } from '@/lib/inventory/photoroom'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,7 +49,9 @@ export default async function ShopItemPage({ params, searchParams }: { params: {
   const live = item.websiteProductId != null && (item.status === 'listed' || item.status === 'reserved')
   const published = product?.state === 'ok' && product.data ? product.data.published !== false : null
   const shown: boolean | null = !live ? false : product === null ? true : published
-  const canToggle = may('inventory:write') && may('website:write') && (live ? published !== null : allowed('list', item.status))
+  // Marked for the website but not there yet: it goes up by itself, so the button is the way to say no.
+  const waiting = !live && item.websiteWanted === true
+  const canToggle = may('inventory:write') && may('website:write') && (live ? published !== null : waiting || allowed('list', item.status))
   const websiteNote = searchParams?.website
   const labels = locationLabels(locations)
   const hidden = { id: item.id, version: item.version }
@@ -89,21 +93,22 @@ export default async function ShopItemPage({ params, searchParams }: { params: {
             {row('חומר', item.material)}
             {row('מידות', item.dimensions)}
             {row('מקור', item.origin)}
-            {row('מופיע באתר', shown === null ? 'לא ידוע (האתר לא נקרא)' : shown ? 'כן' : 'לא', true)}
+            {row('מופיע באתר', shown === null ? 'לא ידוע (האתר לא נקרא)' : shown ? 'כן' : waiting ? 'עוד לא (יעלה לבד)' : 'לא', true)}
             {item.refurbStatus ? row('שיפוץ', `${REFURB_STATUS_LABEL_HE[item.refurbStatus]}${item.refurbLevel ? ` · ${REFURB_LEVEL_LABEL_HE[item.refurbLevel].split(' (')[0]}` : ''}`) : null}
           </dl>
           {item.description ? <p dir="auto" className="whitespace-pre-wrap text-sm text-muted">{item.description}</p> : null}
           {item.notes ? <p dir="auto" className="whitespace-pre-wrap rounded-md border border-line/70 p-2 text-sm text-ink"><span className="text-muted">הערות: </span>{item.notes}</p> : null}
           {websiteNote ? (
-            <p role="status" dir="auto" className={`rounded-md border p-2 text-sm ${websiteNote === 'ok' ? 'border-ok/40 text-ok' : 'border-warn/50 bg-warn/5 text-warn'}`}>
-              {websiteNote === 'ok' ? 'הפריט עלה לאתר.' : `הפריט נשמר, אבל לא עלה לאתר: ${websiteNote}`}
+            <p role="status" dir="auto" className={`rounded-md border p-2 text-sm ${websiteNote.startsWith('ok') ? 'border-ok/40 text-ok' : 'border-warn/50 bg-warn/5 text-warn'}`}>
+              {websiteNote.startsWith('ok') ? `הפריט עלה לאתר.${websiteNote.length > 3 ? ` ${websiteNote.slice(3)}` : ''}` : `הפריט נשמר, אבל לא עלה לאתר: ${websiteNote}`}
             </p>
           ) : null}
           {canToggle ? (
-            <ActionForm action={websiteShownAction} hidden={{ id: item.id, show: String(!shown) }} label={shown ? 'הסתרה מהאתר' : 'העלאה לאתר'} busy="שומר…" confirm={shown ? 'להסתיר את הפריט מהחנות באתר?' : 'להעלות את הפריט לחנות באתר עכשיו?'} />
+            <ActionForm action={websiteShownAction} hidden={{ id: item.id, show: String(!shown && !waiting) }} label={shown ? 'הסתרה מהאתר' : waiting ? 'לא להעלות לאתר' : 'העלאה לאתר'} busy="שומר…" confirm={shown ? 'להסתיר את הפריט מהחנות באתר?' : waiting ? 'הפריט לא יעלה לאתר לבד. להמשיך?' : 'להעלות את הפריט לחנות באתר עכשיו?'} />
           ) : null}
         </div>
       </div>
+      <WebsitePhotoPanel item={item} lang="he" locations={locations} canWrite={may('inventory:write')} photoroom={photoroomConfigured()} />
       {item.beforePhotoUrl ? (
         <div className="flex flex-col gap-1">
           <p className="text-sm text-muted">לפני החידוש</p>

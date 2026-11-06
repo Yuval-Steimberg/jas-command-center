@@ -1,5 +1,6 @@
 import type { WebsiteProductInput } from '@/lib/integrations/website/manage'
 import type { Condition, Item, ItemStatus } from '@/lib/ops/types'
+import { websitePhotos } from './catalog'
 
 /**
  * Inventory rules, pure. The lifecycle of a physical item after intake:
@@ -78,6 +79,7 @@ export const isHttps = (u: string | null | undefined) => {
 export function draftProduct(item: Item, opts: { categoryId?: number | null; published?: boolean } = {}): { ok: true; product: WebsiteProductInput } | { ok: false; reason: string } {
   if (!item.priceMinor || item.priceMinor <= 0) return { ok: false, reason: `${item.sku} has no asking price. Set one first.` }
   if (!isHttps(item.photoUrl)) return { ok: false, reason: `${item.sku} has no photo the website can show (an https link is needed).` }
+  const photos = websitePhotos(item)
   const story = [item.furnitureProjectName && `נאסף מפרויקט ${item.furnitureProjectName}`, item.furnitureApartment].filter(Boolean).join(', ')
   return {
     ok: true,
@@ -97,8 +99,8 @@ export function draftProduct(item: Item, opts: { categoryId?: number | null; pub
       dimensions: item.dimensions?.slice(0, 200) ?? null,
       material: item.material?.slice(0, 200) ?? null,
       origin: null,
-      image_url: item.photoUrl!,
-      images: [],
+      image_url: photos.main,
+      images: photos.gallery,
       featured: false,
       quantity: item.quantity,
       tags: [item.sku],
@@ -167,9 +169,10 @@ const FIELD_LABEL: Record<string, string> = {
   sku: 'code', title: 'name', description: 'notes', category: 'category', condition: 'condition', priceMinor: 'price', photoUrl: 'photo', dimensions: 'dimensions', material: 'material',
   colors: 'colours', extraPhotos: 'more photos', photoHash: 'photo fingerprint', priceApproved: 'price approved', aiPriceMinor: 'AI price', unitCostMinor: 'cost',
   quantity: 'quantity', kind: 'kind', locationId: 'location', refurbStatus: 'refurbishment', refurbLevel: 'refurbishment level', refurbContactId: 'refurbisher', refurbInstructions: 'refurbishment instructions', renewalLevel: 'renewal level', beforePhotoUrl: 'before photo', origin: 'origin', notes: 'notes',
+  catalogPhotoUrl: 'catalog photo', catalogPhotoFrom: 'catalog photo source', catalogPhotoOff: 'use the original photo', catalogPhotoError: 'catalog photo problem', websiteWanted: 'goes on the website',
 }
 const MONEY_FIELDS = new Set(['priceMinor', 'aiPriceMinor', 'unitCostMinor'])
-const HIDDEN_VALUE = new Set(['photoUrl', 'extraPhotos', 'photoHash', 'description', 'refurbInstructions', 'refurbContactId', 'locationId'])
+const HIDDEN_VALUE = new Set(['photoUrl', 'catalogPhotoUrl', 'catalogPhotoFrom', 'extraPhotos', 'photoHash', 'description', 'refurbInstructions', 'refurbContactId', 'locationId'])
 
 /** An edit movement's before → after, as short lines ("price: ₪100 → ₪120"). Pure; long or opaque values are named, not printed. */
 export function describeChanges(detail: Record<string, unknown>, opts: { money: boolean }): string[] {

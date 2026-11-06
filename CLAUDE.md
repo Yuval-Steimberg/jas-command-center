@@ -288,3 +288,17 @@ Team portal (`/portal`, `lib/portal/`, `app/portal/`, migrations `0014_portal.sq
   with before/after (product `portal`). Delete only after switching off. History = `listAudit(…, { product: 'portal' })`.
 - Manager "needs attention" (`components/portal/attention.tsx`, roles with `integrations:read`): the console's own alerts
   grouped per product + the shop handover queue. Nothing is counted here; an unreadable source says so.
+
+Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, `photoroom.ts`, service `publishIfReady` /
+`runWebsiteAutoPublish` / `ensureCatalogPhoto`, migration `0016_catalog_photo.sql`; owner 2026-11-06):
+- A new item is `website_wanted` by default (the yes/no on the add-item form only for `website:write`; everyone else = yes). It goes
+  up by itself once `websiteBlockers` is empty: in storage, https photo, APPROVED price (an AI estimate never goes up alone), stock,
+  not in the workshop. At save (create/edit/move) and in the hourly sync step `website_publish` (rule `website_auto_publish`).
+  Items never marked are never published by it: migration 0016 leaves existing stock false.
+- Photoroom edits only AROUND the item (cut-out, cream backdrop, soft shadow, hue-preserving relight, 4:5 JPEG). Never beautify /
+  upscale / uncrop / AI edit: used pieces, a hidden scratch is a return. The catalog photo is a separate column, never over `photo_url`;
+  the website gets it as the main image and every untouched original in the gallery (`websitePhotos`). Staff: "use the original" /
+  "make again" on the item card (`WebsitePhotoPanel`).
+- One Photoroom call per main photo: a failure is stored against that photo and not retried hourly (only "make again"). The sweep
+  spends at most 6 calls per run. A failure never blocks the listing (original photo + warning).
+- Swapping a LISTED product's photos uses `product-update` with `image_url`/`images` (website PR "product-update: photos").

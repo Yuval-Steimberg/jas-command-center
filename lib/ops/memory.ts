@@ -73,6 +73,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
               (!f.buyerContactId || i.buyerContactId === f.buyerContactId) &&
               (!f.reservedFor || i.reservedFor === f.reservedFor) &&
               (!f.createdSince || i.createdAt >= f.createdSince) &&
+              (!f.websiteWanted || i.websiteWanted === true) &&
               hit(f.q, i.sku, i.title, i.description, i.category, i.furnitureProjectName, i.colors, i.material),
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -100,6 +101,7 @@ export function memoryStore(d: MemoryData = emptyData()): OpsStore {
         reservedFor: null, reservedUntil: null, reservedPrevStatus: null, reservedWebsiteQty: null, soldChannel: null, soldAt: null, soldPriceMinor: null,
         buyerContactId: null, websiteOrderId: null, websiteOrderNumber: null, dispositionNote: null, purchaseOrderId: null, supplierId: null, unitCostMinor: null,
         colors: null, extraPhotos: [], photoHash: null, priceApproved: true, aiPriceMinor: null, refurbStatus: null, refurbLevel: null, renewalLevel: null, beforePhotoUrl: null, origin: null, notes: null, refurbContactId: null, refurbInstructions: null, createdBy: 'system',
+        catalogPhotoUrl: null, catalogPhotoFrom: null, catalogPhotoOff: false, catalogPhotoError: null, websiteWanted: false,
         ...input, version: 1, createdAt: t, updatedAt: t,
       } as Item
       d.items.push(item)
