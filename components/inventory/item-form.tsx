@@ -85,7 +85,7 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
   const extraRef = useRef<HTMLInputElement>(null)
   const [place, setPlace] = useState<Place>(DEFAULT_PLACE)
   const [placeOther, setPlaceOther] = useState('')
-  const [onWebsite, setOnWebsite] = useState(false)
+  const [onWebsite, setOnWebsite] = useState(true)
   const beforeRef = useRef<HTMLInputElement>(null)
 
   /**

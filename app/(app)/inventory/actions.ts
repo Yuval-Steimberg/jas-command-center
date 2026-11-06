@@ -16,6 +16,7 @@ import { ITEM_CATEGORIES } from '@/lib/inventory/categories'
 import { openSaleOf } from '@/lib/sales/service'
 import {
   adoptWebsiteProducts, copyDrivePhotosMany, createManualItem, hideWebsiteProducts, listManyOnWebsite, disposeItem, editItem, intakeFromFurniture, listOnWebsite, markDelivered, moveItem, releaseItem, reserveItem, returnItem, sellInStore, setListingPublished, setShownOnWebsite,
+  autoPublishDue, publishIfReady, remakeCatalogPhoto, setCatalogPhotoOff,
   type Actor, type OpResult,
 } from '@/lib/inventory/service'
 import { formatSku, skuCandidates } from '@/lib/inventory/model'
@@ -178,10 +179,13 @@ export async function createItemAction(_p: ActionState, f: FormData): Promise<Ac
   if (!Number.isInteger(qty) || qty < 1 || qty > 10_000) return { ok: false, message: 'Quantity must be a whole number from 1.' }
   const fields = await itemFields(f)
   if (!fields.ok) return fields
+  // Every new item goes on the website by itself (owner, 2026-11-06). Who may decide the website sees the yes/no; for
+  // everyone else it is yes. It goes up once ready (photo, approved price, not in the workshop): see lib/inventory/catalog.ts.
+  const wanted = (await userCan('website:write')) ? f.get('onWebsite') !== 'no' : true
   let createdId = ''
-  const res = await act(['inventory:write'], 'inventory.create', 'item:new', { title }, async (u) => {
+  const res = await act(['inventory:write'], 'inventory.create', 'item:new', { title, website: wanted }, async (u) => {
     const item = await createManualItem(
-      { ...fields.patch, title, quantity: qty, kind: qty > 1 ? 'batch' : 'unique', locationId: locationOf(f) ?? (await placeLocation(f)) },
+      { ...fields.patch, title, quantity: qty, kind: qty > 1 ? 'batch' : 'unique', locationId: locationOf(f) ?? (await placeLocation(f)), websiteWanted: wanted },
       actorOf(u),
       // Where it came from also goes on the intake entry, as it always did.
       str(f, 'origin', 500) ?? str(f, 'note', 500) ?? undefined,
@@ -190,13 +194,30 @@ export async function createItemAction(_p: ActionState, f: FormData): Promise<Ac
     return { ok: true, message: `Created ${item.sku}.` }
   }, ['/inventory', '/shop'])
   if (!res.ok || !createdId) return res
-  // "Shown on the website: yes" puts it there right away. The item exists either way; the card says how the website step went.
+  // The item exists either way; the card says how the website step went (ok, waiting, or why not).
   let website = ''
-  if (f.get('onWebsite') === 'yes') {
-    const w = await websiteShown(createdId, true)
-    website = `?website=${w.ok ? 'ok' : encodeURIComponent((w.message ?? 'failed').slice(0, 300))}`
+  if (wanted) {
+    const w = await autoPublishAfter(createdId)
+    website = w ? `?website=${encodeURIComponent(w.slice(0, 300))}` : ''
   }
   redirect(`${f.get('base') === '/shop' ? `/shop/items/${createdId}` : `/inventory/${createdId}`}${website}`)
+}
+
+/**
+ * After a save that can make an item marked "on the website" ready, put it up
+ * now instead of at the next hourly run. Audited only when it really publishes.
+ * Returns 'ok', or why it did not go up; undefined when there was nothing to do.
+ */
+async function autoPublishAfter(id: string): Promise<string | undefined> {
+  if (!(await autoPublishDue(id).catch(() => false))) return undefined
+  let note: string | undefined
+  const r = await act(['inventory:write'], 'inventory.website_auto', `item:${id}`, {}, async (u) => {
+    const p = await publishIfReady(id, actorOf(u))
+    if (p.state === 'failed') return { ok: false, message: p.message }
+    note = p.state === 'listed' ? (p.warning ? `ok:${p.warning}` : 'ok') : undefined
+    return { ok: true, message: p.message, warning: p.state === 'listed' ? p.warning : undefined }
+  }, [`/inventory/${id}`, `/shop/items/${id}`, '/inventory', '/shop', '/website/products'])
+  return r.ok ? note : r.message
 }
 
 const websiteShown = (id: string, show: boolean) =>
@@ -225,7 +246,15 @@ export async function editItemAction(_p: ActionState, f: FormData): Promise<Acti
     patch.quantity = n
     patch.kind = n > 1 ? 'batch' : 'unique'
   }
-  return act(['inventory:write'], 'inventory.edit', `item:${id.data}`, { fields: Object.keys(patch) }, (u) => editItem(id.data, v, patch, actorOf(u)), [`/inventory/${id.data}`, '/inventory', `/shop/items/${id.data}`])
+  const res = await act(['inventory:write'], 'inventory.edit', `item:${id.data}`, { fields: Object.keys(patch) }, (u) => editItem(id.data, v, patch, actorOf(u)), [`/inventory/${id.data}`, '/inventory', `/shop/items/${id.data}`])
+  return res.ok ? withWebsiteNote(res, await autoPublishAfter(id.data)) : res
+}
+
+/** Say on the saved form when the save also put the item on the website (or why that failed). */
+function withWebsiteNote(res: ActionState, note: string | undefined): ActionState {
+  if (!note) return res
+  if (note.startsWith('ok')) return { ...res, message: `${res.message} It is on the website shop now.${note.length > 3 ? ` ${note.slice(3)}` : ''}` }
+  return { ...res, message: `${res.message} Not put on the website: ${note}` }
 }
 
 /** Refurbishment: what it needs, who does it, and how far it is. Also allowed after a sale (paid, awaiting refurbishment). */
@@ -254,7 +283,24 @@ export async function moveItemAction(_p: ActionState, f: FormData): Promise<Acti
   const v = version(f)
   if (!id.success || !v) return { ok: false, message: 'Invalid item.' }
   const loc = locationOf(f)
-  return act(['inventory:operate'], 'inventory.move', `item:${id.data}`, { to: loc }, (u) => moveItem(id.data, v, loc, str(f, 'note', 500), actorOf(u)), [`/inventory/${id.data}`, '/inventory'])
+  const res = await act(['inventory:operate'], 'inventory.move', `item:${id.data}`, { to: loc }, (u) => moveItem(id.data, v, loc, str(f, 'note', 500), actorOf(u)), [`/inventory/${id.data}`, '/inventory'])
+  // Out of the workshop can be the last thing an item waited for.
+  return res.ok && (await userCan('inventory:write')) ? withWebsiteNote(res, await autoPublishAfter(id.data)) : res
+}
+
+/** The item card's "use the original photo" / "use the catalog photo". */
+export async function catalogPhotoOffAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const id = uuid.safeParse(f.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid item.' }
+  const off = f.get('off') === 'true'
+  return act(['inventory:write'], off ? 'inventory.catalog_photo_off' : 'inventory.catalog_photo_on', `item:${id.data}`, {}, (u) => setCatalogPhotoOff(id.data, off, actorOf(u)), [`/inventory/${id.data}`, `/shop/items/${id.data}`, '/website/products'])
+}
+
+/** "Make the catalog photo again": a new Photoroom call (about $0.10). */
+export async function remakeCatalogPhotoAction(_p: ActionState, f: FormData): Promise<ActionState> {
+  const id = uuid.safeParse(f.get('id'))
+  if (!id.success) return { ok: false, message: 'Invalid item.' }
+  return act(['inventory:write'], 'inventory.catalog_photo_remake', `item:${id.data}`, {}, (u) => remakeCatalogPhoto(id.data, actorOf(u)), [`/inventory/${id.data}`, `/shop/items/${id.data}`, '/website/products'])
 }
 
 export async function listItemAction(_p: ActionState, f: FormData): Promise<ActionState> {

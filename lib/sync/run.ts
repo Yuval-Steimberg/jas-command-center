@@ -3,7 +3,7 @@ import { getOpsStore, ConflictError, OpsSetupError } from '@/lib/ops'
 import type { Item } from '@/lib/ops/types'
 import { listWebsiteInquiries, listWebsiteOrdersSince, listWebsiteProducts, listWebsiteProductsByIds, type WebsiteInquiry, type WebsiteProduct } from '@/lib/integrations/website/manage'
 import { upsertContact, touchContact } from '@/lib/crm/service'
-import { adoptWebsiteProduct, releaseItem } from '@/lib/inventory/service'
+import { adoptWebsiteProduct, releaseItem, runWebsiteAutoPublish } from '@/lib/inventory/service'
 import { reservationExpired } from '@/lib/inventory/model'
 import { ruleEnabled, runRule } from '@/lib/tasks/automations'
 import { planOrderSync } from './plan'
@@ -23,7 +23,7 @@ const RESERVE_KEY = 'ops:reservations'
 const PRODUCTS_KEY = 'ops:website_products'
 
 export interface StepReport {
-  step: 'website_orders' | 'website_forms' | 'reservations' | 'website_products'
+  step: 'website_orders' | 'website_forms' | 'reservations' | 'website_products' | 'website_publish'
   state: 'ok' | 'error' | 'skipped'
   message: string
   counts: Record<string, number>
@@ -210,6 +210,25 @@ async function syncProducts(): Promise<StepReport> {
   return { step: 'website_products', state: problems.length ? 'error' : 'ok', message: `${counts.products} website product(s) read; ${counts.adopted} new one(s) taken into inventory, ${counts.drift} stock change(s) to check.${problems.length ? ` ${problems.join(' · ')}` : ''}`, counts }
 }
 
+/**
+ * Items marked "on the website" that became ready, and catalog photos for
+ * listed ones (lib/inventory/catalog.ts). Runs last: an order step that sold
+ * an item must land before anything is published again.
+ */
+async function autoPublish(): Promise<StepReport> {
+  if (!(await ruleEnabled('website_auto_publish'))) return { step: 'website_publish', state: 'skipped', message: 'Automatic publishing is switched off.', counts: {} }
+  let r: Awaited<ReturnType<typeof runWebsiteAutoPublish>>
+  try {
+    r = await runWebsiteAutoPublish({ email: SYSTEM_ACTOR, name: 'Automation' })
+  } catch (e) {
+    // Before migration 0016 the website_wanted column does not exist.
+    if (e instanceof OpsSetupError) return { step: 'website_publish', state: 'skipped', message: 'Run supabase/migrations/0016_catalog_photo.sql to turn on automatic publishing.', counts: {} }
+    throw e
+  }
+  const counts = { listed: r.listed, photos: r.photos, waiting: r.waiting }
+  return { step: 'website_publish', state: r.problems.length ? 'error' : 'ok', message: `${r.listed} item(s) put on the website, ${r.photos} catalog photo(s) made, ${r.waiting} waiting (price, photo or workshop).${r.problems.length ? ` ${r.problems.join(' · ')}` : ''}`, counts }
+}
+
 export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps: StepReport[]; message?: string }> {
   try {
     await getOpsStore().getCursor(ORDERS_KEY)
@@ -219,7 +238,7 @@ export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps:
     throw e
   }
   const steps: StepReport[] = []
-  for (const [step, run] of [['website_orders', syncOrders], ['website_forms', syncForms], ['reservations', expireReservations], ['website_products', syncProducts]] as const) {
+  for (const [step, run] of [['website_orders', syncOrders], ['website_forms', syncForms], ['reservations', expireReservations], ['website_products', syncProducts], ['website_publish', autoPublish]] as const) {
     try {
       steps.push(await run())
     } catch (e) {

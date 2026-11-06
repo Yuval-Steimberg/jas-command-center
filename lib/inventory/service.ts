@@ -9,6 +9,9 @@ import {
 import { shekelsToAgorot } from '@/lib/money'
 import { websiteQty } from '@/lib/sync/products'
 import { FIELD_CONDITION, OPS, draftProduct, websiteCategoryFor } from './model'
+import { catalogColumns, needsCatalogPhoto, websiteBlockers, websitePhotos, BLOCKER_LABEL, type WebsiteBlocker } from './catalog'
+import { photoroomCatalog, photoroomConfigured } from './photoroom'
+import { ruleEnabled } from '@/lib/tasks/automations'
 import { driveDownloadUrls, driveFileId } from './drive'
 import { MAX_PHOTO_BYTES, PHOTO_TYPES, uploadInventoryPhoto } from './photos'
 import { touchContact } from '@/lib/crm/service'
@@ -320,7 +323,8 @@ export async function listManyOnWebsite(ids: string[], actor: Actor): Promise<{ 
       // The website must not depend on Drive either: copy a Drive photo first.
       const copied = await copyDrivePhotos(item, actor)
       if (!copied.ok) return { ok: false, why: `${item.sku}: ${copied.message}` }
-      const cur = copied.item
+      // Marked "on the website", so the hourly step makes its catalog photo (not here: 30 Photoroom calls would outrun the request).
+      const cur = await markWanted(copied.item, true, actor)
       const r = await listOnWebsite(id, cur.version, { categoryId: websiteCategoryFor(cur.category, meta.data.categories), publish: true }, actor)
       return r.ok ? { ok: true, item: r.item } : { ok: false, why: `${item.sku}: ${r.message}` }
     } catch (e) {
@@ -461,17 +465,187 @@ export async function setListingPublished(id: string, published: boolean, actor:
  * and the item's history agree.
  */
 export async function setShownOnWebsite(id: string, show: boolean, actor: Actor): Promise<OpResult> {
-  const item = await getOpsStore().getItem(id)
-  if (!item) return { ok: false, message: 'Item not found.' }
+  const found = await getOpsStore().getItem(id)
+  if (!found) return { ok: false, message: 'Item not found.' }
+  // The wish is kept on the item (migration 0016), so "no" also stops the automatic step from putting it back.
+  const item = await markWanted(found, show, actor)
   const linkedLive = item.websiteProductId != null && (item.status === 'listed' || item.status === 'reserved')
-  if (!show) return linkedLive ? setListingPublished(id, false, actor) : { ok: false, message: 'It is not on the website.' }
+  if (!show) {
+    if (linkedLive) return setListingPublished(id, false, actor)
+    return found.websiteWanted === true ? { ok: true, item, message: 'It will not go on the website.' } : { ok: false, message: 'It is not on the website.' }
+  }
   if (linkedLive) return setListingPublished(id, true, actor)
   if (!OPS.list.includes(item.status as 'in_storage')) return { ok: false, message: `Only an item in storage can go on the website; this one is ${item.status.replace('_', ' ')}.` }
+  return putOnWebsite(item, actor)
+}
+
+/** Copy Drive photos, make the catalog photo, list and publish. A catalog-photo failure never stops the listing. */
+async function putOnWebsite(item: Item, actor: Actor): Promise<OpResult> {
   const meta = await getWebsiteProductMeta()
   if (meta.state !== 'ok') return { ok: false, message: `The website could not be read (${meta.state === 'error' ? meta.error : 'not connected'}).` }
   const copied = await copyDrivePhotos(item, actor)
   if (!copied.ok) return { ok: false, message: copied.message }
-  return listOnWebsite(id, copied.item.version, { categoryId: websiteCategoryFor(copied.item.category, meta.data.categories), publish: true }, actor)
+  const cat = await ensureCatalogPhoto(copied.item, actor)
+  const r = await listOnWebsite(item.id, cat.item.version, { categoryId: websiteCategoryFor(cat.item.category, meta.data.categories), publish: true }, actor)
+  return r.ok && cat.warning ? { ...r, warning: [r.warning, cat.warning].filter(Boolean).join(' ') } : r
+}
+
+/** Record whether the item should be on the website. A no-op before migration 0016 or when already so. */
+async function markWanted(item: Item, wanted: boolean, actor: Actor): Promise<Item> {
+  if (!catalogColumns(item) || (item.websiteWanted === true) === wanted || !OPS.edit.includes(item.status as 'in_storage')) return item
+  const r = await editItem(item.id, item.version, { websiteWanted: wanted }, actor)
+  return r.ok ? r.item : item
+}
+
+// ── Catalog photos ────────────────────────────────────────────────────────
+/** Fetch an https image server-side; null when it is not a photo we can send. */
+async function fetchImage(url: string): Promise<{ bytes: ArrayBuffer; type: string } | null> {
+  try {
+    const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(15_000), cache: 'no-store' })
+    const type = (res.headers.get('content-type') ?? '').split(';')[0]!.trim()
+    if (!res.ok || !PHOTO_TYPES.has(type)) return null
+    const bytes = await res.arrayBuffer()
+    return bytes.byteLength > 0 && bytes.byteLength <= 25 * 1024 * 1024 ? { bytes, type } : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Make the catalog photo of the item's CURRENT main photo, once. The original is
+ * never touched. A failure is recorded against that photo, so the hourly step
+ * does not pay for the same failing photo again; "remake" (`force`) does.
+ * Without Photoroom or migration 0016 the item comes back unchanged.
+ */
+export async function ensureCatalogPhoto(item: Item, actor: Actor, opts: { force?: boolean } = {}): Promise<{ item: Item; made: boolean; warning?: string }> {
+  if (!photoroomConfigured() || !catalogColumns(item)) return { item, made: false }
+  const due = opts.force ? !!item.photoUrl?.startsWith('https://') : needsCatalogPhoto(item)
+  if (!due || !item.photoUrl) return { item, made: false }
+  const source = item.photoUrl
+  const record = async (patch: ItemPatch) => {
+    const r = await editItem(item.id, item.version, patch, actor)
+    return r.ok ? r.item : item
+  }
+  const failed = async (why: string) => ({ item: await record({ catalogPhotoUrl: null, catalogPhotoFrom: source, catalogPhotoError: why.slice(0, 300) }), made: false, warning: `No catalog photo: ${why}. The original photo is used.` })
+  const img = await fetchImage(source)
+  if (!img) return failed('the main photo could not be downloaded')
+  const out = await photoroomCatalog(img.bytes, img.type)
+  if (!out.ok) return failed(out.message)
+  let url: string
+  try {
+    url = await uploadInventoryPhoto(out.bytes, out.type)
+  } catch (e) {
+    return failed(`the catalog photo could not be stored (${e instanceof Error ? e.message : String(e)})`)
+  }
+  return { item: await record({ catalogPhotoUrl: url, catalogPhotoFrom: source, catalogPhotoError: null, catalogPhotoOff: false }), made: true }
+}
+
+/** Point the linked website product at the item's photos (catalog main + originals in the gallery). */
+export async function syncWebsitePhotos(item: Item): Promise<{ ok: true; changed: boolean } | { ok: false; message: string }> {
+  if (item.websiteProductId == null) return { ok: true, changed: false }
+  const p = await getWebsiteProduct(item.websiteProductId)
+  if (p.state !== 'ok') return { ok: false, message: p.state === 'error' ? p.error : 'The website is not connected.' }
+  if (!p.data) return { ok: false, message: `Website product #${item.websiteProductId} no longer exists.` }
+  const { main, gallery } = websitePhotos(item)
+  if (!main.startsWith('https://')) return { ok: true, changed: false }
+  if (p.data.image_url === main && JSON.stringify(p.data.images ?? []) === JSON.stringify(gallery)) return { ok: true, changed: false }
+  try {
+    const saved = await updateWebsiteProduct(p.data.id, { image_url: main, images: gallery }, p.data.updated_at)
+    return saved.ok ? { ok: true, changed: true } : { ok: false, message: saved.message }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+const photoNote = (s: Awaited<ReturnType<typeof syncWebsitePhotos>>) => (s.ok ? undefined : `The website still shows the previous photo (${s.message}).`)
+
+/** "Use the original photo" (off = true) or back to the catalog photo, on the item and the website. */
+export async function setCatalogPhotoOff(id: string, off: boolean, actor: Actor): Promise<OpResult> {
+  const item = await getOpsStore().getItem(id)
+  if (!item) return { ok: false, message: 'Item not found.' }
+  if (!catalogColumns(item)) return { ok: false, message: 'Catalog photos need migration 0016 first.' }
+  const r = await editItem(id, item.version, { catalogPhotoOff: off }, actor)
+  if (!r.ok) return r
+  let cur = r.item
+  if (!off) cur = (await ensureCatalogPhoto(cur, actor)).item
+  const synced = await syncWebsitePhotos(cur)
+  return { ok: true, item: cur, message: off ? 'The website shows the original photo now.' : 'The website shows the catalog photo now.', warning: photoNote(synced) }
+}
+
+/** Make the catalog photo again (a new Photoroom call) and show it on the website. */
+export async function remakeCatalogPhoto(id: string, actor: Actor): Promise<OpResult> {
+  const item = await getOpsStore().getItem(id)
+  if (!item) return { ok: false, message: 'Item not found.' }
+  if (!photoroomConfigured()) return { ok: false, message: 'Photoroom is not set up yet (PHOTOROOM_API_KEY).' }
+  if (!catalogColumns(item)) return { ok: false, message: 'Catalog photos need migration 0016 first.' }
+  const made = await ensureCatalogPhoto(item, actor, { force: true })
+  if (!made.made) return { ok: false, message: made.warning ?? 'No catalog photo was made.' }
+  const synced = await syncWebsitePhotos(made.item)
+  return { ok: true, item: made.item, message: 'New catalog photo made.', warning: photoNote(synced) }
+}
+
+// ── Automatic publishing ──────────────────────────────────────────────────
+export type AutoPublish = { state: 'listed' | 'waiting' | 'skipped'; message: string; blockers?: WebsiteBlocker[]; warning?: string } | { state: 'failed'; message: string }
+
+/**
+ * An item marked "on the website" goes up by itself once ready
+ * (`websiteBlockers`). Called after every save that can make it ready (create,
+ * edit, approve price, move out of the workshop) and by the hourly step.
+ */
+export async function publishIfReady(id: string, actor: Actor): Promise<AutoPublish> {
+  const store = getOpsStore()
+  const item = await store.getItem(id)
+  if (!item || item.websiteWanted !== true) return { state: 'skipped', message: 'Not marked for the website.' }
+  if (item.status !== 'in_storage') return { state: 'skipped', message: 'Already on the website or not in storage.' }
+  if (!(await ruleEnabled('website_auto_publish'))) return { state: 'skipped', message: 'Automatic publishing is switched off on /tasks.' }
+  const blockers = websiteBlockers(item, await store.listLocations())
+  if (blockers.length) return { state: 'waiting', blockers, message: `Waiting for the website: ${blockers.map((b) => BLOCKER_LABEL[b]).join(', ')}.` }
+  const r = await putOnWebsite(item, actor)
+  return r.ok ? { state: 'listed', message: r.message, warning: r.warning } : { state: 'failed', message: r.message }
+}
+
+/** Would `publishIfReady` put it up now? Read-only, so a caller audits only what really happens. */
+export async function autoPublishDue(id: string): Promise<boolean> {
+  const store = getOpsStore()
+  const item = await store.getItem(id)
+  if (!item || item.websiteWanted !== true || item.status !== 'in_storage') return false
+  if (websiteBlockers(item, await store.listLocations()).length) return false
+  return ruleEnabled('website_auto_publish')
+}
+
+/** At most this many Photoroom calls per hourly run (each takes seconds; the sweep has 60). */
+const SWEEP_PHOTO_BUDGET = 6
+
+/**
+ * The hourly step: publish wanted items that became ready, and give listed
+ * wanted items a catalog photo of their current main photo (new listing from
+ * the bulk page, or a changed photo). Items never marked are never touched,
+ * so nothing already in stock goes online by this.
+ */
+export async function runWebsiteAutoPublish(actor: Actor): Promise<{ listed: number; photos: number; waiting: number; problems: string[] }> {
+  const store = getOpsStore()
+  const items = await store.listItems({ websiteWanted: true, statuses: ['in_storage', 'listed', 'reserved'], limit: 1000 })
+  const locations = await store.listLocations()
+  const out = { listed: 0, photos: 0, waiting: 0, problems: [] as string[] }
+  let budget = SWEEP_PHOTO_BUDGET
+  for (const item of items) {
+    if (item.status === 'in_storage') {
+      if (websiteBlockers(item, locations).length) { out.waiting++; continue }
+      if (budget <= 0) continue
+      budget -= needsCatalogPhoto(item) && photoroomConfigured() ? 1 : 0
+      const r = await publishIfReady(item.id, actor).catch((e: unknown) => ({ state: 'failed' as const, message: e instanceof Error ? e.message : String(e) }))
+      if (r.state === 'listed') out.listed++
+      else if (r.state === 'failed') out.problems.push(`${item.sku}: ${r.message}`)
+    } else if (budget > 0 && photoroomConfigured() && needsCatalogPhoto(item)) {
+      budget--
+      const made = await ensureCatalogPhoto(item, actor)
+      if (!made.made) { if (made.warning) out.problems.push(`${item.sku}: ${made.warning}`); continue }
+      out.photos++
+      const s = await syncWebsitePhotos(made.item)
+      if (!s.ok) out.problems.push(`${item.sku}: ${s.message}`)
+    }
+  }
+  return out
 }
 
 // ── Reservation ───────────────────────────────────────────────────────────

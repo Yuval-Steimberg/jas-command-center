@@ -92,6 +92,7 @@ export function supabaseOpsStore(db: SupabaseClient): OpsStore {
           if (f.buyerContactId) q = q.eq('buyer_contact_id', f.buyerContactId)
           if (f.reservedFor) q = q.eq('reserved_for', f.reservedFor)
           if (f.createdSince) q = q.gte('created_at', f.createdSince)
+          if (f.websiteWanted) q = q.eq('website_wanted', true)
           if (t) {
             const w = t.split(' ').sort((a, b) => b.length - a.length)[0]!
             q = q.or(`sku.ilike.%${w}%,title.ilike.%${w}%,description.ilike.%${w}%,category.ilike.%${w}%,furniture_project_name.ilike.%${w}%,material.ilike.%${w}%${withColors ? `,colors.ilike.%${w}%` : ''}`)

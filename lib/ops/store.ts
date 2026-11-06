@@ -26,6 +26,8 @@ export interface ItemFilter {
   buyerContactId?: string
   reservedFor?: string
   createdSince?: string
+  /** Migration 0016: only items that should be on the website shop. */
+  websiteWanted?: boolean
   limit?: number
 }
 
