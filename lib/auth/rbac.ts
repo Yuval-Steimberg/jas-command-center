@@ -61,6 +61,8 @@ export type Permission =
   | 'inventory:reports'
   | 'users:manage'
   | 'assistant:use'
+  /** Edit the team portal's categories and links (/portal/manage). Owner only by default (the spec: "Yael only"). */
+  | 'portal:manage'
 
 const all = (actions: readonly Action[], products: readonly Product[] = PRODUCTS): Permission[] =>
   products.flatMap((p) => actions.map((a) => `${p}:${a}` as Permission))
@@ -77,6 +79,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'audit:read',
     'users:manage',
     'assistant:use',
+    'portal:manage',
   ]),
   admin: new Set<Permission>([
     ...all(['read', 'read_pii', 'operate', 'write']),

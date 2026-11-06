@@ -268,3 +268,23 @@ Volunteer scheduling (`docs/VOLUNTEERS.md` "Scheduling", migration `0011_volunte
   A person with several places gets a chip row (`PlaceSwitcher`); the choice is the `cc_sched_loc` cookie set by `/schedule/place`
   (a preference only, validated against their own places; the database still decides). A day link of another of their places
   (absence email) switches place first (`placeOfSlot`). Absence alerts go to every scheduler of THAT place.
+
+Team portal (`/portal`, `lib/portal/`, `app/portal/`, migration `0014_portal.sql`; spec JAS_portal_spec.pdf, owner 2026-11-06):
+- The HOME PAGE for everyone (`app/page.tsx` redirects `/` → `/portal`; seller → `/shop`, scheduler → `/schedule` as before).
+  The English console home moved to `/console`. Hebrew, RTL, phone-first, installable (`/portal-manifest.webmanifest`).
+- Six categories of actions from a link REGISTRY (`cc_portal_categories` / `cc_portal_actions`), never hardcoded in pages.
+  `lib/portal/seed.ts` = the first set, inserted by 0014 (a unit test keeps the two identical); until 0014 runs, the
+  portal shows the seed and `/portal/manage` is read-only and says what to run.
+- `model.ts` is pure: `resolveDestination` (internal `/path`, `https://`, or `app:<key>/path` from env: FURNITURE_APP_URL,
+  VOLUNTEER_APP_URL, WEBSITE_URL, MAP_SITE_URL, GIFT_CARDS_URL), `portalFor` (role filter; an action with no address or
+  an unconfigured app is HIDDEN, never a dead button), `checkAction` (save rules), `safeNext`.
+- Sharing: a team/manager action is shared as `/portal/a/<id>`, which signs in (middleware keeps `?next=`, login honours it
+  via `safeNext`), checks the action's permission on the server, then redirects. A `customer` (לשליחה החוצה) action is
+  shared as its PUBLIC address and may never point at an internal page or carry a write/pii/admin permission.
+- An action's permission must never be looser than its destination page (`tests/unit/portal.test.ts`). The portal is a
+  gateway: destinations check their own permissions; it stores no passwords or tokens for other systems.
+- `/portal/manage` needs `portal:manage` (owner only by default; the spec: "Yael only" — Yael is the business owner).
+  Writes in `app/portal/manage/actions.ts`: audit requested → store (conditional on `updated_at`; stale = refused) → outcome
+  with before/after (product `portal`). Delete only after switching off. History = `listAudit(…, { product: 'portal' })`.
+- Manager "needs attention" (`components/portal/attention.tsx`, roles with `integrations:read`): the console's own alerts
+  grouped per product + the shop handover queue. Nothing is counted here; an unreadable source says so.

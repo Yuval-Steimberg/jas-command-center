@@ -12,7 +12,7 @@ const PORT = Number(process.env.SMOKE_PORT ?? 3123)
 const BASE = `http://localhost:${PORT}`
 const PASSWORD = 'smoke-test-password'
 const PAGES = [
-  '/', '/guide', '/notifications', '/search?q=test', '/analytics', '/reports', '/assistant', '/integrations',
+  '/', '/console', '/portal', '/portal/c/inventory', '/portal/c/volunteers', '/portal/manage', '/portal/a/item-search', '/portal/a/no-such-link', '/guide', '/notifications', '/search?q=test', '/analytics', '/reports', '/assistant', '/integrations',
   '/website', '/website/orders', '/website/products', '/website/content', '/website/reviews', '/website/blog', '/website/marketing', '/website/inquiries',
   '/gift-cards', '/furniture', '/furniture/new', '/design-agent', '/map',
   '/crm', '/crm/new', '/crm/pipeline', '/inventory', '/inventory/new', '/inventory/intake', '/inventory/website', '/inventory/online', '/inventory/locations', '/inventory/scan', '/inventory/labels', '/sales', '/sales/new', '/deliveries', '/tasks', '/suppliers', '/suppliers/orders/new',
@@ -52,12 +52,18 @@ try {
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined })
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } })
 
-  // Signed out: everything goes to /login.
-  await page.goto(`${BASE}/gift-cards`)
-  if (!page.url().includes('/login')) failures.push(`signed-out /gift-cards did not redirect to /login (${page.url()})`)
+  // Signed out: everything goes to /login, remembering where it was going.
+  await page.goto(`${BASE}/portal/a/item-search`)
+  if (!page.url().includes('/login?next=%2Fportal%2Fa%2Fitem-search')) failures.push(`signed-out shared link did not go to /login with next (${page.url()})`)
 
+  // Signing in from a shared portal link lands on what it shares, not on the home page.
   await page.fill('input[name="password"]', PASSWORD)
   await Promise.all([page.waitForURL((u) => !u.pathname.startsWith('/login'), { timeout: 60_000 }), page.click('button[type="submit"], form button')])
+  // The shared link forwards in a second step (/portal/a/… checks the permission, then redirects).
+  await page.waitForURL((u) => u.pathname.startsWith('/shop/items'), { timeout: 60_000 }).catch(() => {})
+  if (!page.url().includes('/shop/items')) failures.push(`after sign-in the shared link did not open its page (${page.url()})`)
+  await page.goto(`${BASE}/`)
+  if (!page.url().endsWith('/portal')) failures.push(`home did not open the team portal (${page.url()})`)
 
   for (const path of PAGES) {
     const res = await page.goto(`${BASE}${path}`, { waitUntil: 'networkidle', timeout: 90_000 })
@@ -77,7 +83,7 @@ try {
   }
 
   // The phone menu must cover the screen: a blurred header once trapped it at 56px tall with no links visible.
-  await page.goto(`${BASE}/`, { waitUntil: 'networkidle', timeout: 90_000 })
+  await page.goto(`${BASE}/console`, { waitUntil: 'networkidle', timeout: 90_000 })
   await page.click('button[aria-label="Open navigation"]')
   const menu = await page.evaluate(() => {
     const panel = document.querySelector('[role="dialog"][aria-label="Navigation"] > div')

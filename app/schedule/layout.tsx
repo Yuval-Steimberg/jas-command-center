@@ -38,8 +38,8 @@ export default async function ScheduleLayout({ children }: { children: React.Rea
           </Link>
           <span className="flex-1" />
           {console ? (
-            <Link href="/" className="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-sm text-muted hover:bg-sunken hover:text-ink">
-              <LayoutDashboard aria-hidden className="h-4 w-4" />מערכת מלאה
+            <Link href="/portal" className="inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-sm text-muted hover:bg-sunken hover:text-ink">
+              <LayoutDashboard aria-hidden className="h-4 w-4" />פורטל הצוות
             </Link>
           ) : null}
           <form action={signOut}>
