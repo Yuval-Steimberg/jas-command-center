@@ -124,6 +124,17 @@ describe('marked for the website → goes up by itself, with a catalog photo', (
     expect(w.products.size).toBe(0)
   })
 
+  it('the hourly run counts catalog photos made while publishing, and reports a Photoroom failure', async () => {
+    await connect()
+    await newItem()
+    expect(await runWebsiteAutoPublish(actor)).toMatchObject({ listed: 1, photos: 1, problems: [] })
+    pr.fail = true
+    await newItem({ photoUrl: 'https://img.example/other.jpg' })
+    const r = await runWebsiteAutoPublish(actor)
+    expect(r).toMatchObject({ listed: 1, photos: 0 })
+    expect(r.problems.join(' ')).toMatch(/No catalog photo: Photoroom answered 500/)
+  })
+
   it('Photoroom failing never blocks the sale: listed with the original, and not retried every hour', async () => {
     const w = await connect()
     pr.fail = true
