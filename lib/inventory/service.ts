@@ -480,14 +480,15 @@ export async function setShownOnWebsite(id: string, show: boolean, actor: Actor)
 }
 
 /** Copy Drive photos, make the catalog photo, list and publish. A catalog-photo failure never stops the listing. */
-async function putOnWebsite(item: Item, actor: Actor): Promise<OpResult> {
+async function putOnWebsite(item: Item, actor: Actor): Promise<OpResult & { catalog?: boolean; catalogWarning?: string }> {
   const meta = await getWebsiteProductMeta()
   if (meta.state !== 'ok') return { ok: false, message: `The website could not be read (${meta.state === 'error' ? meta.error : 'not connected'}).` }
   const copied = await copyDrivePhotos(item, actor)
   if (!copied.ok) return { ok: false, message: copied.message }
   const cat = await ensureCatalogPhoto(copied.item, actor)
   const r = await listOnWebsite(item.id, cat.item.version, { categoryId: websiteCategoryFor(cat.item.category, meta.data.categories), publish: true }, actor)
-  return r.ok && cat.warning ? { ...r, warning: [r.warning, cat.warning].filter(Boolean).join(' ') } : r
+  if (!r.ok) return r
+  return { ...r, catalog: cat.made, ...(cat.warning ? { warning: [r.warning, cat.warning].filter(Boolean).join(' ') } : {}), ...(cat.warning ? { catalogWarning: cat.warning } : {}) }
 }
 
 /** Record whether the item should be on the website. A no-op before migration 0016 or when already so. */
@@ -537,7 +538,10 @@ export async function ensureCatalogPhoto(item: Item, actor: Actor, opts: { force
   } catch (e) {
     return failed(`the catalog photo could not be stored (${e instanceof Error ? e.message : String(e)})`)
   }
-  return { item: await record({ catalogPhotoUrl: url, catalogPhotoFrom: source, catalogPhotoError: null, catalogPhotoOff: false }), made: true }
+  const saved = await editItem(item.id, item.version, { catalogPhotoUrl: url, catalogPhotoFrom: source, catalogPhotoError: null, catalogPhotoOff: false }, actor)
+  // Made and paid for, but not saved on the item: say so instead of counting it as made.
+  if (!saved.ok) return { item, made: false, warning: `A catalog photo was made but could not be saved on the item (${saved.message}).` }
+  return { item: saved.item, made: true }
 }
 
 /** Point the linked website product at the item's photos (catalog main + originals in the gallery). */
@@ -585,7 +589,9 @@ export async function remakeCatalogPhoto(id: string, actor: Actor): Promise<OpRe
 }
 
 // ── Automatic publishing ──────────────────────────────────────────────────
-export type AutoPublish = { state: 'listed' | 'waiting' | 'skipped'; message: string; blockers?: WebsiteBlocker[]; warning?: string } | { state: 'failed'; message: string }
+export type AutoPublish =
+  | { state: 'listed' | 'waiting' | 'skipped'; message: string; blockers?: WebsiteBlocker[]; warning?: string; catalog?: boolean; catalogWarning?: string }
+  | { state: 'failed'; message: string }
 
 /**
  * An item marked "on the website" goes up by itself once ready
@@ -601,7 +607,7 @@ export async function publishIfReady(id: string, actor: Actor): Promise<AutoPubl
   const blockers = websiteBlockers(item, await store.listLocations())
   if (blockers.length) return { state: 'waiting', blockers, message: `Waiting for the website: ${blockers.map((b) => BLOCKER_LABEL[b]).join(', ')}.` }
   const r = await putOnWebsite(item, actor)
-  return r.ok ? { state: 'listed', message: r.message, warning: r.warning } : { state: 'failed', message: r.message }
+  return r.ok ? { state: 'listed', message: r.message, warning: r.warning, catalog: r.catalog, catalogWarning: r.catalogWarning } : { state: 'failed', message: r.message }
 }
 
 /** Would `publishIfReady` put it up now? Read-only, so a caller audits only what really happens. */
@@ -634,8 +640,12 @@ export async function runWebsiteAutoPublish(actor: Actor): Promise<{ listed: num
       if (budget <= 0) continue
       budget -= needsCatalogPhoto(item) && photoroomConfigured() ? 1 : 0
       const r = await publishIfReady(item.id, actor).catch((e: unknown) => ({ state: 'failed' as const, message: e instanceof Error ? e.message : String(e) }))
-      if (r.state === 'listed') out.listed++
-      else if (r.state === 'failed') out.problems.push(`${item.sku}: ${r.message}`)
+      if (r.state === 'listed') {
+        out.listed++
+        if (r.catalog) out.photos++
+        // A catalog photo that failed while publishing must show in the sync result, not only on the item card.
+        else if (r.catalogWarning) out.problems.push(`${item.sku}: ${r.catalogWarning}`)
+      } else if (r.state === 'failed') out.problems.push(`${item.sku}: ${r.message}`)
     } else if (budget > 0 && photoroomConfigured() && needsCatalogPhoto(item)) {
       budget--
       const made = await ensureCatalogPhoto(item, actor)
