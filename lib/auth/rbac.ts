@@ -149,6 +149,7 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
    * the website's content, gift cards, the field app or volunteers, and no
    * `inventory:reports`: how much the shop sells (counts or ₪) is for managers.
    * `inventory:financial` lets them RECORD a sale, not see the business's totals.
+   * `assistant:use` = the portal's "לשאול", over the same reads.
    */
   seller: new Set<Permission>([
     'inventory:read',
@@ -158,6 +159,9 @@ export const DEFAULT_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
     'crm:read',
     'crm:read_pii',
     'crm:write',
+    // "לשאול" on the portal: questions about stock, holds and tasks. Tools are filtered by the permissions above,
+    // so nothing about money totals, gift cards or other products is reachable. Revoke per deployment if unwanted.
+    'assistant:use',
   ]),
   viewer: new Set<Permission>([...all(['read']), 'inventory:reports', 'integrations:read']),
 }

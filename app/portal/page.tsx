@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
-import { ChevronLeft, Eye } from 'lucide-react'
+import { ChevronLeft, Eye, MessageCircleQuestion, ScanLine } from 'lucide-react'
 import { getSession } from '@/lib/auth/session'
 import { can, ROLES, type Role } from '@/lib/auth/rbac'
 import { portalView } from '@/lib/portal/views'
@@ -10,6 +10,9 @@ import { PortalSearch } from '@/components/portal/search'
 import { SharePortalButton } from '@/components/portal/share'
 import { Attention, AttentionSkeleton } from '@/components/portal/attention'
 import { roleHe } from '@/lib/portal/who'
+import { Today, TodaySkeleton } from '@/components/portal/today'
+import { Frequent } from '@/components/portal/frequent'
+import { TrackedLink } from '@/components/portal/tracked-link'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,6 +30,11 @@ export default async function PortalHome({ searchParams }: { searchParams?: { as
   const role = asRole ?? s.user.role
   const { categories, search, problem } = await portalView(role, asRole ? undefined : s.overrides)
   const manager = !asRole && can(s.user.role, 'integrations:read', s.overrides)
+  // The person's own tools. In a role preview they belong to the previewer, so they are not shown.
+  const mine = !asRole
+  const inventory = can(s.user.role, 'inventory:read', s.overrides)
+  const scan = mine && (inventory || can(s.user.role, 'gift_cards:read', s.overrides))
+  const askable = mine && can(s.user.role, 'assistant:use', s.overrides)
   const name = firstName(s.user.name)
 
   return (
@@ -57,11 +65,39 @@ export default async function PortalHome({ searchParams }: { searchParams?: { as
         </div>
       </div>
 
+      {scan || askable ? (
+        <div className="mb-5 grid grid-cols-2 gap-3">
+          {scan ? (
+            <Link href="/portal/scan" className="flex min-h-16 items-center justify-center gap-2.5 rounded-lg bg-forest px-4 text-lg font-bold text-cream shadow-card hover:bg-forest/90">
+              <ScanLine aria-hidden className="size-6" strokeWidth={1.75} />
+              סריקה
+            </Link>
+          ) : null}
+          {askable ? (
+            <Link href="/portal/ask" className="flex min-h-16 items-center justify-center gap-2.5 rounded-lg border border-forest/30 bg-surface px-4 text-lg font-bold text-forest shadow-card hover:bg-sunken">
+              <MessageCircleQuestion aria-hidden className="size-6" strokeWidth={1.75} />
+              לשאול
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
       <PortalSearch items={search}>
+        {mine ? (
+          <div className="mt-5 flex flex-col gap-5">
+            <Suspense fallback={<TodaySkeleton />}>
+              <Today userId={s.user.id} inventory={inventory} />
+            </Suspense>
+            <Suspense fallback={null}>
+              <Frequent userId={s.user.id} shown={search} />
+            </Suspense>
+          </div>
+        ) : null}
         {manager ? (
           <div className="mt-5">
             <Suspense fallback={<AttentionSkeleton />}>
-              <Attention inventory={can(s.user.role, 'inventory:read', s.overrides)} />
+              {/* Handovers are already in "today" above. */}
+              <Attention inventory={false} />
             </Suspense>
           </div>
         ) : null}
@@ -84,15 +120,9 @@ export default async function PortalHome({ searchParams }: { searchParams?: { as
                 <ul className="hidden flex-wrap gap-2 border-t border-line/70 px-4 pb-4 pt-3 sm:flex">
                   {c.actions.slice(0, 4).map((a) => (
                     <li key={a.id}>
-                      {a.external ? (
-                        <a href={a.href} target="_blank" rel="noopener noreferrer" className="inline-flex h-11 items-center rounded-full bg-sage-soft/70 px-3.5 text-sm font-medium text-forest hover:bg-sage-soft">
-                          {a.title}
-                        </a>
-                      ) : (
-                        <Link href={a.href} className="inline-flex h-11 items-center rounded-full bg-sage-soft/70 px-3.5 text-sm font-medium text-forest hover:bg-sage-soft">
-                          {a.title}
-                        </Link>
-                      )}
+                      <TrackedLink id={a.id} href={a.href} external={a.external} className="inline-flex h-11 items-center rounded-full bg-sage-soft/70 px-3.5 text-sm font-medium text-forest hover:bg-sage-soft">
+                        {a.title}
+                      </TrackedLink>
                     </li>
                   ))}
                   {c.actions.length > 4 ? (

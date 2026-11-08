@@ -66,6 +66,8 @@ export interface AskDeps {
   audit: AssistantAudit
   /** YYYY-MM-DD in Israel, so "today" and "this month" mean the business's calendar. */
   today: string
+  /** Questions only: no propose_* tools are offered (the Hebrew portal's "לשאול"; confirmation cards are the console's). */
+  readOnly?: boolean
   now?: () => number
 }
 
@@ -142,7 +144,7 @@ async function runTool(block: Anthropic.Beta.BetaToolUseBlock, allowed: readonly
 export async function ask(question: string, history: Turn[], deps: AskDeps): Promise<AskResult> {
   const now = deps.now ?? Date.now
   const started = now()
-  const allowed = toolsFor(deps.ctx)
+  const allowed = toolsFor(deps.ctx).filter((t) => !deps.readOnly || !t.proposal)
   const tools = toolDefinitions(allowed)
   const messages: Anthropic.Beta.BetaMessageParam[] = [
     ...history.map((t) => ({ role: t.role, content: t.text })),

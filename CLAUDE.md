@@ -300,6 +300,20 @@ Portal change chat (`/portal/change`, `lib/portal/change-chat.ts` pure + `change
   workflow), and `.github/workflows/portal-request.yml` hands it to Claude Code, which opens a PR. Live only after a person merges.
 - Effects in client components use braces: Chrome's `scrollIntoView` returns a Promise, and returning it from an effect crashes React.
 
+Portal home for the shop floor (`lib/portal/today.ts` pure, `usage.ts`, `components/portal/{today,frequent,scanner,ask-chat,mic}.tsx`):
+- "מה מחכה לי היום" = `buildToday` over handoverQueue + reserved items + open tasks. It only words those queues (never its own rule);
+  an unreadable queue is named (`unreadable`), a queue the person may not see is null and silent. Managers' `Attention` no longer
+  repeats handovers.
+- "השימושים שלך": every portal action link is a `TrackedLink` (sendBeacon → `POST /api/portal/use`, never blocks the link, not audited:
+  it is the person's own shortcut order). Migration 0018 `cc_portal_usage` + `cc_portal_use` (atomic increment; run on Postgres 16
+  with 20 concurrent taps). `frequent`: ≥2 uses, among actions still shown. Before 0018 the row simply does not show.
+- Scan (`/portal/scan`, `classifyScan`): item QR link / SKU → `/shop/items/:id` (inventory:read); gift card QR link or printed code →
+  the gift card system's `/employee?code=` (gift_card_system looks it up on open and strips the code from the address bar; it never
+  redeems by itself; its own login decides). Camera: BarcodeDetector, else jsQR (iPhone: QR only).
+- "לשאול" (`/portal/ask`): the console's `ask()` with `readOnly: true` (no propose_* tools), Hebrew errors, voice via `MicButton`.
+  `seller` now holds `assistant:use`; its tools are still filtered by its own permissions.
+- Guide `/portal/guide` (header "?"): plain Hebrew for staff; the manager part only with portal:manage. Update it with any new portal feature.
+
 Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, `photoroom.ts`, service `publishIfReady` /
 `runWebsiteAutoPublish` / `ensureCatalogPhoto`, migration `0016_catalog_photo.sql`; owner 2026-11-06):
 - A new item is `website_wanted` by default (the yes/no on the add-item form only for `website:write`; everyone else = yes). It goes
