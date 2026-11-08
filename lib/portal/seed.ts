@@ -4,7 +4,7 @@ import type { Permission } from '@/lib/auth/rbac'
 /**
  * The portal's first set of categories and actions (spec page 3, adjusted to
  * what exists, see the plan). The SAME rows are inserted by
- * supabase/migrations/0014_portal.sql and 0015_portal_gift_cards.sql (a test
+ * supabase/migrations/0014_portal.sql, 0015_portal_gift_cards.sql and 0017_portal_change_chat.sql (a test
  * keeps them in step); after
  * that, link management edits the database and this file only serves the
  * local development login and a database the migration has not reached yet.
@@ -70,6 +70,8 @@ export const SEED_ACTIONS: PortalAction[] = [
   act('admin', 2, 'staff', 'צוות והרשאות', 'הזמנת אנשים ושינוי תפקיד', '/settings/staff', 'users:manage', 'manager'),
   act('admin', 3, 'systems', 'מצב המערכות', 'האם כל מערכת עובדת עכשיו', '/integrations', 'integrations:read', 'manager'),
   act('admin', 4, 'console', 'מערכת הניהול המלאה', 'כל המסכים המפורטים (באנגלית)', '/console', 'integrations:read', 'manager'),
+  // 0017.
+  act('admin', 5, 'change-chat', 'שינוי בפורטל בשיחה', 'אומרים מה לשנות, בכתב, בקול או בצילום מסך', '/portal/change', 'portal:manage', 'manager'),
   // 0015. Redeeming and the gift card admin are in the gift card system itself, behind its own sign-in.
   act('gift-cards', 1, 'gift-redeem', 'מימוש שובר', 'בקופה, במערכת השוברים (כניסה עם המשתמש שלך שם)', 'app:gift_cards/employee', 'gift_cards:operate'),
   act('gift-cards', 2, 'gift-find', 'חיפוש שובר', 'יתרה, מצב ומשלוח של שובר לפי קוד', '/gift-cards', 'gift_cards:read'),

@@ -289,6 +289,17 @@ Team portal (`/portal`, `lib/portal/`, `app/portal/`, migrations `0014_portal.sq
 - Manager "needs attention" (`components/portal/attention.tsx`, roles with `integrations:read`): the console's own alerts
   grouped per product + the shop handover queue. Nothing is counted here; an unreadable source says so.
 
+Portal change chat (`/portal/change`, `lib/portal/change-chat.ts` pure + `change-chat-run.ts`, `app/portal/change/`, migration 0017):
+- The owner writes, speaks (browser speech, he-IL) or sends screenshots; Claude (`ASSISTANT_MODEL`, structured output) proposes.
+  `portal:manage` only. Same idea as the website's content assistant: nothing changes without a tap per card.
+- DATA (categories + buttons) applies on approval: `checkChanges` checks every proposal against the live registry with link
+  management's rules (`checkAction`), the card returns from the browser and is re-parsed (`applyInput`) and saved conditional
+  on `updatedAt`. Audited like /portal/manage, via = assistant. No deletes from the chat (switch off, then manage).
+- CODE (design, layout, features) is never applied by the chat: Claude writes a spec, "שליחה לפיתוח" opens a GitHub issue
+  labelled `portal-request` (`PORTAL_GITHUB_TOKEN`, Issues write; a PAT, because issues opened with GITHUB_TOKEN start no
+  workflow), and `.github/workflows/portal-request.yml` hands it to Claude Code, which opens a PR. Live only after a person merges.
+- Effects in client components use braces: Chrome's `scrollIntoView` returns a Promise, and returning it from an effect crashes React.
+
 Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, `photoroom.ts`, service `publishIfReady` /
 `runWebsiteAutoPublish` / `ensureCatalogPhoto`, migration `0016_catalog_photo.sql`; owner 2026-11-06):
 - A new item is `website_wanted` by default (the yes/no on the add-item form only for `website:write`; everyone else = yes). It goes

@@ -40,6 +40,8 @@ const ACTION_HE: Record<string, string> = {
   'portal.category.add': 'הוספת קטגוריה',
   'portal.category.edit': 'עריכת קטגוריה',
   'portal.category.move': 'שינוי סדר קטגוריות',
+  'portal.chat.ask': 'בקשה בשיחה',
+  'portal.dev_request': 'בקשה לפיתוח',
 }
 
 /**
