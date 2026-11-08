@@ -313,6 +313,9 @@ Portal home for the shop floor (`lib/portal/today.ts` pure, `usage.ts`, `compone
 - "לשאול" (`/portal/ask`): the console's `ask()` with `readOnly: true` (no propose_* tools), Hebrew errors, voice via `MicButton`.
   `seller` now holds `assistant:use`; its tools are still filtered by its own permissions.
 - Guide `/portal/guide` (header "?"): plain Hebrew for staff; the manager part only with portal:manage. Update it with any new portal feature.
+  Public twin `public/portal-guide.html` (no login; excluded in the middleware matcher) is what gets SENT (WhatsApp shows its og: card).
+  Send the LINK, never the file: WhatsApp delivers .html as a document, and phones open it in previews where links do not work.
+  Its links are absolute https and its anchors match ids (tests/unit/portal-guide-html.test.ts). Change both guides together.
 
 Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, `photoroom.ts`, service `publishIfReady` /
 `runWebsiteAutoPublish` / `ensureCatalogPhoto`, migration `0016_catalog_photo.sql`; owner 2026-11-06):
