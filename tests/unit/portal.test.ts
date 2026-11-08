@@ -136,7 +136,7 @@ describe('the seeded links', () => {
   })
 
   it('the migrations insert exactly the same set', () => {
-    const sql = ['0014_portal.sql', '0015_portal_gift_cards.sql'].map((f) => readFileSync(join(process.cwd(), 'supabase/migrations', f), 'utf8')).join('\n')
+    const sql = ['0014_portal.sql', '0015_portal_gift_cards.sql', '0017_portal_change_chat.sql'].map((f) => readFileSync(join(process.cwd(), 'supabase/migrations', f), 'utf8')).join('\n')
     const q = (s: string | null) => (s === null ? 'null' : `'${s.replace(/'/g, "''")}'`)
     for (const c of SEED_CATEGORIES) expect(sql, c.id).toContain(`(${q(c.id)}, ${q(c.title)}, ${q(c.subtitle)}, ${q(c.icon)}, ${c.sort}, ${c.active})`)
     for (const a of SEED_ACTIONS)

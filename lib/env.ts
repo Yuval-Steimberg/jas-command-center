@@ -89,6 +89,11 @@ export function env() {
     vercel: { token: read('VERCEL_TOKEN'), teamId: read('VERCEL_TEAM_ID') },
     /** The read-only AI assistant. Off (and saying so) until the key is set. */
     assistant: { apiKey: read('ANTHROPIC_API_KEY'), workspaceId: read('ANTHROPIC_WORKSPACE_ID'), model: read('ASSISTANT_MODEL') ?? 'claude-opus-5-5' },
+    /**
+     * "שינוי בפורטל בשיחה": a request that needs code becomes a GitHub issue here. Token = fine-grained,
+     * Issues: read and write on this one repository. Unset = the request is kept in the audit log and copied by hand.
+     */
+    portalChanges: { githubToken: read('PORTAL_GITHUB_TOKEN'), repo: read('PORTAL_GITHUB_REPO') ?? 'Yuval-Steimberg/jas-command-center', label: read('PORTAL_GITHUB_LABEL') ?? 'portal-request' },
     /** Photo → item fields on intake (same key as the assistant; a smaller model is plenty for one photo). */
     photoAi: { model: read('PHOTO_AI_MODEL') ?? 'claude-sonnet-5-5' },
     /**
