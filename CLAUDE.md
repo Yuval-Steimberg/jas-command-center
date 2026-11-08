@@ -299,7 +299,8 @@ Portal change chat (`/portal/change`, `lib/portal/change-chat.ts` pure + `change
   labelled `portal-request` (`PORTAL_GITHUB_TOKEN`, Issues write; a PAT, because issues opened with GITHUB_TOKEN start no
   workflow), and `.github/workflows/portal-request.yml` hands it to Claude Code, which opens a PR. Live only after a person merges.
 - Effects in client components use braces: Chrome's `scrollIntoView` returns a Promise, and returning it from an effect crashes React.
- (`lib/inventory/catalog.ts` pure, `photoroom.ts`, service `publishIfReady` /
+
+Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, `photoroom.ts`, service `publishIfReady` /
 `runWebsiteAutoPublish` / `ensureCatalogPhoto`, migration `0016_catalog_photo.sql`; owner 2026-11-06):
 - A new item is `website_wanted` by default (the yes/no on the add-item form only for `website:write`; everyone else = yes). It goes
   up by itself once `websiteBlockers` is empty: in storage, https photo, APPROVED price (an AI estimate never goes up alone), stock,
