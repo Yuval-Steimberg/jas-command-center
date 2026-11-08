@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
-import { LayoutDashboard, LogOut } from 'lucide-react'
+import { HelpCircle, LayoutDashboard, LogOut } from 'lucide-react'
 import { getSession } from '@/lib/auth/session'
 import { signOut } from '@/app/login/actions'
 
@@ -34,6 +34,10 @@ export default async function PortalLayout({ children }: { children: React.React
             <span className="text-sm font-bold tracking-wide text-ink" dir="ltr">JUST A SECOND</span>
           </Link>
           <span className="flex-1" />
+          <Link href="/portal/guide" aria-label="מדריך לפורטל" title="מדריך לפורטל" className="inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-3 text-sm text-muted hover:bg-sunken hover:text-ink">
+            <HelpCircle aria-hidden className="h-5 w-5" />
+            <span className="hidden sm:inline">מדריך</span>
+          </Link>
           {console ? (
             <Link href="/console" className="inline-flex h-11 min-w-11 items-center justify-center gap-1.5 rounded-full px-3 text-sm text-muted hover:bg-sunken hover:text-ink">
               <LayoutDashboard aria-hidden className="h-4 w-4" />

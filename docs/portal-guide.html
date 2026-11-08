@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מדריך לפורטל הצוות · Just A Second</title>
+<style>
+  :root {
+    --cream: #FFFCF5; --cream-2: #F6F1E4; --cream-3: #ECE5D1;
+    --sage: #B5C9AD; --sage-2: #D6E1CF;
+    --slate: #626B65; --forest: #333D36; --orange: #E88225;
+    --border: #DDD6C4; --white: #FFFFFF;
+    --shadow: 0 1px 2px rgba(51,61,54,.06), 0 2px 8px rgba(51,61,54,.05);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--cream); color: var(--forest);
+    font-family: "Heebo", "Arial Hebrew", "Segoe UI", Arial, sans-serif;
+    font-size: 17px; line-height: 1.65;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { padding: 8px 0 16px; }
+  .mark { display: inline-block; background: var(--forest); color: var(--cream); font-weight: 900; letter-spacing: .04em;
+          border-radius: 999px; padding: 4px 14px; font-size: 14px; }
+  h1 { font-size: 32px; line-height: 1.15; margin: 16px 0 8px; font-weight: 800; }
+  .lead { color: var(--slate); font-size: 19px; margin: 0; }
+  nav { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; margin: 24px 0; }
+  nav p { margin: 0 0 6px; font-weight: 700; font-size: 15px; }
+  nav ol { margin: 0; padding-inline-start: 22px; columns: 2; column-gap: 32px; }
+  nav li { margin: 4px 0; break-inside: avoid; }
+  a { color: var(--forest); text-underline-offset: 3px; }
+  section { background: var(--white); border: 1px solid var(--border); border-radius: 14px; padding: 22px 22px 18px; margin: 18px 0;
+            box-shadow: var(--shadow); scroll-margin-top: 16px; }
+  h2 { display: flex; align-items: center; gap: 12px; font-size: 23px; margin: 0 0 10px; font-weight: 800; }
+  .num { display: inline-grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 10px;
+         background: var(--sage-2); color: var(--forest); font-size: 17px; font-weight: 800; }
+  h3 { font-size: 18px; margin: 16px 0 4px; }
+  p { margin: 8px 0; }
+  ul, ol { margin: 8px 0; padding-inline-start: 24px; }
+  li { margin: 5px 0; }
+  .tip { background: var(--cream-2); border-radius: 10px; padding: 12px 16px; color: var(--slate); font-size: 15.5px; margin-top: 12px; }
+  .tag { display: inline-block; border-radius: 999px; padding: 1px 10px; font-size: 13px; font-weight: 600; white-space: nowrap; }
+  .tag-out { background: rgba(232,130,37,.15); color: #8A4B10; }
+  .tag-mgr { background: rgba(51,61,54,.1); color: var(--forest); }
+  .btn { display: inline-block; background: var(--forest); color: var(--cream); border-radius: 999px; padding: 2px 12px; font-weight: 700;
+         font-size: 15px; white-space: nowrap; }
+  .btn-light { background: var(--white); color: var(--forest); border: 1px solid var(--forest); }
+  .manager { border-color: var(--sage); }
+  .manager .num { background: var(--forest); color: var(--cream); }
+  .ltr { direction: ltr; unicode-bidi: embed; }
+  .open { display: block; text-align: center; margin: 28px 0 0; }
+  .open a { display: inline-block; background: var(--orange); color: var(--forest); font-weight: 800; text-decoration: none;
+            border-radius: 999px; padding: 12px 28px; }
+  .open a:hover { background: #C96A17; color: var(--cream); }
+  footer { color: var(--slate); font-size: 14px; text-align: center; margin-top: 28px; }
+  @media (max-width: 560px) {
+    body { font-size: 16.5px; }
+    h1 { font-size: 27px; }
+    nav ol { columns: 1; }
+    section { padding: 18px 16px 14px; }
+  }
+  @media print {
+    body { background: #fff; font-size: 12pt; }
+    section, nav { box-shadow: none; break-inside: avoid; }
+    .open { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="mark">JAS</span>
+  <h1>מדריך לפורטל הצוות</h1>
+  <p class="lead">הפורטל הוא נקודת הכניסה לכל העבודה היומית ב-Just A Second. לא צריך לזכור איזו מערכת עושה מה: נכנסים לפורטל, ומשם מגיעים לכל מקום.</p>
+  <p>הכתובת: <a class="ltr" href="https://jas-command-center.vercel.app/portal">jas-command-center.vercel.app/portal</a></p>
+</header>
+
+<nav aria-label="תוכן המדריך">
+  <p>במדריך</p>
+  <ol>
+    <li><a href="#enter">איך נכנסים</a></li>
+    <li><a href="#home">מה יש במסך הראשי</a></li>
+    <li><a href="#today">מה מחכה לי היום</a></li>
+    <li><a href="#scan">סריקה</a></li>
+    <li><a href="#ask">לשאול</a></li>
+    <li><a href="#buttons">כפתורים וקטגוריות</a></li>
+    <li><a href="#share">שיתוף קישורים</a></li>
+    <li><a href="#install">הפורטל כאפליקציה בטלפון</a></li>
+    <li><a href="#manage">למנהלת הפורטל</a></li>
+    <li><a href="#help">כשמשהו לא עובד</a></li>
+  </ol>
+</nav>
+
+<section id="enter">
+  <h2><span class="num">1</span>איך נכנסים</h2>
+  <ol>
+    <li>פותחים את הכתובת של הפורטל בטלפון או במחשב.</li>
+    <li>נכנסים עם המייל והסיסמה שקיבלתם.</li>
+    <li>זהו. כל פעם שנכנסים למערכת, הפורטל הוא המסך הראשון.</li>
+  </ol>
+  <div class="tip">אין לכם משתמש? מנהלת הפורטל מוסיפה עובדים חדשים, ואתם מקבלים הזמנה במייל.</div>
+</section>
+
+<section id="home">
+  <h2><span class="num">2</span>מה יש במסך הראשי</h2>
+  <p>מלמעלה למטה:</p>
+  <ol>
+    <li><span class="btn">סריקה</span> ו-<span class="btn btn-light">לשאול</span>: שני הכפתורים הגדולים. מוסבר בהמשך.</li>
+    <li><b>חיפוש</b>: כותבים מה רוצים לעשות (למשל "מכירה" או "מתנדבים") והכפתור המתאים מופיע מיד.</li>
+    <li><b>מה מחכה לי היום</b>: מה צריך לטפל בו עכשיו.</li>
+    <li><b>השימושים שלך</b>: הכפתורים שאתם פותחים הכי הרבה, ראשונים.</li>
+    <li><b>הקטגוריות</b>: כל העבודה מסודרת לפי נושאים.</li>
+  </ol>
+  <p>למעלה בפינה יש סימן שאלה. הוא פותח את המדריך הזה בתוך הפורטל.</p>
+  <div class="tip">כל אחד רואה רק את מה שרלוונטי לתפקיד שלו. אם חסר לכם כפתור, פנו למנהלת הפורטל.</div>
+</section>
+
+<section id="today">
+  <h2><span class="num">3</span>מה מחכה לי היום</h2>
+  <p>רשימה קצרה של מה שמחכה לכם היום. כל שורה היא כפתור: לוחצים, והמסך שמטפל בזה נפתח.</p>
+  <ul>
+    <li>משלוחים באיחור, ומשלוחים שיוצאים היום.</li>
+    <li>לקוחות שקנו פריט ועוד צריכים לאסוף אותו.</li>
+    <li>פריטים ששמרנו ללקוח, שהשמירה עליהם נגמרת היום.</li>
+    <li>משימות שלכם, ומשימות להיום שעוד אף אחד לא לקח.</li>
+  </ul>
+  <p>שורה עם נקודה כהה ובכתב מודגש היא דחופה, ולכן היא תמיד למעלה.</p>
+  <div class="tip">כשהכול מטופל כתוב "אין כרגע משהו שמחכה לך". אם כתוב "לא הצלחנו לבדוק עכשיו", זה לא אומר שאין כלום: כדאי להציץ במסך עצמו.</div>
+</section>
+
+<section id="scan">
+  <h2><span class="num">4</span>סריקה</h2>
+  <p>כפתור אחד לכל קוד בחנות:</p>
+  <ul>
+    <li><b>מדבקה של פריט</b>: נפתח כרטיס הפריט, עם המחיר, המיקום והמצב שלו.</li>
+    <li><b>שובר מתנה</b> (הריבוע השחור, או הקוד שמתחיל ב-<span class="ltr">JAS</span>): נפתח מסך הפדיון של מערכת השוברים, עם השובר כבר מוכן. סכום הפדיון ואישורו נשארים בידיים שלכם.</li>
+  </ul>
+  <h3>איך סורקים</h3>
+  <ol>
+    <li>לוחצים <span class="btn">סריקה</span> ואז <b>פתיחת המצלמה</b>.</li>
+    <li>בפעם הראשונה הטלפון שואל אם לאפשר מצלמה. עונים כן.</li>
+    <li>מכוונים אל הקוד. המסך הנכון נפתח לבד.</li>
+  </ol>
+  <p>אפשר גם להקליד את הקוד בשדה שמתחת למצלמה ולחוץ <b>פתיחה</b>.</p>
+  <div class="tip">באייפון המצלמה קוראת את הריבוע (QR) בלבד. את הפס של הברקוד מקלידים בשדה, או סורקים עם סורק שמחובר למחשב. למערכת השוברים צריך להיות מחוברים עם המשתמש שלכם שם.</div>
+</section>
+
+<section id="ask">
+  <h2><span class="num">5</span>לשאול</h2>
+  <p>שואלים שאלה רגילה, בעברית, והתשובה מגיעה מהמערכות עצמן. למשל:</p>
+  <ul>
+    <li>"יש לנו במלאי כיסא עץ?"</li>
+    <li>"אילו משלוחים יוצאים היום?"</li>
+    <li>"אילו משימות פתוחות יש בחנות?"</li>
+  </ul>
+  <h3>לשאול בקול</h3>
+  <ol>
+    <li>לוחצים על <b>המיקרופון</b>.</li>
+    <li>אומרים את השאלה.</li>
+    <li>לוחצים שוב כדי לעצור. המילים מופיעות בתיבה, ואפשר לתקן לפני ששולחים.</li>
+  </ol>
+  <div class="tip">כאן רק שואלים. שינויים (מכירה, שמירה, עדכון) עושים במסכים עצמם. התשובות מבוססות רק על מה שמותר לכם לראות.</div>
+</section>
+
+<section id="buttons">
+  <h2><span class="num">6</span>כפתורים וקטגוריות</h2>
+  <p>בטלפון לוחצים על קטגוריה ורואים את הכפתורים שלה. במחשב הכפתורים הנפוצים מופיעים כבר על הכרטיס.</p>
+  <p>ליד חלק מהכפתורים יש תווית שאומרת למי הם מיועדים:</p>
+  <ul>
+    <li><span class="tag tag-out">לשליחה החוצה</span> קישור ציבורי. מותר לשלוח אותו ללקוחות, למתנדבים ולכל מי שמחוץ לצוות.</li>
+    <li><span class="tag tag-mgr">ניהול</span> מסך ניהול.</li>
+    <li>כפתור בלי תווית הוא לעבודה הרגילה של הצוות.</li>
+  </ul>
+  <p>כפתור שנפתח בחלון חדש מסומן כך. הפורטל נשאר פתוח בחלון הקודם, כדי שיהיה קל לחזור.</p>
+  <p><b>השימושים שלך</b> מתעדכנים לבד: כפתור שפתחתם לפחות פעמיים מופיע למעלה. אף אחד אחר לא רואה את הרשימה שלכם.</p>
+</section>
+
+<section id="share">
+  <h2><span class="num">7</span>שיתוף קישורים</h2>
+  <p>ליד כל כפתור יש שני כפתורים קטנים:</p>
+  <ul>
+    <li><b>העתקה</b>: מעתיק את הקישור. מדביקים אותו בוואטסאפ, במייל או בכל מקום.</li>
+    <li><b>שיתוף</b>: פותח את חלון השיתוף של הטלפון, ושולחים ישר לאדם או לקבוצה.</li>
+  </ul>
+  <h3>מה קורה למי שמקבל את הקישור</h3>
+  <ul>
+    <li><b>קישור של הצוות</b>: מי שמקבל אותו מתבקש להיכנס עם המשתמש שלו, ומגיע ישר למסך. מי שאין לו הרשאה למסך הזה לא יראה אותו, גם אם קיבל את הקישור.</li>
+    <li><span class="tag tag-out">לשליחה החוצה</span> <b>קישור ציבורי</b>: נפתח לכל אחד, בלי כניסה. רק את אלה שולחים החוצה.</li>
+  </ul>
+  <h3>לשלוח את הפורטל עצמו</h3>
+  <p>במסך הראשי יש כפתור <b>שליחת קישור לפורטל</b>. כדי להיכנס צריך משתמש: עובד חדש מקבל משתמש ממנהלת הפורטל.</p>
+  <div class="tip">את המדריך הזה אפשר לשלוח לצוות כמו כל קובץ, או לשלוח את הקישור למדריך שבתוך הפורטל.</div>
+</section>
+
+<section id="install">
+  <h2><span class="num">8</span>הפורטל כאפליקציה בטלפון</h2>
+  <p>כדי לפתוח את הפורטל בלחיצה אחת, כמו אפליקציה:</p>
+  <h3>באייפון (Safari)</h3>
+  <ol>
+    <li>פותחים את הפורטל ב-Safari.</li>
+    <li>לוחצים על כפתור השיתוף (ריבוע עם חץ למעלה).</li>
+    <li>בוחרים <b>הוספה למסך הבית</b>, ואז <b>הוספה</b>.</li>
+  </ol>
+  <h3>באנדרואיד (Chrome)</h3>
+  <ol>
+    <li>פותחים את הפורטל ב-Chrome.</li>
+    <li>לוחצים על שלוש הנקודות למעלה.</li>
+    <li>בוחרים <b>התקנת אפליקציה</b> או <b>הוספה למסך הבית</b>.</li>
+  </ol>
+  <div class="tip">אחרי ההתקנה מופיע אייקון JAS במסך הבית של הטלפון, ופותחים אותו משם בלחיצה אחת.</div>
+</section>
+
+<section id="manage" class="manager">
+  <h2><span class="num">9</span>למנהלת הפורטל</h2>
+  <p>החלק הזה רק למי שמנהל את הפורטל. שתי דרכים לשנות אותו, שתיהן בקטגוריה <b>ניהול</b>:</p>
+  <h3>שינוי בפורטל בשיחה</h3>
+  <p>כותבים, מקליטים או שולחים צילום מסך, ואומרים מה לשנות. Claude מציע כל שינוי בכרטיס של "עכשיו" ו"אחרי", ושום דבר לא משתנה עד שלוחצים <b>אישור ופרסום</b>.</p>
+  <ul>
+    <li>שינויים בכפתורים ובקטגוריות (שם, תיאור, סדר, מי רואה, הפעלה וכיבוי) עולים מיד אחרי האישור.</li>
+    <li>שינוי בעיצוב או פיצ׳ר חדש נשלחים לפיתוח בלחיצה על <b>שליחה לפיתוח</b>, ועולים רק אחרי שמישהו בודק ומאשר.</li>
+  </ul>
+  <h3>ניהול קישורים</h3>
+  <ul>
+    <li>הוספה, עריכה, סדר, הפעלה וכיבוי של כל כפתור, ובחירה מי רואה אותו.</li>
+    <li>כדי למחוק כפתור, קודם מכבים אותו.</li>
+    <li><b>תצוגה מקדימה</b>: רואים את הפורטל כמו שעובד בתפקיד מסוים רואה אותו.</li>
+    <li><b>יומן השינויים</b>: בתחתית המסך. כל שינוי, מי עשה אותו ומתי.</li>
+  </ul>
+</section>
+
+<section id="help">
+  <h2><span class="num">10</span>כשמשהו לא עובד</h2>
+  <ul>
+    <li><b>חסר לי כפתור</b>: כל אחד רואה רק את מה שמתאים לתפקיד שלו. פנו למנהלת הפורטל.</li>
+    <li><b>הקישור ששלחו לי מבקש סיסמה</b>: זה קישור של הצוות. נכנסים עם המשתמש שלכם.</li>
+    <li><b>המצלמה לא נפתחת</b>: צריך לאשר לדפדפן גישה למצלמה (בהגדרות הטלפון, תחת הדפדפן). בינתיים מקלידים את הקוד.</li>
+    <li><b>המיקרופון לא מופיע</b>: הקלטה עובדת ב-Chrome, Edge ו-Safari. בדפדפן אחר פשוט כותבים.</li>
+    <li><b>כתוב "לא הצלחנו לבדוק עכשיו"</b>: מערכת אחת לא ענתה. נסו שוב בעוד רגע, או פתחו את המסך עצמו.</li>
+    <li><b>לא מוצאים משהו</b>: כותבים אותו בחיפוש במסך הראשי.</li>
+  </ul>
+</section>
+
+<p class="open"><a href="https://jas-command-center.vercel.app/portal">לפתיחת הפורטל</a></p>
+<footer>Just A Second · ליצור שפע משפע</footer>
+
+</div>
+</body>
+</html>
