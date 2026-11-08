@@ -21,7 +21,7 @@ import {
 import { getSession } from '@/lib/auth/session'
 import { can } from '@/lib/auth/rbac'
 import { AudienceTag } from '@/components/portal/bits'
-import { SharePortalButton } from '@/components/portal/share'
+import { SharePortalButton, ShareButtons } from '@/components/portal/share'
 
 export const dynamic = 'force-dynamic'
 
@@ -177,7 +177,12 @@ export default async function GuidePage() {
           <div>
             <SharePortalButton />
           </div>
-          <Tip>מדריך זה אפשר לשלוח לצוות באותה דרך: מעתיקים את הכתובת שלו מהדפדפן ושולחים.</Tip>
+          <p>
+            <B>לשלוח את המדריך</B>: יש ממנו גרסה שנפתחת לכל אחד, בלי כניסה, גם מוואטסאפ. אפשר לשלוח אותה לעובד חדש עוד לפני שיש לו משתמש:
+          </p>
+          <div>
+            <ShareButtons url="/portal-guide.html" title="מדריך לפורטל הצוות של Just A Second" />
+          </div>
         </Section>
 
         <Section id="install" icon={Smartphone} title="הפורטל כאפליקציה בטלפון">

@@ -54,5 +54,5 @@ export const config = {
   // Everything except static assets, the public liveness probe, the cron routes (Bearer CRON_SECRET), the
   // Grow terminal webhook (?token=GROW_WEBHOOK_SECRET)
   // and the shop app's manifest + icon (no data; a browser fetches them without the session cookie).
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/webhooks|shop-manifest.webmanifest|schedule-manifest.webmanifest|portal-manifest.webmanifest|shop-icon).*)'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|api/health|api/cron|api/webhooks|shop-manifest.webmanifest|schedule-manifest.webmanifest|portal-manifest.webmanifest|shop-icon|portal-guide.html).*)'],
 }
