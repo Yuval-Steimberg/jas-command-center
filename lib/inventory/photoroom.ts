@@ -11,16 +11,27 @@ const ENDPOINT = 'https://image-api.photoroom.com/v2/edit'
 
 export const photoroomConfigured = () => !!process.env.PHOTOROOM_API_KEY?.trim()
 
-export type PhotoroomResult = { ok: true; bytes: ArrayBuffer; type: string } | { ok: false; message: string }
+/**
+ * `deferred`: not attempted, or cut short, because the caller's time ran out
+ * (an hourly run's deadline). Not the photo's fault, so it is never recorded
+ * against the photo: the next run tries again.
+ */
+export type PhotoroomResult = { ok: true; bytes: ArrayBuffer; type: string } | { ok: false; message: string; deferred?: true }
 
-async function call(bytes: ArrayBuffer, type: string, lighting: boolean): Promise<PhotoroomResult & { status?: number }> {
+const CALL_MS = 40_000
+/** Below this much time left a call is not started: a typical edit takes several seconds. */
+const MIN_CALL_MS = 8_000
+
+async function call(bytes: ArrayBuffer, type: string, lighting: boolean, timeoutMs: number): Promise<PhotoroomResult & { status?: number }> {
   const form = new FormData()
   form.append('imageFile', new Blob([bytes], { type }), `photo.${type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg'}`)
   for (const [k, v] of Object.entries(catalogEditFields({ background: process.env.PHOTOROOM_BACKGROUND, lighting }))) form.append(k, v)
   let res: Response
   try {
-    res = await fetch(ENDPOINT, { method: 'POST', headers: { 'x-api-key': process.env.PHOTOROOM_API_KEY!.trim() }, body: form, signal: AbortSignal.timeout(40_000), cache: 'no-store' })
+    res = await fetch(ENDPOINT, { method: 'POST', headers: { 'x-api-key': process.env.PHOTOROOM_API_KEY!.trim() }, body: form, signal: AbortSignal.timeout(timeoutMs), cache: 'no-store' })
   } catch (e) {
+    // Aborted by the caller's deadline (a shorter timeout than our own), not by Photoroom being down.
+    if (timeoutMs < CALL_MS && e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')) return { ok: false, deferred: true, message: 'out of time for this run' }
     return { ok: false, message: `Photoroom could not be reached (${e instanceof Error ? e.message : String(e)})` }
   }
   if (!res.ok) {
@@ -39,10 +50,23 @@ async function call(bytes: ArrayBuffer, type: string, lighting: boolean): Promis
   return { ok: true, bytes: await res.arrayBuffer(), type: outType }
 }
 
-/** Make the catalog version of one photo. A refused relight (large images) is retried once without it. */
-export async function photoroomCatalog(bytes: ArrayBuffer, type: string): Promise<PhotoroomResult> {
+/** Time to give one call: our own limit, or less when the caller has a deadline. null = not enough left. */
+function budget(deadline: number | undefined): number | null {
+  const ms = deadline == null ? CALL_MS : Math.min(CALL_MS, deadline - Date.now())
+  return ms < MIN_CALL_MS ? null : ms
+}
+
+/**
+ * Make the catalog version of one photo. A refused relight (large images) is
+ * retried once without it. With a `deadline` (epoch ms) no call runs past it.
+ */
+export async function photoroomCatalog(bytes: ArrayBuffer, type: string, opts: { deadline?: number } = {}): Promise<PhotoroomResult> {
   if (!photoroomConfigured()) return { ok: false, message: 'Photoroom is not set up (PHOTOROOM_API_KEY).' }
-  const first = await call(bytes, type, true)
+  const outOfTime = { ok: false as const, deferred: true as const, message: 'out of time for this run' }
+  const t1 = budget(opts.deadline)
+  if (t1 == null) return outOfTime
+  const first = await call(bytes, type, true, t1)
   if (first.ok || first.status !== 400) return first
-  return call(bytes, type, false)
+  const t2 = budget(opts.deadline)
+  return t2 == null ? outOfTime : call(bytes, type, false, t2)
 }

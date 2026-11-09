@@ -214,22 +214,32 @@ async function syncProducts(): Promise<StepReport> {
  * Items marked "on the website" that became ready, and catalog photos for
  * listed ones (lib/inventory/catalog.ts). Runs last: an order step that sold
  * an item must land before anything is published again.
+ *
+ * Photoroom edits take seconds each, so this step has its own serverless
+ * invocation (/api/cron/publish) instead of riding in the alert sweep, and
+ * stops starting items before `deadline` (epoch ms); the rest wait an hour.
  */
-async function autoPublish(): Promise<StepReport> {
+export async function autoPublish(deadline?: number): Promise<StepReport> {
   if (!(await ruleEnabled('website_auto_publish'))) return { step: 'website_publish', state: 'skipped', message: 'Automatic publishing is switched off.', counts: {} }
   let r: Awaited<ReturnType<typeof runWebsiteAutoPublish>>
   try {
-    r = await runWebsiteAutoPublish({ email: SYSTEM_ACTOR, name: 'Automation' })
+    r = await runWebsiteAutoPublish({ email: SYSTEM_ACTOR, name: 'Automation' }, { deadline })
   } catch (e) {
     // Before migration 0016 the website_wanted column does not exist.
     if (e instanceof OpsSetupError) return { step: 'website_publish', state: 'skipped', message: 'Run supabase/migrations/0016_catalog_photo.sql to turn on automatic publishing.', counts: {} }
     throw e
   }
-  const counts = { listed: r.listed, photos: r.photos, waiting: r.waiting }
-  return { step: 'website_publish', state: r.problems.length ? 'error' : 'ok', message: `${r.listed} item(s) put on the website, ${r.photos} catalog photo(s) made, ${r.waiting} waiting (price, photo or workshop).${r.problems.length ? ` ${r.problems.join(' · ')}` : ''}`, counts }
+  const counts = { listed: r.listed, photos: r.photos, waiting: r.waiting, deferred: r.deferred }
+  const later = r.deferred ? ` ${r.deferred} left for the next run (out of time).` : ''
+  return { step: 'website_publish', state: r.problems.length ? 'error' : 'ok', message: `${r.listed} item(s) put on the website, ${r.photos} catalog photo(s) made, ${r.waiting} waiting (price, photo or workshop).${later}${r.problems.length ? ` ${r.problems.join(' · ')}` : ''}`, counts }
 }
 
-export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps: StepReport[]; message?: string }> {
+/**
+ * `publish: false` leaves out the publishing step (the alert sweep: it runs
+ * separately so a slow Photoroom can never time the alerts out). `deadline`
+ * bounds the publishing step when it does run.
+ */
+export async function runOpsSync(opts: { publish?: boolean; deadline?: number } = {}): Promise<{ state: 'ok' | 'not_set_up'; steps: StepReport[]; message?: string }> {
   try {
     await getOpsStore().getCursor(ORDERS_KEY)
     await getOpsStore().listItems({ limit: 1 })
@@ -238,7 +248,14 @@ export async function runOpsSync(): Promise<{ state: 'ok' | 'not_set_up'; steps:
     throw e
   }
   const steps: StepReport[] = []
-  for (const [step, run] of [['website_orders', syncOrders], ['website_forms', syncForms], ['reservations', expireReservations], ['website_products', syncProducts], ['website_publish', autoPublish]] as const) {
+  const all: ReadonlyArray<readonly [StepReport['step'], () => Promise<StepReport>]> = [
+    ['website_orders', syncOrders],
+    ['website_forms', syncForms],
+    ['reservations', expireReservations],
+    ['website_products', syncProducts],
+    ...(opts.publish === false ? [] : [['website_publish', () => autoPublish(opts.deadline)] as const]),
+  ]
+  for (const [step, run] of all) {
     try {
       steps.push(await run())
     } catch (e) {

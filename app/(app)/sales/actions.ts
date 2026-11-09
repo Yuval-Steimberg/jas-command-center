@@ -16,7 +16,8 @@ import { cancelTerminalCharge, startTerminalCharge } from '@/lib/sales/terminal'
 /** Run the website → command center sync now instead of waiting for the hourly sweep. Idempotent. */
 export async function syncNowAction(_p: ActionState, _f: FormData): Promise<ActionState> {
   return runAct('inventory', ['inventory:operate'], 'ops.sync', 'sync:now', {}, async () => {
-    const r = await runOpsSync()
+    // Publishing stops starting items 40 s in, so the button answers within the page's time limit.
+    const r = await runOpsSync({ deadline: Date.now() + 40_000 })
     if (r.state === 'not_set_up') return { ok: false, message: r.message ?? 'Not set up.' }
     const bad = r.steps.filter((s) => s.state === 'error')
     return { ok: bad.length === 0, message: r.steps.map((s) => s.message).join(' '), warning: bad.length ? `${bad.length} step(s) failed; see below.` : undefined }
