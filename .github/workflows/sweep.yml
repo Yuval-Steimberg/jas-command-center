@@ -7,6 +7,10 @@ name: Alert sweep
 # records alerts that opened or closed and emails the people who asked.
 # Skips until the repo secrets SWEEP_URL (https://<host>/api/cron/sweep) and
 # CRON_SECRET are set.
+# A second step pings /api/cron/publish (same host, derived from SWEEP_URL):
+# automatic website publishing + Photoroom catalog photos. It is its own
+# function call on purpose: inside the sweep its slow edits ran the whole
+# sweep past Vercel's 60 s limit (HTTP 504) and no alert went out.
 
 on:
   schedule:
@@ -18,7 +22,7 @@ permissions: {}
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 5
     steps:
       - name: Ping the sweep
         env:
@@ -32,5 +36,22 @@ jobs:
           code=$(curl -sS -o /tmp/out.json -w '%{http_code}' --max-time 90 -H "Authorization: Bearer $CRON_SECRET" "$SWEEP_URL")
           echo "HTTP $code"
           # The body holds counts and email outcomes only, never data.
+          cat /tmp/out.json; echo
+          test "$code" = "200"
+
+      - name: Publish ready items to the website
+        # Runs even when the sweep failed: the two are independent.
+        if: ${{ !cancelled() }}
+        env:
+          SWEEP_URL: ${{ secrets.SWEEP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SWEEP_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "SWEEP_URL / CRON_SECRET not set; skipping."
+            exit 0
+          fi
+          url="${SWEEP_URL%/sweep}/publish"
+          code=$(curl -sS -o /tmp/out.json -w '%{http_code}' --max-time 90 -H "Authorization: Bearer $CRON_SECRET" "$url")
+          echo "HTTP $code"
           cat /tmp/out.json; echo
           test "$code" = "200"

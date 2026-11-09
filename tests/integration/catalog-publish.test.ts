@@ -8,10 +8,12 @@ import { emptyData } from '@/lib/ops/memory'
  * fake website implementing product-save / product-update / product-get, and
  * Photoroom + the photo store replaced (no network, no Supabase).
  */
-const pr = vi.hoisted(() => ({ calls: 0, fail: false }))
+const pr = vi.hoisted(() => ({ calls: 0, fail: false, defer: false }))
 vi.mock('@/lib/inventory/photoroom', () => ({
   photoroomConfigured: () => true,
   photoroomCatalog: async () => {
+    // The real deadline arithmetic is unit-tested in tests/unit/photoroom-deadline.test.ts.
+    if (pr.defer) return { ok: false, deferred: true, message: 'out of time for this run' }
     pr.calls++
     return pr.fail ? { ok: false, message: 'Photoroom answered 500' } : { ok: true, bytes: new ArrayBuffer(8), type: 'image/jpeg' }
   },
@@ -65,6 +67,7 @@ beforeEach(() => {
   for (const k of ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'WEBSITE_URL', 'WEBSITE_COMMAND_CENTER_KEY']) delete process.env[k]
   pr.calls = 0
   pr.fail = false
+  pr.defer = false
   // The item's photo: any https://img.example link answers with a small JPEG.
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input)
@@ -170,5 +173,30 @@ describe('marked for the website → goes up by itself, with a catalog photo', (
     await editItem(i.id, cur.version, { photoUrl: 'https://img.example/better.jpg' }, actor)
     expect(await runWebsiteAutoPublish(actor)).toMatchObject({ photos: 1 })
     expect([...w.products.values()][0]).toMatchObject({ image_url: 'https://store.example/catalog-2.jpg', images: ['https://img.example/better.jpg', 'https://img.example/side.jpg'] })
+  })
+
+  it('a run out of time starts nothing more: the item waits for the next run, nothing is recorded against it', async () => {
+    const w = await connect()
+    const i = await newItem()
+    expect(await runWebsiteAutoPublish(actor, { deadline: Date.now() + 5_000 })).toMatchObject({ listed: 0, deferred: 1, problems: [] })
+    expect(w.products.size).toBe(0)
+    expect(pr.calls).toBe(0)
+    expect(await getOpsStore().getItem(i.id)).toMatchObject({ status: 'in_storage', catalogPhotoError: null })
+    expect(await runWebsiteAutoPublish(actor, { deadline: Date.now() + 60_000 })).toMatchObject({ listed: 1, photos: 1, deferred: 0 })
+  })
+
+  it('a Photoroom edit cut short by the deadline is not a failure of the photo: the next run makes it', async () => {
+    const w = await connect()
+    const i = await newItem()
+    await publishIfReady(i.id, actor)
+    const cur = (await getOpsStore().getItem(i.id))!
+    await editItem(i.id, cur.version, { photoUrl: 'https://img.example/better.jpg' }, actor)
+    pr.defer = true
+    const r = await runWebsiteAutoPublish(actor, { deadline: Date.now() + 60_000 })
+    expect(r).toMatchObject({ photos: 0, deferred: 1, problems: [] })
+    expect(await getOpsStore().getItem(i.id)).toMatchObject({ catalogPhotoError: null, catalogPhotoFrom: 'https://img.example/orig.jpg' })
+    pr.defer = false
+    expect(await runWebsiteAutoPublish(actor)).toMatchObject({ photos: 1 })
+    expect([...w.products.values()][0]).toMatchObject({ image_url: 'https://store.example/catalog-2.jpg' })
   })
 })

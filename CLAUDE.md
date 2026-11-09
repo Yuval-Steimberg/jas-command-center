@@ -329,4 +329,8 @@ Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, 
   "make again" on the item card (`WebsitePhotoPanel`).
 - One Photoroom call per main photo: a failure is stored against that photo and not retried hourly (only "make again"). The sweep
   spends at most 6 calls per run. A failure never blocks the listing (original photo + warning).
+- Publishing is NOT in the alert sweep: `/api/cron/publish` (2nd step of `.github/workflows/sweep.yml`, URL derived from
+  `SWEEP_URL`) runs `autoPublish(deadline)` with 45 s. Inside the sweep, Photoroom pushed it past Vercel's 60 s and every hourly
+  alert run 504'd (7–9 Nov 2026). Items are not started under 20 s before the deadline; a Photoroom call cut short by it is
+  `deferred` (never recorded against the photo). The sweep returns `ms` per phase. Never put slow per-item work back in the sweep.
 - Swapping a LISTED product's photos uses `product-update` with `image_url`/`images` (website PR "product-update: photos").

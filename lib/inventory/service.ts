@@ -480,12 +480,12 @@ export async function setShownOnWebsite(id: string, show: boolean, actor: Actor)
 }
 
 /** Copy Drive photos, make the catalog photo, list and publish. A catalog-photo failure never stops the listing. */
-async function putOnWebsite(item: Item, actor: Actor): Promise<OpResult & { catalog?: boolean; catalogWarning?: string }> {
+async function putOnWebsite(item: Item, actor: Actor, deadline?: number): Promise<OpResult & { catalog?: boolean; catalogWarning?: string }> {
   const meta = await getWebsiteProductMeta()
   if (meta.state !== 'ok') return { ok: false, message: `The website could not be read (${meta.state === 'error' ? meta.error : 'not connected'}).` }
   const copied = await copyDrivePhotos(item, actor)
   if (!copied.ok) return { ok: false, message: copied.message }
-  const cat = await ensureCatalogPhoto(copied.item, actor)
+  const cat = await ensureCatalogPhoto(copied.item, actor, { deadline })
   const r = await listOnWebsite(item.id, cat.item.version, { categoryId: websiteCategoryFor(cat.item.category, meta.data.categories), publish: true }, actor)
   if (!r.ok) return r
   return { ...r, catalog: cat.made, ...(cat.warning ? { warning: [r.warning, cat.warning].filter(Boolean).join(' ') } : {}), ...(cat.warning ? { catalogWarning: cat.warning } : {}) }
@@ -518,7 +518,7 @@ async function fetchImage(url: string): Promise<{ bytes: ArrayBuffer; type: stri
  * does not pay for the same failing photo again; "remake" (`force`) does.
  * Without Photoroom or migration 0016 the item comes back unchanged.
  */
-export async function ensureCatalogPhoto(item: Item, actor: Actor, opts: { force?: boolean } = {}): Promise<{ item: Item; made: boolean; warning?: string }> {
+export async function ensureCatalogPhoto(item: Item, actor: Actor, opts: { force?: boolean; deadline?: number } = {}): Promise<{ item: Item; made: boolean; warning?: string; deferred?: true }> {
   if (!photoroomConfigured() || !catalogColumns(item)) return { item, made: false }
   const due = opts.force ? !!item.photoUrl?.startsWith('https://') : needsCatalogPhoto(item)
   if (!due || !item.photoUrl) return { item, made: false }
@@ -530,7 +530,9 @@ export async function ensureCatalogPhoto(item: Item, actor: Actor, opts: { force
   const failed = async (why: string) => ({ item: await record({ catalogPhotoUrl: null, catalogPhotoFrom: source, catalogPhotoError: why.slice(0, 300) }), made: false, warning: `No catalog photo: ${why}. The original photo is used.` })
   const img = await fetchImage(source)
   if (!img) return failed('the main photo could not be downloaded')
-  const out = await photoroomCatalog(img.bytes, img.type)
+  const out = await photoroomCatalog(img.bytes, img.type, { deadline: opts.deadline })
+  // Out of time (an hourly run's deadline) is not the photo's fault: nothing is recorded, the next run tries again.
+  if (!out.ok && out.deferred) return { item, made: false, deferred: true }
   if (!out.ok) return failed(out.message)
   let url: string
   try {
@@ -598,7 +600,7 @@ export type AutoPublish =
  * (`websiteBlockers`). Called after every save that can make it ready (create,
  * edit, approve price, move out of the workshop) and by the hourly step.
  */
-export async function publishIfReady(id: string, actor: Actor): Promise<AutoPublish> {
+export async function publishIfReady(id: string, actor: Actor, opts: { deadline?: number } = {}): Promise<AutoPublish> {
   const store = getOpsStore()
   const item = await store.getItem(id)
   if (!item || item.websiteWanted !== true) return { state: 'skipped', message: 'Not marked for the website.' }
@@ -606,7 +608,7 @@ export async function publishIfReady(id: string, actor: Actor): Promise<AutoPubl
   if (!(await ruleEnabled('website_auto_publish'))) return { state: 'skipped', message: 'Automatic publishing is switched off on /tasks.' }
   const blockers = websiteBlockers(item, await store.listLocations())
   if (blockers.length) return { state: 'waiting', blockers, message: `Waiting for the website: ${blockers.map((b) => BLOCKER_LABEL[b]).join(', ')}.` }
-  const r = await putOnWebsite(item, actor)
+  const r = await putOnWebsite(item, actor, opts.deadline)
   return r.ok ? { state: 'listed', message: r.message, warning: r.warning, catalog: r.catalog, catalogWarning: r.catalogWarning } : { state: 'failed', message: r.message }
 }
 
@@ -619,27 +621,40 @@ export async function autoPublishDue(id: string): Promise<boolean> {
   return ruleEnabled('website_auto_publish')
 }
 
-/** At most this many Photoroom calls per hourly run (each takes seconds; the sweep has 60). */
+/** At most this many Photoroom calls per hourly run. */
 const SWEEP_PHOTO_BUDGET = 6
+/**
+ * An item is not started with less time than this before the run's deadline:
+ * publishing one copies its photos, makes the catalog photo and lists it,
+ * several round trips plus a Photoroom edit. What is left waits for the next run.
+ */
+export const AUTO_PUBLISH_ITEM_MS = 20_000
 
 /**
  * The hourly step: publish wanted items that became ready, and give listed
  * wanted items a catalog photo of their current main photo (new listing from
  * the bulk page, or a changed photo). Items never marked are never touched,
  * so nothing already in stock goes online by this.
+ *
+ * `deadline` (epoch ms): the run stops starting items before it and counts
+ * them as `deferred`. Without it a slow Photoroom killed the whole serverless
+ * function at its time limit (Nov 2026: every hourly sweep 504'd for two days).
  */
-export async function runWebsiteAutoPublish(actor: Actor): Promise<{ listed: number; photos: number; waiting: number; problems: string[] }> {
+export async function runWebsiteAutoPublish(actor: Actor, opts: { deadline?: number } = {}): Promise<{ listed: number; photos: number; waiting: number; deferred: number; problems: string[] }> {
   const store = getOpsStore()
   const items = await store.listItems({ websiteWanted: true, statuses: ['in_storage', 'listed', 'reserved'], limit: 1000 })
   const locations = await store.listLocations()
-  const out = { listed: 0, photos: 0, waiting: 0, problems: [] as string[] }
+  const out = { listed: 0, photos: 0, waiting: 0, deferred: 0, problems: [] as string[] }
+  const { deadline } = opts
+  const outOfTime = () => deadline != null && deadline - Date.now() < AUTO_PUBLISH_ITEM_MS
   let budget = SWEEP_PHOTO_BUDGET
   for (const item of items) {
     if (item.status === 'in_storage') {
       if (websiteBlockers(item, locations).length) { out.waiting++; continue }
       if (budget <= 0) continue
+      if (outOfTime()) { out.deferred++; continue }
       budget -= needsCatalogPhoto(item) && photoroomConfigured() ? 1 : 0
-      const r = await publishIfReady(item.id, actor).catch((e: unknown) => ({ state: 'failed' as const, message: e instanceof Error ? e.message : String(e) }))
+      const r = await publishIfReady(item.id, actor, { deadline }).catch((e: unknown) => ({ state: 'failed' as const, message: e instanceof Error ? e.message : String(e) }))
       if (r.state === 'listed') {
         out.listed++
         if (r.catalog) out.photos++
@@ -647,8 +662,10 @@ export async function runWebsiteAutoPublish(actor: Actor): Promise<{ listed: num
         else if (r.catalogWarning) out.problems.push(`${item.sku}: ${r.catalogWarning}`)
       } else if (r.state === 'failed') out.problems.push(`${item.sku}: ${r.message}`)
     } else if (budget > 0 && photoroomConfigured() && needsCatalogPhoto(item)) {
+      if (outOfTime()) { out.deferred++; continue }
       budget--
-      const made = await ensureCatalogPhoto(item, actor)
+      const made = await ensureCatalogPhoto(item, actor, { deadline })
+      if (made.deferred) { out.deferred++; continue }
       if (!made.made) { if (made.warning) out.problems.push(`${item.sku}: ${made.warning}`); continue }
       out.photos++
       const s = await syncWebsitePhotos(made.item)

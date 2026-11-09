@@ -246,6 +246,17 @@ describe('the website sync', () => {
   })
 })
 
+describe('the alert sweep leaves publishing to its own route', () => {
+  it('runOpsSync({ publish: false }) runs every step except website publishing', async () => {
+    await connect(website({}))
+    const all = (await runOpsSync()).steps.map((s) => s.step)
+    resetSourceCache()
+    const sweep = (await runOpsSync({ publish: false })).steps.map((s) => s.step)
+    expect(all).toContain('website_publish')
+    expect(sweep).toEqual(all.filter((s) => s !== 'website_publish'))
+  })
+})
+
 describe('products added on the website (studio /manager/quick) reach inventory', () => {
   const old = new Date(Date.now() - 3_600_000).toISOString()
   const product = (id: number, over: Partial<Product> = {}): Product => ({ id, slug: `p-${id}`, name_he: `כורסה ${id}`, price: 320, quantity: 1, in_stock: true, published: true, updated_at: old, ...over })
