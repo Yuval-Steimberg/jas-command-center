@@ -26,6 +26,7 @@ export default async function SettingsPage() {
       <p className="mb-4 flex flex-wrap gap-x-4 text-sm">
         {(await userCan('users:manage')) ? <Link href="/settings/staff" className="font-medium underline-offset-2 hover:underline">Staff: invite, change role, deactivate</Link> : null}
         <Link href="/settings/notifications" className="underline-offset-2 hover:underline">My notification settings</Link>
+        <Link href="/portal/face-id" className="underline-offset-2 hover:underline">Sign in with Face ID (passkeys)</Link>
       </p>
       <div className="flex flex-col gap-4">
         <Card>

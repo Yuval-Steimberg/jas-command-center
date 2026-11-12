@@ -6,6 +6,7 @@ import { can, ROLE_LABELS_HE, type Permission } from '@/lib/auth/rbac'
 import { loadOps } from '@/lib/ops/guard'
 import { soldUnits, type Breakdown, type BreakdownRow } from '@/lib/inventory/breakdown'
 import { PriceBands } from '@/components/inventory/price-bands'
+import { FaceIdOfferSlot } from '@/components/auth/face-id-offer-slot'
 import { BREAKDOWN_DAYS, isBreakdownDays, loadAllBreakdowns, type BreakdownDays } from '@/lib/inventory/breakdown-view'
 
 export const dynamic = 'force-dynamic'
@@ -35,6 +36,9 @@ export default async function ShopHome({ searchParams }: { searchParams?: { view
         <h1 className="text-2xl font-bold text-ink">שלום, {s.user.name}</h1>
         <p className="text-sm text-muted">{ROLE_LABELS_HE[s.user.role]}</p>
       </div>
+      <Suspense fallback={null}>
+        <FaceIdOfferSlot userId={s.user.id} />
+      </Suspense>
       <nav aria-label="פעולות" className="flex flex-col gap-3">
         {/* Selling is the counter's main job: the one full-width, orange action on the screen. */}
         {sell ? (
