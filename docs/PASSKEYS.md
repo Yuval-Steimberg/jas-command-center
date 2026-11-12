@@ -27,7 +27,7 @@ unlock them with the face or fingerprint.
 1. Supabase dashboard → the **command center** project → **Authentication → Passkeys**:
    - Turn on **Enable Passkey authentication**.
    - **Relying Party ID**: `jas-command-center.vercel.app` (exactly, no `https://`).
-   - **Relying Party Origins**: `https://jas-command-center.vercel.app,http://localhost:3000`
+   - **Relying Party Origins**: `https://jas-command-center.vercel.app` (only this; every origin must be the RP ID or a subdomain of it)
    - **Relying Party Display Name**: `JAS`
    - Save.
 2. Open `https://jas-command-center.vercel.app/login`. A **כניסה עם Face ID** button above the password form means
