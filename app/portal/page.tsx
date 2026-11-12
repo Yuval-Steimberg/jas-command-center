@@ -13,6 +13,7 @@ import { roleHe } from '@/lib/portal/who'
 import { Today, TodaySkeleton } from '@/components/portal/today'
 import { Frequent } from '@/components/portal/frequent'
 import { TrackedLink } from '@/components/portal/tracked-link'
+import { FaceIdOfferSlot } from '@/components/auth/face-id-offer-slot'
 
 export const dynamic = 'force-dynamic'
 
@@ -64,6 +65,12 @@ export default async function PortalHome({ searchParams }: { searchParams?: { as
           <SharePortalButton />
         </div>
       </div>
+
+      {mine ? (
+        <Suspense fallback={null}>
+          <FaceIdOfferSlot userId={s.user.id} className="mb-5" />
+        </Suspense>
+      ) : null}
 
       {scan || askable ? (
         <div className="mb-5 grid grid-cols-2 gap-3">

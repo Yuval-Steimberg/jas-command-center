@@ -4,6 +4,8 @@ import { sessionState } from '@/lib/auth/session'
 import { signOut } from './actions'
 import { LoginForm } from './form'
 import { safeNext } from '@/lib/portal/model'
+import { passkeysEnabled } from '@/lib/auth/passkeys'
+import { PasskeySignIn } from '@/components/auth/passkey-sign-in'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Sign in · JAS Command Center' }
@@ -13,6 +15,8 @@ export default async function LoginPage({ searchParams }: { searchParams?: { nex
   const { session, setupError } = await sessionState()
   if (session) redirect(next ?? '/')
   const mode = authMode()
+  // Explicitly off in Supabase = no button. Unknown = offered; Supabase's own refusal is shown.
+  const passkeys = mode.kind === 'supabase' && (await passkeysEnabled()) !== false
   return (
     <main className="grid min-h-dvh place-items-center px-4">
       <div className="w-full max-w-sm">
@@ -38,6 +42,7 @@ export default async function LoginPage({ searchParams }: { searchParams?: { nex
           ) : (
             <>
               {mode.kind === 'dev' ? <p className="mb-3 rounded-md bg-sunken px-3 py-2 text-xs text-muted">Local development login (owner). Disabled in production builds.</p> : null}
+              {passkeys ? <PasskeySignIn next={next} /> : null}
               <LoginForm askEmail={mode.kind === 'supabase'} next={next} />
             </>
           )}

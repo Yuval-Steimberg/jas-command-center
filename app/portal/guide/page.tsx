@@ -11,6 +11,7 @@ import {
   MessageCircleQuestion,
   MessagesSquare,
   Mic,
+  ScanFace,
   ScanLine,
   Search,
   Share2,
@@ -61,6 +62,7 @@ export default async function GuidePage() {
     ['buttons', 'כפתורים וקטגוריות'],
     ['share', 'שיתוף קישורים'],
     ['install', 'הפורטל כאפליקציה בטלפון'],
+    ['faceid', 'כניסה עם Face ID'],
     ...(manager ? [['manage', 'למנהלת הפורטל']] : []),
     ['help', 'כשמשהו לא עובד'],
   ] as const
@@ -200,6 +202,17 @@ export default async function GuidePage() {
             <li>בוחרים <B>התקנת אפליקציה</B> או <B>הוספה למסך הבית</B>.</li>
           </ol>
           <Tip>אחרי ההתקנה מופיע אייקון JAS במסך הבית של הטלפון. פותחים אותו משם בלחיצה אחת.</Tip>
+        </Section>
+
+        <Section id="faceid" icon={ScanFace} title="כניסה עם Face ID">
+          <p>אפשר להיכנס בלי להקליד סיסמה: מסתכלים בטלפון (או נוגעים בטביעת האצבע) ונכנסים.</p>
+          <ol>
+            <li>נכנסים פעם אחת כרגיל, עם המייל והסיסמה.</li>
+            <li>פותחים את <Link href="/portal/face-id" className="font-bold text-forest underline underline-offset-4">כניסה עם Face ID</Link> (או לוחצים על ההצעה שמופיעה במסך הראשי).</li>
+            <li>לוחצים על <B>הפעלת Face ID במכשיר הזה</B> ומאשרים בטלפון.</li>
+          </ol>
+          <p>מעכשיו, במסך הכניסה לוחצים על <B>כניסה עם Face ID</B>.</p>
+          <Tip>מפעילים בכל מכשיר בנפרד: בטלפון, ואם רוצים גם במחשב. טלפון שאבד או הוחלף? מסירים אותו מאותו מסך.</Tip>
         </Section>
 
         {manager ? (

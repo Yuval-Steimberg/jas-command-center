@@ -334,3 +334,11 @@ Catalog photos + automatic website publishing (`lib/inventory/catalog.ts` pure, 
   alert run 504'd (7–9 Nov 2026). Items are not started under 20 s before the deadline; a Photoroom call cut short by it is
   `deferred` (never recorded against the photo). The sweep returns `ms` per phase. Never put slow per-item work back in the sweep.
 - Swapping a LISTED product's photos uses `product-update` with `image_url`/`images` (website PR "product-update: photos").
+
+Face ID sign-in (`docs/PASSKEYS.md`, `lib/auth/passkey-browser.ts` pure, `lib/auth/passkeys.ts`, `app/login/passkey-actions.ts`, `/portal/face-id`):
+- Supabase Auth passkeys (beta): it stores and verifies them; nothing here, no migration. Both ceremonies go through server
+  actions so the cookie, profile check, audit (`auth.login` method passkey, `auth.passkey_add|remove`) and rate limit match password sign-in.
+- Owner switch: Supabase → Authentication → Passkeys, RP ID `jas-command-center.vercel.app`. Hidden while Supabase's /auth/v1/settings says off.
+  Changing the RP ID (a custom domain) invalidates every saved passkey.
+- The challenge is fetched before the tap (`use-challenge.ts`): Safari opens the Face ID sheet only shortly after a tap.
+- Volunteers app is NOT covered: it does not use Supabase Auth (own email code + 60-day cookie) and lives on another domain.
