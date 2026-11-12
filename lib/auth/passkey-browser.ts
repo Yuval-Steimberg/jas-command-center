@@ -184,3 +184,29 @@ export async function runCeremony<T>(f: () => Promise<T | null>): Promise<{ ok: 
     return { ok: false, code: e instanceof Error ? e.name : 'unknown' }
   }
 }
+
+/**
+ * Whether Face ID was turned on (or used) on THIS device, remembered in the
+ * browser. The page cannot ask the phone which passkeys it holds, and the
+ * phone's "no passkeys saved for this website" sheet confuses staff, so the
+ * login page leads with Face ID only where this says yes. A guess, never
+ * security: forgetting it only moves the button below the password form.
+ */
+const ON_DEVICE = 'jas-passkey-on-device'
+
+export function passkeyOnDevice(): boolean {
+  try {
+    return localStorage.getItem(ON_DEVICE) === '1'
+  } catch {
+    return false
+  }
+}
+
+export function rememberPasskeyOnDevice(on: boolean) {
+  try {
+    if (on) localStorage.setItem(ON_DEVICE, '1')
+    else localStorage.removeItem(ON_DEVICE)
+  } catch {
+    /* storage blocked: the button simply stays in its second place */
+  }
+}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { ScanFace, X } from 'lucide-react'
-import { biometricName, hasBuiltInUnlock } from '@/lib/auth/passkey-browser'
+import { biometricName, hasBuiltInUnlock, passkeyOnDevice } from '@/lib/auth/passkey-browser'
 
 const KEY = 'jas-face-id-offer-dismissed'
 
@@ -23,7 +23,7 @@ export function FaceIdOffer() {
     } catch {
       /* storage blocked: still offer */
     }
-    if (dismissed) return
+    if (dismissed || passkeyOnDevice()) return
     setName(biometricName(navigator.userAgent))
     void hasBuiltInUnlock().then(setShow)
   }, [])

@@ -42,8 +42,9 @@ export default async function LoginPage({ searchParams }: { searchParams?: { nex
           ) : (
             <>
               {mode.kind === 'dev' ? <p className="mb-3 rounded-md bg-sunken px-3 py-2 text-xs text-muted">Local development login (owner). Disabled in production builds.</p> : null}
-              {passkeys ? <PasskeySignIn next={next} /> : null}
+              {passkeys ? <PasskeySignIn next={next} place="top" /> : null}
               <LoginForm askEmail={mode.kind === 'supabase'} next={next} />
+              {passkeys ? <PasskeySignIn next={next} place="below" /> : null}
             </>
           )}
         </div>

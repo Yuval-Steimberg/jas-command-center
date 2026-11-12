@@ -14,6 +14,7 @@ unlock them with the face or fingerprint.
   Face ID sheet (`lib/auth/passkey-browser.ts`, pure, tested; checked against Chromium's virtual authenticator).
 - The challenge is fetched **before** the tap (`components/auth/use-challenge.ts`): Safari only opens the Face ID
   sheet shortly after a tap, and a server round trip in between can spend that window.
+- The login page leads with Face ID only on a device that turned it on (a `localStorage` flag, `passkeyOnDevice`); elsewhere the password form leads and a quiet link sits below it. Tapping Face ID on a phone with nothing saved shows the phone's own "no passkeys saved" sheet, which staff read as broken.
 - Turning it on: each person, once per device, on `/portal/face-id` (Hebrew). The portal home and the shop home show
   a quiet offer to anyone with no passkey on a device that has Face ID / a fingerprint reader, until they tap ✕.
   The page also lists the person's devices with "last used", and removes a lost phone.

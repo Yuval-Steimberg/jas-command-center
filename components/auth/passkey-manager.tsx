@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { CheckCircle2, ScanFace, Smartphone, Trash2 } from 'lucide-react'
-import { biometricName, browserSupportsPasskeys, creationOptions, credentialJson, deviceLabel, passkeyMessage, runCeremony } from '@/lib/auth/passkey-browser'
+import { biometricName, browserSupportsPasskeys, creationOptions, credentialJson, deviceLabel, passkeyMessage, rememberPasskeyOnDevice, runCeremony } from '@/lib/auth/passkey-browser'
 import { finishPasskeySetup, removePasskey, startPasskeySetup } from '@/app/portal/face-id/actions'
 import { usePrefetchedChallenge } from './use-challenge'
 
@@ -36,10 +36,12 @@ export function PasskeyManager({ saved }: { saved: SavedPasskey[] | null }) {
       const got = await runCeremony(() => navigator.credentials.create({ publicKey: creationOptions(s.options) }))
       if (!got.ok) {
         const m = passkeyMessage(got.code)
+        if (got.code === 'InvalidStateError') rememberPasskeyOnDevice(true)
         return m.cancelled ? undefined : setMsg({ ok: false, text: m.message })
       }
       const done = await finishPasskeySetup(s.challengeId, credentialJson(got.value as never), deviceLabel(navigator.userAgent))
       if (!done.ok) return setMsg({ ok: false, text: passkeyMessage(done.code).message })
+      rememberPasskeyOnDevice(true)
       setMsg({ ok: true, text: `מעולה. מעכשיו נכנסים מהמכשיר הזה עם ${name}.` })
       router.refresh()
     } catch {
