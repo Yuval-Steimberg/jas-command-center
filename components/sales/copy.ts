@@ -307,7 +307,7 @@ const saleEn = {
   terminalDevice: 'Terminal',
   terminalSend: 'Send to the terminal',
   terminalWaiting: 'Waiting for the customer to pay on the terminal…',
-  terminalSteps: 'First open the “מסופון סליקה” app on the terminal (not the GROW app) and leave it on its home screen. Open the link on this device (not on the terminal) and keep it open until the payment ends.',
+  terminalSteps: 'First open the “מסופון סליקה” app on the terminal (not the GROW app) and leave it on its home screen. Sending opens Grow’s page here, on this device (not on the terminal); keep it open until the payment ends and it brings you back to the sale.',
   terminalTapCap: 'On the GROW app a physical card tap is limited to ₪300 (digital wallets are not). For more, the customer pays with a wallet, or charge in two parts.',
   terminalNoAnswer: 'No answer from the terminal yet.',
   terminalCancel: 'Stop waiting',
@@ -318,8 +318,6 @@ const saleEn = {
   terminalMethod: 'Card · terminal',
   terminalAuto: 'Pressing sell sends the amount to the terminal. The payment is recorded when the customer pays there.',
   sellToTerminal: 'Sell and send to the terminal',
-  terminalOpening: 'Sending the amount to the terminal… Keep this tab open until the payment ends.',
-  terminalSentAuto: 'Sent to the terminal in the other tab. Keep it open until the customer pays.',
 }
 export type SaleCopy = typeof saleEn
 const saleHe: SaleCopy = {
@@ -382,7 +380,7 @@ const saleHe: SaleCopy = {
   terminalDevice: 'מסופון',
   terminalSend: 'שליחה למסופון',
   terminalWaiting: 'ממתין שהלקוח/ה ישלם/תשלם במסופון…',
-  terminalSteps: 'קודם לפתוח במסופון את אפליקציית ״מסופון סליקה״ (לא אפליקציית GROW) ולהשאיר אותה במסך הבית. את הקישור פותחים במכשיר הזה (לא במסופון) ומשאירים פתוח עד סוף התשלום.',
+  terminalSteps: 'קודם לפתוח במסופון את אפליקציית ״מסופון סליקה״ (לא אפליקציית GROW) ולהשאיר אותה במסך הבית. השליחה פותחת כאן, במכשיר הזה (לא במסופון), את העמוד של Grow. משאירים אותו פתוח עד סוף התשלום, ואז הוא חוזר למכירה.',
   terminalTapCap: 'באפליקציית GROW הצמדת כרטיס פיזי מוגבלת ל-₪300 (ארנק דיגיטלי לא מוגבל). מעל זה: תשלום בארנק דיגיטלי, או חיוב בשני חלקים.',
   terminalNoAnswer: 'עדיין אין תשובה מהמסופון.',
   terminalCancel: 'הפסקת המתנה',
@@ -393,8 +391,6 @@ const saleHe: SaleCopy = {
   terminalMethod: 'אשראי · מסופון',
   terminalAuto: 'בלחיצה על מכירה הסכום נשלח למסופון. התשלום נרשם כשהלקוח/ה משלם/ת שם.',
   sellToTerminal: 'מכירה ושליחה למסופון',
-  terminalOpening: 'שולח את הסכום למסופון… להשאיר את הלשונית הזו פתוחה עד סוף התשלום.',
-  terminalSentAuto: 'נשלח למסופון בלשונית השנייה. להשאיר אותה פתוחה עד שהלקוח/ה משלם/ת.',
 }
 export const SALE_COPY: Record<Lang, SaleCopy> = { en: saleEn, he: saleHe }
 export const PAYMENT_STATE_HE = { unpaid: 'לא שולם', deposit: 'שולמה מקדמה', paid: 'שולם', overpaid: 'מגיע החזר', nothing_due: 'אין חוב' } as const

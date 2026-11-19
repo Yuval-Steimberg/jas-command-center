@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useFormState } from 'react-dom'
 import { Check, Plus, Search, UserPlus, X } from 'lucide-react'
 import { Submit, input } from '@/app/(app)/website/forms'
@@ -10,7 +10,6 @@ import type { ActionState } from '@/lib/ops/act'
 import { formatAgorot } from '@/lib/money'
 import { MAX_COUPON, METHOD_LABEL, PAYMENT_METHODS, discountFromInput, type Fulfilment, type PaymentMethod } from '@/lib/sales/model'
 import { COPY, SALE_COPY, METHOD_LABEL_HE, minorToShekels, shekelsToMinor, type Lang } from './copy'
-import { closeTerminalTab, openTerminalTab } from './terminal-tab'
 
 export interface CheckoutItem {
   id: string
@@ -81,11 +80,6 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
   const [discKind, setDiscKind] = useState<'amount' | 'percent'>('amount')
   const [discValue, setDiscValue] = useState('')
   const [state, run] = useFormState<ActionState, FormData>(createSaleAction, {})
-  // A refused sale never reaches the terminal: close the tab the tap opened for it.
-  useEffect(() => {
-    if (state.ok === false) closeTerminalTab()
-  }, [state])
-
   const inBasket = new Set(lines.map((l) => l.itemId))
   const words = norm(q).split(/\s+/).filter(Boolean)
   const found = items.filter((i) => !inBasket.has(i.id) && words.every((w) => [i.sku, i.title, i.category, i.colors, i.material].some((f) => norm(f).includes(w)))).slice(0, 30)
@@ -158,7 +152,7 @@ export function Checkout({ items, contacts, allowNewContact, lang, base, presele
         )}
       </section>
 
-      <form action={run} onSubmit={() => { if (toTerminal) openTerminalTab(ts.terminalOpening) }} className="flex min-w-0 flex-col gap-3">
+      <form action={run} className="flex min-w-0 flex-col gap-3">
         <input type="hidden" name="basket" value={basket} />
         <input type="hidden" name="base" value={base} />
         <section className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
