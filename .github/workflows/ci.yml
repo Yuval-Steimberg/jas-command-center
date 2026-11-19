@@ -21,7 +21,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: '1'
   smoke:
     # Every page renders, signed in, with no source connected (tests/smoke/smoke.mjs).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04  # Playwright 1.56 cannot install Chromium on ubuntu-latest (26.04)
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright-core install --with-deps chromium
+      - run: npx playwright-core install chromium  # the 24.04 image already has the system libs; apt mirrors flake (503)
       - run: npm run smoke
         env:
           NEXT_TELEMETRY_DISABLED: '1'

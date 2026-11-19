@@ -1,6 +1,6 @@
 'use server'
 
-import { redirect } from 'next/navigation'
+import { RedirectType, redirect } from 'next/navigation'
 import { z } from 'zod'
 import { userCan, type CurrentUser } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
@@ -12,6 +12,7 @@ import { moveDelivery } from '@/lib/deliveries/service'
 import { FULFILMENTS, MAX_COUPON, PAYMENT_METHODS, basketProblem } from '@/lib/sales/model'
 import { createShopSale, handOverLine, recordPayment, returnSaleUnits, setLineFulfilment } from '@/lib/sales/service'
 import { cancelTerminalCharge, startTerminalCharge } from '@/lib/sales/terminal'
+import { getTerminalStore } from '@/lib/sales/terminal-store'
 
 /** Run the website → command center sync now instead of waiting for the hourly sweep. Idempotent. */
 export async function syncNowAction(_p: ActionState, _f: FormData): Promise<ActionState> {
@@ -90,9 +91,15 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
   if (res.ok && saleId && parsed.terminal) {
     // The sale stands either way; a refused push shows on the sale page with its retry form.
     const t = parsed.terminal
-    await runAct('inventory', ['inventory:financial'], 'sale.terminal_charge', `sale:${saleId}`, { amountMinor: t.amountMinor, device: t.device, via: 'checkout' }, (u) =>
-      startTerminalCharge(saleId, t.amountMinor, t.device, `${parsed.requestId}:terminal`, actorOf(u)),
+    const reqId = `${parsed.requestId}:terminal`
+    const pushed = await runAct('inventory', ['inventory:financial'], 'sale.terminal_charge', `sale:${saleId}`, { amountMinor: t.amountMinor, device: t.device, via: 'checkout' }, (u) =>
+      startTerminalCharge(saleId, t.amountMinor, t.device, reqId, actorOf(u)),
     SALE_PATHS)
+    // Opening Grow's link is what pushes the amount to the terminal. Open it in THIS tab: a second tab
+    // gets the seller's focus, iOS Safari then pauses this one, and the link never reaches it.
+    // Grow's successUrl / cancelUrl bring the seller back to the sale.
+    const url = pushed.ok ? (await getTerminalStore().forSale(saleId).catch(() => [])).find((c) => c.requestId === reqId && c.status === 'sent')?.url : null
+    if (url) redirect(url, RedirectType.replace)
   }
   if (res.ok && saleId) redirect(`${base(f)}/sales/${saleId}`.replace('/sales/sales/', '/sales/'))
   return res
