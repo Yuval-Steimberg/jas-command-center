@@ -30,7 +30,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npx playwright-core install --with-deps chromium
+      - run: npx playwright-core install chromium  # the 24.04 image already has the system libs; apt mirrors flake (503)
       - run: npm run smoke
         env:
           NEXT_TELEMETRY_DISABLED: '1'
