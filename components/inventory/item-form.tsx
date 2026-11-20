@@ -56,7 +56,7 @@ const asForm = (blob: Blob) => {
  * upload let the AI suggest the fields (and again on request). Every suggestion is editable, and an
  * AI price stays "not approved" until a person ticks it.
  */
-export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, canWebsite = false, quantityEditable = true }: {
+export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, canWebsite = false, canSell = false, quantityEditable = true }: {
   lang: Lang
   base: '/inventory' | '/shop'
   mode: 'create' | 'edit'
@@ -66,13 +66,20 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
   locations?: { id: string; label: string }[]
   /** Create only: the role may put the item on the website (inventory:write + website:write). */
   canWebsite?: boolean
+  /** Create in shop mode only: offer "save and sell" (the role may sell, inventory:financial). */
+  canSell?: boolean
   quantityEditable?: boolean
 }) {
   const t = COPY[lang]
   const [v, setV] = useState(initial)
   const set = (patch: Partial<ItemFormValues>) => setV((x) => ({ ...x, ...patch }))
   const [state, run] = useFormState<ActionState, FormData>(mode === 'create' ? createItemAction : editItemAction, {})
-  const [busy, setBusy] = useState<'' | 'upload' | 'ai' | 'extra'>('')
+  const [busy, setBusy] = useState<'' | 'upload' | 'extra'>('')
+  /** The AI runs alongside the upload, so it has its own flag. */
+  const [aiBusy, setAiBusy] = useState(false)
+  /** The photo on screen before the upload has finished (a local blob: link, never saved). */
+  const [preview, setPreview] = useState('')
+  const thenRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState('')
   const [note, setNote] = useState('')
   const [similar, setSimilar] = useState<SimilarItem[]>([])
@@ -116,21 +123,23 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
   }
 
   async function describe(blob: Blob, overwrite: boolean) {
-    setBusy('ai')
+    setAiBusy(true)
     try {
       const r = await describeItemPhotoAction(asForm(blob))
       if (r.ok && r.fields) {
         if (blobRef.current === blob) applyAi(r.fields, overwrite)
       } else {
         // Shown, never swallowed: an empty form with no reason is what this replaced. Never the raw API body.
-        setError(`${t.aiFailed} ${r.code ? t.aiErrors[r.code] : (r.message ?? t.aiErrors.service)} ${t.aiByHand}`)
+        if (blobRef.current === blob) addError(`${t.aiFailed} ${r.code ? t.aiErrors[r.code] : (r.message ?? t.aiErrors.service)} ${t.aiByHand}`)
       }
     } catch {
-      setError(`${t.aiFailed} ${t.aiErrors.unreachable} ${t.aiByHand}`)
+      if (blobRef.current === blob) addError(`${t.aiFailed} ${t.aiErrors.unreachable} ${t.aiByHand}`)
     } finally {
-      setBusy('')
+      if (blobRef.current === blob) setAiBusy(false)
     }
   }
+  /** Upload and AI run together, so both may have something to say. */
+  const addError = (m: string) => setError((cur) => (cur ? `${cur} ${m}` : m))
 
   async function onPhoto(files: FileList | null) {
     const file = files?.[0]
@@ -138,25 +147,38 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
     setBusy('upload')
     setError('')
     setNote('')
-    let blob: Blob | null = null
+    let prepared: { blob: Blob; hash: string }
     try {
-      const prepared = await prepare(file)
-      blob = prepared.blob
-      blobRef.current = blob
+      prepared = await prepare(file)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+      setBusy('')
+      for (const r of [camRef, galRef]) if (r.current) r.current.value = ''
+      return
+    }
+    const blob = prepared.blob
+    blobRef.current = blob
+    setPreview((old) => {
+      if (old) URL.revokeObjectURL(old)
+      return URL.createObjectURL(blob)
+    })
+    // The AI starts now, alongside the upload, instead of after it: the fields no longer wait for the
+    // photo store (and its audit row). It fills only what is still empty; the button repeats it on demand.
+    const ai = describe(blob, false)
+    try {
       const up = await uploadItemPhotoAction(asForm(blob))
       if (!up.ok || !up.url) throw new Error(up.message ?? 'Upload failed')
       // Setting the hash runs the "already have this?" check below.
-      set({ photoUrl: up.url, photoHash: prepared.hash })
+      if (blobRef.current === blob) set({ photoUrl: up.url, photoHash: prepared.hash })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-      blob = null
+      if (blobRef.current === blob) addError(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy('')
       for (const r of [camRef, galRef]) if (r.current) r.current.value = ''
     }
-    // Fill the fields from the photo straight away, as intake always did; the button repeats it on demand.
-    if (blob) await describe(blob, false)
+    await ai
   }
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
 
   async function fillFromPhoto() {
     if (!blobRef.current) return
@@ -229,6 +251,7 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
     }
   }
 
+  const working = !!busy || aiBusy
   const chip = (on: boolean) => `inline-flex min-h-11 items-center justify-center rounded-md border px-3 text-center text-sm leading-tight transition-colors duration-150 ${on ? 'border-forest bg-forest font-semibold text-cream' : 'border-line hover:bg-sunken'}`
   const renewalLabels = lang === 'he' ? RENEWAL_LABEL_HE : RENEWAL_LABEL
   const placeLabels = lang === 'he' ? PLACE_LABEL_HE : PLACE_LABEL
@@ -252,18 +275,18 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
       <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-3">
         <h2 className="text-sm font-semibold text-ink">{t.photo}</h2>
         <div className="flex flex-wrap items-start gap-3">
-          {v.photoUrl ? (
+          {v.photoUrl || (busy === 'upload' && preview) ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={v.photoUrl} alt="" className="h-32 w-32 rounded-md border border-line object-cover" />
+            <img src={busy === 'upload' && preview ? preview : v.photoUrl} alt="" className={`h-32 w-32 rounded-md border border-line object-cover ${busy === 'upload' ? 'opacity-70' : ''}`} />
           ) : <div className="grid h-32 w-32 place-items-center rounded-md border border-dashed border-line text-xs text-muted">{t.photo}</div>}
           <div className="flex flex-col gap-2">
             <input ref={camRef} type="file" accept="image/*" capture="environment" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void onPhoto(e.target.files)} />
             <input ref={galRef} type="file" accept="image/*" className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void onPhoto(e.target.files)} />
             <div className="flex flex-wrap gap-2">
-              <button type="button" disabled={!!busy} onClick={() => camRef.current?.click()} className={pill}><Camera aria-hidden className="h-4 w-4" />{t.camera}</button>
-              <button type="button" disabled={!!busy} onClick={() => galRef.current?.click()} className={pill}><ImagePlus aria-hidden className="h-4 w-4" />{t.gallery}</button>
+              <button type="button" disabled={working} onClick={() => camRef.current?.click()} className={pill}><Camera aria-hidden className="h-4 w-4" />{t.camera}</button>
+              <button type="button" disabled={working} onClick={() => galRef.current?.click()} className={pill}><ImagePlus aria-hidden className="h-4 w-4" />{t.gallery}</button>
             </div>
-            <button type="button" disabled={!!busy || !blobRef.current} onClick={() => void fillFromPhoto()} className={pill}><Sparkles aria-hidden className="h-4 w-4" />{busy === 'ai' ? t.aiBusy : t.aiFill}</button>
+            <button type="button" disabled={working || !blobRef.current} onClick={() => void fillFromPhoto()} className={pill}><Sparkles aria-hidden className="h-4 w-4" />{aiBusy ? t.aiBusy : t.aiFill}</button>
             {busy === 'upload' ? <p className="text-sm text-muted">{t.uploading}</p> : null}
           </div>
         </div>
@@ -284,7 +307,7 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
             {v.extraPhotos.length < 12 ? (
               <>
                 <input ref={extraRef} type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void onExtra(e.target.files)} />
-                <button type="button" disabled={!!busy} onClick={() => extraRef.current?.click()} className="grid h-20 w-20 place-items-center rounded-md border border-dashed border-line text-muted hover:bg-sunken" aria-label={t.morePhotos}>{busy === 'extra' ? '…' : <ImagePlus aria-hidden className="h-5 w-5" />}</button>
+                <button type="button" disabled={working} onClick={() => extraRef.current?.click()} className="grid h-20 w-20 place-items-center rounded-md border border-dashed border-line text-muted hover:bg-sunken" aria-label={t.morePhotos}>{busy === 'extra' ? '…' : <ImagePlus aria-hidden className="h-5 w-5" />}</button>
               </>
             ) : null}
           </div>
@@ -300,7 +323,7 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
               <button type="button" data-compact aria-label={t.remove} onClick={() => set({ beforePhotoUrl: '' })} className="absolute -end-2 -top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-line bg-surface"><X aria-hidden className="h-4 w-4" /></button>
             </span>
           ) : (
-            <button type="button" disabled={!!busy} onClick={() => beforeRef.current?.click()} className="grid h-20 w-20 place-items-center rounded-md border border-dashed border-line text-muted hover:bg-sunken" aria-label={t.beforePhoto}><ImagePlus aria-hidden className="h-5 w-5" /></button>
+            <button type="button" disabled={working} onClick={() => beforeRef.current?.click()} className="grid h-20 w-20 place-items-center rounded-md border border-dashed border-line text-muted hover:bg-sunken" aria-label={t.beforePhoto}><ImagePlus aria-hidden className="h-5 w-5" /></button>
           )}
         </div>
         {error ? <p role="status" dir="auto" className="text-sm text-bad">{error}</p> : null}
@@ -422,7 +445,12 @@ export function ItemForm({ lang, base, mode, initial, hidden = {}, locations, ca
       </section>
 
       <div className="flex flex-col gap-2 [&_button]:h-12 [&_button]:min-w-48 [&_button]:text-base">
-        <Submit label={mode === 'create' ? t.save : lang === 'he' ? 'שמירה' : 'Save'} busy={mode === 'create' ? t.saving : lang === 'he' ? 'שומר…' : 'Saving…'} tone="primary" />
+        <input ref={thenRef} type="hidden" name="then" value="" />
+        {/* Which button sent the form: written into the DOM on press, before the browser reads the form. */}
+        <div className="flex flex-wrap gap-2" onClickCapture={(e) => { if (thenRef.current) thenRef.current.value = (e.target as HTMLElement).closest('[data-then]')?.getAttribute('data-then') ?? '' }}>
+          <span data-then="" className="contents"><Submit label={mode === 'create' ? t.save : lang === 'he' ? 'שמירה' : 'Save'} busy={mode === 'create' ? t.saving : lang === 'he' ? 'שומר…' : 'Saving…'} tone="primary" /></span>
+          {mode === 'create' && canSell && base === '/shop' ? <span data-then="sell" className="contents"><Submit label={t.saveAndSell} busy={t.saving} tone="strong" /></span> : null}
+        </div>
         <Outcome state={state} />
       </div>
     </form>

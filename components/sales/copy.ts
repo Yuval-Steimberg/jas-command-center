@@ -115,6 +115,7 @@ const en = {
   description: 'Description',
   source: 'Where it came from',
   save: 'Add item',
+  saveAndSell: 'Add and sell now',
   saving: 'Adding…',
   photoLink: 'or paste a photo link',
 }
@@ -230,6 +231,7 @@ const he: Copy = {
   description: 'תיאור',
   source: 'מאיפה הגיע',
   save: 'הוספת פריט',
+  saveAndSell: 'הוספה ומכירה עכשיו',
   saving: 'מוסיף…',
   photoLink: 'או הדבקת קישור לתמונה',
 }

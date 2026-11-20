@@ -11,6 +11,8 @@ import { locationOptions } from '@/lib/ops/views'
 import { CONDITION_LABEL } from '@/lib/inventory/model'
 
 export const dynamic = 'force-dynamic'
+// Saving a new item finishes the website step (Photoroom + listing) after the answer, inside this function's time.
+export const maxDuration = 60
 
 export default async function NewItemPage() {
   await requirePageAccess('inventory:write')
