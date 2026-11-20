@@ -12,7 +12,8 @@ import { moveDelivery } from '@/lib/deliveries/service'
 import { FULFILMENTS, MAX_COUPON, PAYMENT_METHODS, basketProblem } from '@/lib/sales/model'
 import { createShopSale, handOverLine, recordPayment, returnSaleUnits, setLineFulfilment } from '@/lib/sales/service'
 import { cancelTerminalCharge, startTerminalCharge } from '@/lib/sales/terminal'
-import { getTerminalStore } from '@/lib/sales/terminal-store'
+import { stopwatch } from '@/lib/stopwatch'
+import type { Sale } from '@/lib/sales/model'
 
 /** Run the website → command center sync now instead of waiting for the hourly sweep. Idempotent. */
 export async function syncNowAction(_p: ActionState, _f: FormData): Promise<ActionState> {
@@ -72,8 +73,12 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
   const problem = basketProblem(parsed)
   if (problem) return { ok: false, message: problem }
   if (parsed.terminal && parsed.payment) return { ok: false, message: 'Pick one way to pay.' }
-  let saleId = ''
+  let sold: Sale | null = null
+  let fresh = false
+  // Where one sale spends its time, kept on its audit rows (read by the production check's timing run).
+  const sw = stopwatch()
   const res = await runAct('inventory', ['inventory:financial'], 'sale.create', `sale:${parsed.requestId}`, { lines: parsed.lines.length, totalMinor: parsed.lines.reduce((a, l) => a + l.quantity * l.unitPriceMinor, 0) - (parsed.discountMinor ?? 0), discountMinor: parsed.discountMinor ?? 0, couponCode: parsed.couponCode?.trim() || null, paidMinor: parsed.payment?.amountMinor ?? 0 }, async (u) => {
+    sw.lap('start')
     let contactId = parsed.contactId
     if (!contactId && parsed.newContact && (parsed.newContact.phone.trim() || parsed.newContact.email.trim())) {
       if (!parsed.newContact.name.trim()) return { ok: false, message: 'Give the new customer a name.' }
@@ -82,26 +87,35 @@ export async function createSaleAction(_p: ActionState, f: FormData): Promise<Ac
       if (!c) return { ok: false, message: 'The new customer needs a valid phone or email.' }
       await audit(u, { action: c.created ? 'crm.contact.create' : 'crm.contact.update', product: 'crm', target: `contact:${c.contact.id}`, outcome: 'succeeded', detail: { via: 'sale', role: 'customer' } })
       contactId = c.contact.id
+      sw.lap('new_contact')
     }
     if (!contactId && parsed.lines.some((l) => l.fulfilment === 'delivery')) return { ok: false, message: 'A delivery needs a customer to call. Pick or add one.' }
-    const r = await createShopSale({ contactId, note: parsed.note, lines: parsed.lines, discountMinor: parsed.discountMinor ?? 0, couponCode: parsed.couponCode?.trim() || null, payment: parsed.payment }, parsed.requestId, actorOf(u))
-    if (r.ok) saleId = r.sale.id
-    return r
+    const r = await createShopSale({ contactId, note: parsed.note, lines: parsed.lines, discountMinor: parsed.discountMinor ?? 0, couponCode: parsed.couponCode?.trim() || null, payment: parsed.payment }, parsed.requestId, actorOf(u), sw)
+    if (r.ok) {
+      sold = r.sale
+      fresh = !r.replay
+    }
+    return { ok: r.ok, message: r.message, warning: r.ok ? r.warning : undefined, ms: sw.ms() }
   }, SALE_PATHS)
-  if (res.ok && saleId && parsed.terminal) {
+  const sale = sold as Sale | null
+  if (res.ok && sale && parsed.terminal) {
     // The sale stands either way; a refused push shows on the sale page with its retry form.
     const t = parsed.terminal
     const reqId = `${parsed.requestId}:terminal`
-    const pushed = await runAct('inventory', ['inventory:financial'], 'sale.terminal_charge', `sale:${saleId}`, { amountMinor: t.amountMinor, device: t.device, via: 'checkout' }, (u) =>
-      startTerminalCharge(saleId, t.amountMinor, t.device, reqId, actorOf(u)),
-    SALE_PATHS)
+    const tw = stopwatch()
+    let url: string | undefined
+    const pushed = await runAct('inventory', ['inventory:financial'], 'sale.terminal_charge', `sale:${sale.id}`, { amountMinor: t.amountMinor, device: t.device, via: 'checkout' }, async (u) => {
+      tw.lap('start')
+      const r = await startTerminalCharge(sale.id, t.amountMinor, t.device, reqId, actorOf(u), { newSale: fresh ? sale : undefined, sw: tw })
+      url = r.url
+      return { ...r, ms: tw.ms() }
+    }, SALE_PATHS)
     // Opening Grow's link is what pushes the amount to the terminal. Open it in THIS tab: a second tab
     // gets the seller's focus, iOS Safari then pauses this one, and the link never reaches it.
     // Grow's successUrl / cancelUrl bring the seller back to the sale.
-    const url = pushed.ok ? (await getTerminalStore().forSale(saleId).catch(() => [])).find((c) => c.requestId === reqId && c.status === 'sent')?.url : null
-    if (url) redirect(url, RedirectType.replace)
+    if (pushed.ok && url) redirect(url, RedirectType.replace)
   }
-  if (res.ok && saleId) redirect(`${base(f)}/sales/${saleId}`.replace('/sales/sales/', '/sales/'))
+  if (res.ok && sale) redirect(`${base(f)}/sales/${sale.id}`.replace('/sales/sales/', '/sales/'))
   return res
 }
 

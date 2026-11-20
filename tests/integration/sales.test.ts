@@ -114,6 +114,31 @@ describe('checkout: the whole basket or none of it', () => {
     expect(r.ok).toBe(false)
     expect((await getOpsStore().getItem(other.id))!.status).toBe('listed')
   })
+
+  it('takes two listed items off the website together, and a repeated tap never touches the website again', async () => {
+    const products = await website([{ id: 80, quantity: 1, in_stock: true, updated_at: '2026-10-01T00:00:00Z' }, { id: 81, quantity: 5, in_stock: true, updated_at: '2026-10-01T00:00:00Z' }])
+    const a = await item({ status: 'listed', websiteProductId: 80 })
+    const lot = await item({ status: 'listed', websiteProductId: 81, kind: 'lot', quantity: 5 })
+    const input = { contactId: null, note: null, lines: [line(a.id), line(lot.id, { quantity: 2, unitPriceMinor: 1000 })] }
+    const r = await createShopSale(input, 'req-web-two', actor)
+    expect(r, r.message).toMatchObject({ ok: true })
+    expect(products.get(80)!.quantity).toBe(0)
+    expect(products.get(81)!.quantity).toBe(3)
+    const again = await createShopSale(input, 'req-web-two', actor)
+    expect(again).toMatchObject({ ok: true, replay: true })
+    expect(products.get(81)!.quantity).toBe(3)
+  })
+
+  it('a refused website product puts back what the other line already took', async () => {
+    const products = await website([{ id: 90, quantity: 1, in_stock: true, updated_at: '2026-10-01T00:00:00Z' }])
+    const a = await item({ status: 'listed', websiteProductId: 90 })
+    const gone = await item({ status: 'listed', websiteProductId: 99 })
+    const r = await createShopSale({ contactId: null, note: null, lines: [line(a.id), line(gone.id)] }, 'req-web-undo', actor)
+    expect(r.ok).toBe(false)
+    expect(products.get(90)!.quantity).toBe(1)
+    expect((await getOpsStore().getItem(a.id))!.status).toBe('listed')
+    expect(await getSalesStore().listSales()).toHaveLength(0)
+  })
 })
 
 describe('after the sale', () => {

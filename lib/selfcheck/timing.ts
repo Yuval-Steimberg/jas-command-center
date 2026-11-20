@@ -98,5 +98,30 @@ export async function runTimings(): Promise<{ region: string | null; authSigning
   // Sources, through the same adapters the pages use (uncached reads).
   out.push(await time('Website endpoint: one product', 2, async () => must(await listWebsiteProductsByIds([1])), deadline))
   out.push(await time('Gift card endpoint: card search', 2, async () => must(await searchGiftCards('zz-timing')), deadline))
+  out.push(...(await recentSaleSteps(db).catch((e: unknown) => [{ name: 'Shop sales: recorded step timings', runsMs: [], medianMs: null, error: (e instanceof Error ? e.message : String(e)).slice(0, 160) }])))
   return { region: process.env.VERCEL_REGION ?? null, authSigningKeys: keys, timings: out }
+}
+
+/**
+ * What real checkouts spent their time on: the step timings each sale keeps on
+ * its audit row (app/(app)/sales/actions.ts), median per step over the last
+ * 30. `runsMs` lists the newest five. Times only.
+ */
+async function recentSaleSteps(db: ReturnType<typeof supabaseAdmin>): Promise<Timing[]> {
+  const out: Timing[] = []
+  for (const [action, label] of [['sale.create', 'sale'], ['sale.terminal_charge', 'terminal push']] as const) {
+    const { data, error } = await db.from('cc_audit_log').select('detail').eq('action', action).eq('outcome', 'succeeded').not('detail->ms', 'is', null).order('at', { ascending: false }).limit(30)
+    if (error) throw new Error(error.message)
+    const rows = (data ?? []).map((r) => (r as { detail: { ms?: Record<string, number> } }).detail.ms).filter((m): m is Record<string, number> => !!m)
+    if (!rows.length) {
+      out.push({ name: `Shop ${label}: no recorded timings yet`, runsMs: [], medianMs: null })
+      continue
+    }
+    const steps = [...new Set(rows.flatMap((m) => Object.keys(m)))]
+    for (const step of steps) {
+      const xs = rows.map((m) => m[step]).filter((x): x is number => typeof x === 'number')
+      out.push({ name: `Shop ${label} (${xs.length} of the last ${rows.length}): ${step}`, runsMs: xs.slice(0, 5), medianMs: median(xs) })
+    }
+  }
+  return out
 }

@@ -6,7 +6,8 @@ import { audit } from '@/lib/audit/audit'
 import { OpsSetupError } from './store'
 
 export type ActionState = { ok?: boolean; message?: string; warning?: string }
-export type ActResult = { ok: boolean; message: string; warning?: string }
+/** `ms`: step timings (lib/stopwatch.ts), kept on the outcome's audit row. */
+export type ActResult = { ok: boolean; message: string; warning?: string; ms?: Record<string, number> }
 
 export const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
@@ -35,7 +36,7 @@ export async function runAct(
   await audit(user, { action, product, target, outcome: 'requested', detail })
   try {
     const r = await run(user)
-    await audit(user, { action, product, target, outcome: r.ok ? 'succeeded' : 'failed', detail: { ...detail, message: r.message, ...(r.warning ? { warning: r.warning } : {}) } })
+    await audit(user, { action, product, target, outcome: r.ok ? 'succeeded' : 'failed', detail: { ...detail, message: r.message, ...(r.warning ? { warning: r.warning } : {}), ...(r.ms ? { ms: r.ms } : {}) } })
     for (const p of paths) revalidatePath(p)
     // An item or a sale shows on many nested pages (sale, item, shop mode): refresh those trees whole.
     if (product === 'inventory') for (const p of ['/sales', '/shop', '/inventory']) revalidatePath(p, 'layout')

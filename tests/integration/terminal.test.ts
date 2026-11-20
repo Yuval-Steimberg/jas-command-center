@@ -107,6 +107,22 @@ describe('a charge on the terminal', () => {
     expect(timeline.filter((t) => t.includes('Paid ₪500 by card on the shop terminal (S-00001)'))).toHaveLength(1)
   })
 
+  it('checkout fast path: a sale just created pushes without re-reading it, returns the link, and still refuses more than its total', async () => {
+    const grow_ = await grow()
+    const { sale: s } = await sale()
+    expect(await startTerminalCharge(s.id, 50001, null, 'r-fast-0', actor, { newSale: s })).toMatchObject({ ok: false, message: expect.stringContaining('still to pay') })
+    const r = await startTerminalCharge(s.id, 50000, 'Counter', 'r-fast', actor, { newSale: s })
+    const [charge] = await getTerminalStore().forSale(s.id)
+    expect(r).toMatchObject({ ok: true, url: `https://grow.test/pos/${charge!.id}` })
+    expect(Object.fromEntries(new URLSearchParams(grow_.seen[0]!.body))).toMatchObject({ deviceKey: 'dk-counter', 'pageField[fullName]': 'Noa Cohen', 'pageField[phone]': '0501234567' })
+    // The same request again (a repeated tap) replays the charge and hands back the same link: Grow is asked once.
+    expect(await startTerminalCharge(s.id, 50000, 'Counter', 'r-fast', actor, { newSale: s })).toMatchObject({ ok: true, url: r.url, message: expect.stringContaining('Already sent') })
+    expect(grow_.seen.filter((x) => x.path.endsWith('/createPaymentProcess'))).toHaveLength(1)
+    // A hint for another sale is ignored: the full checks run.
+    const other = await sale(50000, false)
+    expect(await startTerminalCharge(other.sale.id, 50000, null, 'r-other', actor, { newSale: s })).toMatchObject({ ok: true })
+  })
+
   it('finds the charge by processId when the update carries no custom field, and ignores sales that are not ours', async () => {
     await grow()
     const { sale: s } = await sale(10000, false)

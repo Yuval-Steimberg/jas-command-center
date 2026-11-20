@@ -42,7 +42,14 @@ export interface SalesStore {
   linesForItems(itemIds: readonly string[]): Promise<SaleLine[]>
   openLines(limit?: number): Promise<SaleLine[]>
   getLine(id: string): Promise<SaleLine | null>
-  createSale(input: SaleInput, requestId: string, actor: string): Promise<{ sale: Sale; replay: boolean }>
+  /** The sale this request id already created, if any (a double tap, a retried form). */
+  saleByRequest(requestId: string): Promise<Sale | null>
+  /**
+   * Every line or none; replays by request id. `checked: true` = the caller has
+   * just asked `saleByRequest` and found nothing, so the read is not repeated
+   * (the SQL still replays a request that raced in between).
+   */
+  createSale(input: SaleInput, requestId: string, actor: string, opts?: { checked?: boolean }): Promise<{ sale: Sale; replay: boolean }>
   /** open → done. Null when the line is no longer open. */
   closeLine(id: string): Promise<SaleLine | null>
   /** Conditional on the line still being open. */
@@ -95,6 +102,9 @@ export function memorySalesStore(d: MemoryData): SalesStore {
     },
     async getLine(id) {
       return copy(d.saleLines.find((l) => l.id === id) ?? null)
+    },
+    async saleByRequest(requestId) {
+      return copy(d.sales.find((s) => s.requestId === requestId) ?? null)
     },
     async createSale(input, requestId, actor) {
       const prior = d.sales.find((s) => s.requestId === requestId)
@@ -230,9 +240,14 @@ export function supabaseSalesStore(db: SupabaseClient): SalesStore {
       const r = await rows<SaleLine>(db.from('cc_sale_lines').select('*').eq('id', id).limit(1))
       return r[0] ?? null
     },
-    async createSale(input, requestId, actor) {
-      const before = await rows<Sale>(db.from('cc_sales').select('*').eq('request_id', requestId).limit(1))
-      if (before[0]) return { sale: before[0], replay: true }
+    async saleByRequest(requestId) {
+      return (await rows<Sale>(db.from('cc_sales').select('*').eq('request_id', requestId).limit(1)))[0] ?? null
+    },
+    async createSale(input, requestId, actor, opts) {
+      if (!opts?.checked) {
+        const before = await store.saleByRequest(requestId)
+        if (before) return { sale: before, replay: true }
+      }
       const problem = basketProblem(input)
       if (problem) throw new ConflictError(problem)
       // Before 0009 the SQL would ignore a discount and sell at full price: refuse instead.
