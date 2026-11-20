@@ -37,11 +37,9 @@ export async function upsertContact(seen: { name: string | null; email: string |
 /** Add a timeline entry (idempotent when it carries a ref) and optionally a role. */
 export async function touchContact(contactId: string, entry: Omit<InteractionInput, 'contactId' | 'actorEmail'>, actorEmail: string, role?: ContactRole) {
   const store = getOpsStore()
-  const r = await store.addInteraction({ ...entry, contactId, actorEmail })
-  if (role) {
-    const c = await store.getContact(contactId)
-    if (c && !c.roles.includes(role)) await store.updateContact(contactId, { roles: withRole(c.roles, role) })
-  }
+  // The interaction and the role check are independent: one round trip, not two.
+  const [r, c] = await Promise.all([store.addInteraction({ ...entry, contactId, actorEmail }), role ? store.getContact(contactId) : Promise.resolve(null)])
+  if (role && c && !c.roles.includes(role)) await store.updateContact(contactId, { roles: withRole(c.roles, role) })
   return r
 }
 

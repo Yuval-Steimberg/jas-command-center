@@ -76,9 +76,13 @@ export function supabaseTerminalStore(db: SupabaseClient): TerminalStore {
   const t = () => db.from('cc_terminal_charges')
   return {
     async create(c) {
-      const before = await one(t().select('*').eq('request_id', c.requestId).limit(1))
-      if (before) return { charge: before, replay: true }
-      const r = await one(t().insert(toRow({ ...c, status: 'sent' })).select('*'))
+      // Insert first (one round trip for a new charge); the unique request id turns a repeat into a read.
+      const ins = await t().insert(toRow({ ...c, status: 'sent' })).select('*')
+      if (ins.error?.code === '23505') {
+        const before = await one(t().select('*').eq('request_id', c.requestId).limit(1))
+        if (before) return { charge: before, replay: true }
+      }
+      const r = (await rows(Promise.resolve(ins)))[0]
       if (!r) throw new Error('The charge was saved but could not be read back.')
       return { charge: r, replay: false }
     },

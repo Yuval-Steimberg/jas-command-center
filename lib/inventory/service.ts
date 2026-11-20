@@ -69,6 +69,22 @@ export async function shiftWebsiteStock(productId: number, delta: number): Promi
   return { ok: true, had: q.quantity, now: next }
 }
 
+/**
+ * Take units of a listed product off the website for a sale: ONE read, then a
+ * compare-and-set. `units: 'all'` takes whatever the website has (a unique
+ * piece, or a lot sold out); otherwise at most `units`. Same answer as
+ * reading with `shiftWebsiteStock(id, 0)` and then shifting, one call fewer.
+ */
+export async function takeWebsiteStock(productId: number, units: number | 'all'): Promise<{ ok: true; had: number; now: number } | { ok: false; message: string }> {
+  const q = await websiteQuantity(productId)
+  if (!q.ok) return q
+  const next = units === 'all' ? 0 : q.quantity - Math.min(units, q.quantity)
+  if (next === q.quantity) return { ok: true, had: q.quantity, now: next }
+  const r = await setWebsiteStock(productId, q.quantity, next).catch((e: unknown) => ({ ok: false as const, message: `the website could not be reached (${e instanceof Error ? e.message : String(e)})` }))
+  if (!r.ok) return { ok: false, message: r.message }
+  return { ok: true, had: q.quantity, now: next }
+}
+
 export async function undoWebsiteShift(productId: number, shift: { had: number; now: number }): Promise<string | undefined> {
   if (shift.had === shift.now) return undefined
   try {

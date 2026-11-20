@@ -2,7 +2,8 @@ import 'server-only'
 import { ConflictError, getOpsStore } from '@/lib/ops'
 import type { Item } from '@/lib/ops/types'
 import { touchContact } from '@/lib/crm/service'
-import { markDelivered, shiftWebsiteStock, undoWebsiteShift, type Actor } from '@/lib/inventory/service'
+import { markDelivered, shiftWebsiteStock, takeWebsiteStock, undoWebsiteShift, type Actor } from '@/lib/inventory/service'
+import type { Stopwatch } from '@/lib/stopwatch'
 import { formatAgorot } from '@/lib/money'
 import { getSalesStore, type SaleDetail } from './store'
 import { basketProblem, keptQty, unitsValue, type Fulfilment, type PaymentMethod, type Sale, type SaleInput, type SaleLine } from './model'
@@ -14,50 +15,60 @@ import { basketProblem, keptQty, unitsValue, type Fulfilment, type PaymentMethod
  * is refused put the website stock back. So a basket either sells completely
  * in exactly one place, or not at all.
  */
-export type SaleResult = { ok: true; sale: Sale; message: string; warning?: string } | { ok: false; message: string }
+/** `replay`: this request id had already created the sale (a repeated tap); nothing new was written. */
+export type SaleResult = { ok: true; sale: Sale; message: string; warning?: string; replay?: boolean } | { ok: false; message: string }
 export type LineResult = { ok: boolean; message: string; warning?: string }
 
 const why = (e: unknown) => (e instanceof ConflictError ? `${e.message}.` : e instanceof Error ? e.message : String(e))
 
-export async function createShopSale(input: SaleInput, requestId: string, actor: Actor): Promise<SaleResult> {
+export async function createShopSale(input: SaleInput, requestId: string, actor: Actor, sw?: Stopwatch): Promise<SaleResult> {
   const problem = basketProblem(input)
   if (problem) return { ok: false, message: problem }
   const sales = getSalesStore()
   const ops = getOpsStore()
-  const items = await ops.listItems({ ids: input.lines.map((l) => l.itemId), limit: input.lines.length })
+  // A repeated tap is answered BEFORE the website is touched (it used to take the website's stock a second time).
+  const [items, prior] = await Promise.all([ops.listItems({ ids: input.lines.map((l) => l.itemId), limit: input.lines.length }), sales.saleByRequest(requestId)])
+  sw?.lap('read')
+  if (prior) return { ok: true, sale: prior, replay: true, message: `Already recorded as ${prior.number}.` }
   const byId = new Map(items.map((i) => [i.id, i]))
   for (const l of input.lines) if (!byId.has(l.itemId)) return { ok: false, message: 'An item in the basket no longer exists. Reload.' }
 
   // 1. Website first: a listed item (or units of a listed lot) leaves the website's stock.
+  //    One read + one compare-and-set per product, every product at once.
+  const listed = input.lines
+    .map((l) => ({ l, it: byId.get(l.itemId)! }))
+    .filter(({ it }) => it.status === 'listed' && it.websiteProductId != null)
   const shifted: { productId: number; had: number; now: number }[] = []
   const undo = async () => (await Promise.all(shifted.map((s) => undoWebsiteShift(s.productId, s)))).filter(Boolean).join(' ')
-  for (const l of input.lines) {
-    const it = byId.get(l.itemId)!
-    if (it.status !== 'listed' || it.websiteProductId == null) continue
+  const take = async ({ l, it }: (typeof listed)[number]) => {
     const whole = it.kind === 'unique' || l.quantity >= it.quantity
-    const r = await shiftWebsiteStock(it.websiteProductId, 0)
-    if (!r.ok) {
-      const w = await undo()
-      return { ok: false, message: `Not sold: ${it.sku}: ${r.message}.${w ? ` ${w}` : ''}` }
-    }
-    const delta = whole ? -r.had : -Math.min(l.quantity, r.had)
-    const s = await shiftWebsiteStock(it.websiteProductId, delta)
-    if (!s.ok) {
-      const w = await undo()
-      return { ok: false, message: `Not sold: ${it.sku}: ${s.message}.${w ? ` ${w}` : ''}` }
-    }
-    shifted.push({ productId: it.websiteProductId, had: s.had, now: s.now })
+    const r = await takeWebsiteStock(it.websiteProductId!, whole ? 'all' : l.quantity)
+    if (r.ok) shifted.push({ productId: it.websiteProductId!, had: r.had, now: r.now })
+    return { it, r }
   }
+  // Two lines on one website product must see each other's change: those go one after the other.
+  const oneEach = new Set(listed.map((x) => x.it.websiteProductId)).size === listed.length
+  const taken = oneEach ? await Promise.all(listed.map(take)) : await listed.reduce<Promise<Awaited<ReturnType<typeof take>>[]>>(async (acc, x) => {
+    const done = await acc
+    return done.some((d) => !d.r.ok) ? done : [...done, await take(x)]
+  }, Promise.resolve([]))
+  const refused = taken.find((t) => !t.r.ok)
+  if (refused) {
+    const w = await undo()
+    return { ok: false, message: `Not sold: ${refused.it.sku}: ${(refused.r as { message: string }).message}.${w ? ` ${w}` : ''}` }
+  }
+  if (listed.length) sw?.lap('website')
 
   // 2. The sale, every line or none.
   let res: { sale: Sale; replay: boolean }
   try {
-    res = await sales.createSale(input, requestId, actor.email)
+    res = await sales.createSale(input, requestId, actor.email, { checked: true })
   } catch (e) {
     const w = await undo()
     return { ok: false, message: `Not sold: ${why(e)}${w ? ` ${w}` : ''}` }
   }
-  if (res.replay) return { ok: true, sale: res.sale, message: `Already recorded as ${res.sale.number}.` }
+  sw?.lap('sale')
+  if (res.replay) return { ok: true, sale: res.sale, replay: true, message: `Already recorded as ${res.sale.number}.` }
 
   // 3. The customer's timeline. A failure here is reported, the sale stands.
   let warning: string | undefined
@@ -68,6 +79,7 @@ export async function createShopSale(input: SaleInput, requestId: string, actor:
     } catch (e) {
       warning = `Sold, but the customer's timeline was not updated (${why(e)})`
     }
+    sw?.lap('timeline')
   }
   const deliveries = input.lines.filter((l) => l.fulfilment === 'delivery').length
   return { ok: true, sale: res.sale, message: `Sold: ${res.sale.number}, ${formatAgorot(res.sale.totalMinor)}${res.sale.discountMinor ? ` after a ${formatAgorot(res.sale.discountMinor)} discount` : ''}.${deliveries ? ` ${deliveries} ${deliveries === 1 ? 'delivery' : 'deliveries'} planned.` : ''}`, warning }

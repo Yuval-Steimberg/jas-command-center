@@ -11,7 +11,8 @@ import {
 } from '@/lib/payments/grow-terminal'
 import { getSalesStore } from './store'
 import { getTerminalStore } from './terminal-store'
-import { saleMoney, type TerminalCharge } from './model'
+import { saleMoney, type Sale, type TerminalCharge } from './model'
+import type { Stopwatch } from '@/lib/stopwatch'
 
 /**
  * The shop's Grow terminal, across systems. A sale already sold its items
@@ -21,7 +22,8 @@ import { saleMoney, type TerminalCharge } from './model'
  * it from the one place they already read payments.
  */
 export type Actor = { email: string; name?: string | null }
-export type TerminalResult = { ok: boolean; message: string; warning?: string }
+/** `url`: Grow's link for this charge, when it is waiting to be opened. */
+export type TerminalResult = { ok: boolean; message: string; warning?: string; url?: string }
 
 const GROW_ACTOR = 'Grow terminal'
 const SYSTEM = { id: 'system', email: 'grow-webhook', role: 'system' } as const
@@ -65,47 +67,62 @@ async function post(c: GrowTerminalConfig, endpoint: string, form: URLSearchPara
  * press creates one charge. Refuses a second push while one is still waiting
  * on the terminal, so a customer is never asked to pay twice for one sale.
  */
-export async function startTerminalCharge(saleId: string, amountMinor: number, deviceName: string | null, requestId: string, actor: Actor): Promise<TerminalResult> {
+export async function startTerminalCharge(
+  saleId: string, amountMinor: number, deviceName: string | null, requestId: string, actor: Actor,
+  /**
+   * `newSale`: the sale this same request has just created (checkout). It has no payment and no charge yet, so
+   * its balance is its total and nothing can be waiting: the two reads that establish that are skipped.
+   */
+  opts: { newSale?: Pick<Sale, 'id' | 'number' | 'contactId' | 'totalMinor'>; sw?: Stopwatch } = {},
+): Promise<TerminalResult> {
   const s = growTerminalSetup()
   if (!s.on) return { ok: false, message: `The card terminal is not connected yet (missing ${s.missing.join(', ')}).` }
   const c = s.config
   const device = deviceName ? c.devices.find((d) => d.name === deviceName) : c.devices[0]
   if (!device) return { ok: false, message: 'Pick a terminal.' }
   if (!Number.isInteger(amountMinor) || amountMinor <= 0) return { ok: false, message: 'Enter the amount in ₪.' }
-
-  const detail = await getSalesStore().getSale(saleId)
-  if (!detail) return { ok: false, message: 'Sale not found.' }
-  const m = saleMoney(detail.sale, detail.lines, detail.payments)
-  if (amountMinor > m.balanceMinor) return { ok: false, message: `Only ${formatAgorot(Math.max(0, m.balanceMinor))} is still to pay on this sale.` }
-
+  const sw = opts.sw
   const store = getTerminalStore()
-  const waiting = (await store.forSale(saleId)).find((x) => x.status === 'sent' && x.requestId !== requestId && Date.now() - Date.parse(x.createdAt) < TERMINAL_WAIT_MS)
-  if (waiting) return { ok: false, message: `${formatAgorot(waiting.amountMinor)} is already waiting on the terminal. Finish it there, or cancel it here first.` }
 
-  const { charge, replay } = await store.create({ saleId, amountMinor, device: device.name, requestId, createdBy: actor.email })
-  if (replay) return charge.url ? { ok: true, message: 'Already sent. Open the link to push it to the terminal.' } : { ok: false, message: charge.error ?? 'Already tried.' }
-
-  let fullName: string | null = null
-  let phone: string | null = null
-  if (detail.sale.contactId) {
-    const ct = await getOpsStore().getContact(detail.sale.contactId).catch(() => null)
-    fullName = ct?.fullName ?? null
-    phone = ct?.phone ?? null
+  let sale: Pick<Sale, 'number' | 'contactId'>
+  if (opts.newSale && opts.newSale.id === saleId) {
+    if (amountMinor > opts.newSale.totalMinor) return { ok: false, message: `Only ${formatAgorot(Math.max(0, opts.newSale.totalMinor))} is still to pay on this sale.` }
+    sale = opts.newSale
+  } else {
+    const [detail, charges] = await Promise.all([getSalesStore().getSale(saleId), store.forSale(saleId)])
+    if (!detail) return { ok: false, message: 'Sale not found.' }
+    const m = saleMoney(detail.sale, detail.lines, detail.payments)
+    if (amountMinor > m.balanceMinor) return { ok: false, message: `Only ${formatAgorot(Math.max(0, m.balanceMinor))} is still to pay on this sale.` }
+    const waiting = charges.find((x) => x.status === 'sent' && x.requestId !== requestId && Date.now() - Date.parse(x.createdAt) < TERMINAL_WAIT_MS)
+    if (waiting) return { ok: false, message: `${formatAgorot(waiting.amountMinor)} is already waiting on the terminal. Finish it there, or cancel it here first.` }
+    sale = detail.sale
   }
+  sw?.lap('terminal_check')
+
+  // The customer's name and phone (Grow asks for them) are read while the charge row is written.
+  const [{ charge, replay }, ct] = await Promise.all([
+    store.create({ saleId, amountMinor, device: device.name, requestId, createdBy: actor.email }),
+    sale.contactId ? getOpsStore().getContact(sale.contactId).catch(() => null) : Promise.resolve(null),
+  ])
+  sw?.lap('terminal_row')
+  if (replay) return charge.url ? { ok: true, message: 'Already sent. Open the link to push it to the terminal.', ...(charge.status === 'sent' ? { url: charge.url } : {}) } : { ok: false, message: charge.error ?? 'Already tried.' }
+
   let res
   try {
     res = parseProcessResponse(await post(c, 'createPaymentProcess', createProcessForm(c, {
-      amountMinor, deviceKey: device.key, chargeId: charge.id, description: `Just A Second ${detail.sale.number}`, notifyUrl: notifyUrl(c), returnUrl: `${env().cc.appUrl}/shop/sales/${saleId}`, fullName, phone,
+      amountMinor, deviceKey: device.key, chargeId: charge.id, description: `Just A Second ${sale.number}`, notifyUrl: notifyUrl(c), returnUrl: `${env().cc.appUrl}/shop/sales/${saleId}`, fullName: ct?.fullName ?? null, phone: ct?.phone ?? null,
     })))
   } catch (e) {
     res = { ok: false as const, message: why(e) }
   }
+  sw?.lap('grow')
   if (!res.ok) {
     await store.update(charge.id, ['sent'], { status: 'failed', error: res.message })
     return { ok: false, message: `Grow refused the charge: ${res.message}` }
   }
   await store.update(charge.id, ['sent'], { url: res.url, processId: res.processId })
-  return { ok: true, message: `${formatAgorot(amountMinor)} ready for ${device.name}. Open the link to send it to the terminal.` }
+  sw?.lap('terminal_save')
+  return { ok: true, message: `${formatAgorot(amountMinor)} ready for ${device.name}. Open the link to send it to the terminal.`, url: res.url }
 }
 
 /** Stop waiting here. The terminal itself is cancelled on the terminal; a payment made anyway is still recorded. */
