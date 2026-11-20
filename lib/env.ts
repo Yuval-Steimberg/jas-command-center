@@ -13,6 +13,10 @@ const read = (name: string): string | undefined => {
   return v ? v : undefined
 }
 
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+/** A mistyped value falls back to the default instead of failing the call. */
+const photoEffort = (v: string | undefined): (typeof EFFORTS)[number] => (EFFORTS as readonly string[]).includes(v ?? '') ? (v as (typeof EFFORTS)[number]) : 'low'
+
 const url = (name: string): string | undefined => {
   const v = read(name)
   if (!v) return undefined
@@ -94,8 +98,12 @@ export function env() {
      * Issues: read and write on this one repository. Unset = the request is kept in the audit log and copied by hand.
      */
     portalChanges: { githubToken: read('PORTAL_GITHUB_TOKEN'), repo: read('PORTAL_GITHUB_REPO') ?? 'Yuval-Steimberg/jas-command-center', label: read('PORTAL_GITHUB_LABEL') ?? 'portal-request' },
-    /** Photo → item fields on intake (same key as the assistant; a smaller model is plenty for one photo). */
-    photoAi: { model: read('PHOTO_AI_MODEL') ?? 'claude-sonnet-5-5' },
+    /**
+     * Photo → item fields on intake (same key as the assistant; a smaller model is plenty for one photo).
+     * Effort `low` (PHOTO_AI_EFFORT, default): describing one photo is an extraction, and at the model's
+     * default (`high`) adaptive thinking was most of the wait at the counter. Set `medium`/`high` to go back.
+     */
+    photoAi: { model: read('PHOTO_AI_MODEL') ?? 'claude-sonnet-5-5', effort: photoEffort(read('PHOTO_AI_EFFORT')) },
     /**
      * The shop's Grow card terminal (lib/payments/grow-terminal.ts). Off, and saying which variable is
      * missing, until userId + the terminal's dedicated pageCode + a deviceKey + the webhook secret exist.

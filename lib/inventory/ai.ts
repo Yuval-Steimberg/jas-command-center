@@ -33,7 +33,7 @@ export async function describePhoto(image: ArrayBuffer, mediaType: 'image/jpeg' 
           ],
         },
       ],
-      output_config: { format: { type: 'json_schema', schema: PHOTO_FIELDS_SCHEMA } },
+      output_config: { effort: e.photoAi.effort, format: { type: 'json_schema', schema: PHOTO_FIELDS_SCHEMA } },
     })
     if (res.stop_reason === 'refusal') return { ok: false, code: 'refused', message: 'The AI declined this photo.' }
     const text = res.content.map((b) => (b.type === 'text' ? b.text : '')).join('')

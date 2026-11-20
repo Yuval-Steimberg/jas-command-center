@@ -1,6 +1,7 @@
 'use server'
 
 import { redirect } from 'next/navigation'
+import { waitUntil } from '@vercel/functions'
 import { z } from 'zod'
 import { requirePermission, userCan, type CurrentUser } from '@/lib/auth/session'
 import { audit } from '@/lib/audit/audit'
@@ -194,13 +195,50 @@ export async function createItemAction(_p: ActionState, f: FormData): Promise<Ac
     return { ok: true, message: `Created ${item.sku}.` }
   }, ['/inventory', '/shop'])
   if (!res.ok || !createdId) return res
-  // The item exists either way; the card says how the website step went (ok, waiting, or why not).
-  let website = ''
-  if (wanted) {
-    const w = await autoPublishAfter(createdId)
-    website = w ? `?website=${encodeURIComponent(w.slice(0, 300))}` : ''
+  const shop = f.get('base') === '/shop'
+  // "Save and sell": a customer is waiting at the counter. Straight to checkout with the item; it is not
+  // put on the website first (it is about to be sold). Left unsold, the hourly step lists it as usual.
+  if (shop && f.get('then') === 'sell' && (await userCan('inventory:financial'))) redirect(`/shop/sell?item=${createdId}`)
+  // The website step (website reads, the Photoroom catalog photo, the listing) took 10–30 s and used to
+  // hold the save. It now runs after the answer: the item page opens at once ("on the website: not yet,
+  // goes up by itself") and shows the listing on the next load.
+  if (wanted) await publishInBackground(createdId)
+  redirect(shop ? `/shop/items/${createdId}` : `/inventory/${createdId}`)
+}
+
+/**
+ * The automatic website step of a new item, after the response (`waitUntil`; locally the promise
+ * simply runs on). The person is resolved now, while the request still has its cookies. Audited
+ * like `autoPublishAfter`, only when it really publishes, but never through `runAct`: refreshing
+ * pages (`revalidatePath`) is not possible once the response has gone. A listing that loses a
+ * race (the item was sold meanwhile) is refused by the version check in listOnWebsite, which
+ * removes its draft; the hourly step retries anything left waiting.
+ */
+async function publishInBackground(id: string) {
+  let u: CurrentUser
+  try {
+    u = await requirePermission('inventory:write')
+  } catch {
+    return
   }
-  redirect(`${f.get('base') === '/shop' ? `/shop/items/${createdId}` : `/inventory/${createdId}`}${website}`)
+  const job = (async () => {
+    const due = await autoPublishDue(id).catch(() => false)
+    if (!due) return
+    try {
+      await audit(u, { action: 'inventory.website_auto', product: 'inventory', target: `item:${id}`, outcome: 'requested', detail: { background: true } })
+    } catch {
+      return // no audit row = no publish; the hourly step will do it
+    }
+    let outcome: { ok: boolean; message: string; warning?: string }
+    try {
+      const p = await publishIfReady(id, actorOf(u))
+      outcome = p.state === 'failed' ? { ok: false, message: p.message } : { ok: true, message: p.message, warning: p.state === 'listed' ? p.warning : undefined }
+    } catch (e) {
+      outcome = { ok: false, message: `Not changed: ${errText(e)}` }
+    }
+    await audit(u, { action: 'inventory.website_auto', product: 'inventory', target: `item:${id}`, outcome: outcome.ok ? 'succeeded' : 'failed', detail: { background: true, message: outcome.message, ...(outcome.warning ? { warning: outcome.warning } : {}) } }).catch(() => {})
+  })()
+  waitUntil(job)
 }
 
 /**

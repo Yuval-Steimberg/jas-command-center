@@ -8,6 +8,8 @@ import { locationOptions } from '@/lib/ops/views'
 import { CONDITION_LABEL_HE } from '@/lib/inventory/model'
 
 export const dynamic = 'force-dynamic'
+// Saving a new item finishes the website step (Photoroom + listing) after the answer, inside this function's time.
+export const maxDuration = 60
 
 export default async function ShopNewItemPage() {
   await requirePageAccess('inventory:write')
@@ -20,7 +22,7 @@ export default async function ShopNewItemPage() {
       {!res.ok ? <p role="alert" dir="auto" className="rounded-lg border border-bad/30 bg-bad/5 p-3 text-sm text-bad">{res.message}</p> : (
         <ItemForm
           lang="he" base="/shop" mode="create" initial={EMPTY_ITEM}
-          locations={locationOptions(res.data)} canWebsite={can(s.user.role, 'website:write', s.overrides)}
+          locations={locationOptions(res.data)} canWebsite={can(s.user.role, 'website:write', s.overrides)} canSell={can(s.user.role, 'inventory:financial', s.overrides)}
         />
       )}
     </div>

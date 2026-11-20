@@ -52,8 +52,12 @@ export async function describeItemPhotoAction(form: FormData): Promise<{ ok: boo
   if (!u) return { ok: false, message: 'Your role cannot add items.' }
   const f = fileOf(form)
   if (!f.ok) return f
-  await audit(u, { action: 'inventory.photo.describe', product: 'inventory', target: 'photo', outcome: 'requested', detail: { bytes: f.file.size } })
-  const r = await describePhoto(await f.file.arrayBuffer(), f.type)
+  // The request row is written alongside the call, not before it (one ~600 ms round trip off the wait at the
+  // counter). Nothing is written or changed here, so there is nothing for a failed audit to stop; it still fails the answer.
+  const [, r] = await Promise.all([
+    audit(u, { action: 'inventory.photo.describe', product: 'inventory', target: 'photo', outcome: 'requested', detail: { bytes: f.file.size } }),
+    describePhoto(await f.file.arrayBuffer(), f.type),
+  ])
   await audit(u, { action: 'inventory.photo.describe', product: 'inventory', target: 'photo', outcome: r.ok ? 'succeeded' : 'failed', detail: r.ok ? { category: r.fields.category } : { code: r.code, error: r.message.slice(0, 500) } })
   return r.ok ? { ok: true, fields: r.fields } : { ok: false, code: r.code }
 }
