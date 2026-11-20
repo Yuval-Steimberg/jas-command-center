@@ -1,5 +1,8 @@
 {
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ':(exclude)volunteers'",
+  "regions": [
+    "hnd1"
+  ],
   "crons": [
     {
       "path": "/api/cron/reports",

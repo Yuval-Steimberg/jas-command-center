@@ -343,3 +343,9 @@ Face ID sign-in (`docs/PASSKEYS.md`, `lib/auth/passkey-browser.ts` pure, `lib/au
   Changing the RP ID (a custom domain) invalidates every saved passkey.
 - The challenge is fetched before the tap (`use-challenge.ts`): Safari opens the Face ID sheet only shortly after a tap.
 - Volunteers app is NOT covered: it does not use Supabase Auth (own email code + 60-day cookie) and lives on another domain.
+
+Function region: `vercel.json` `regions: ["hnd1"]` (Tokyo) because the CC Supabase project is in ap-northeast-1 (owner, 2026-11-20).
+From iad1 every database call cost 220–640 ms and a page or sale makes several in sequence; from hnd1 they are a few ms, and the
+browser (Israel) pays one longer hop per request instead. Calls to the website / gift card endpoints (US) and Grow (Israel) got
+~100–150 ms slower each. If the database ever moves (e.g. Frankfurt), move this with it (fra1). The production check's timing run
+prints the live region and the per-step timings of recent sales.
