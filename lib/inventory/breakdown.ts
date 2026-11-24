@@ -34,17 +34,18 @@ const UNKNOWN_ITEM = 'פריט לא נמצא'
 export const NO_PRICE = 'ללא מחיר'
 
 /**
- * Price ranges, per UNIT, in agorot (owner's ranges, 2026-11-02). Upper bound inclusive:
- * ₪100.00 is "up to 100", ₪100.50 is "101–500". Kept in this order on every screen (a scale, never sorted by count).
+ * Price ranges, per UNIT, in agorot (owner's ranges, changed 2026-11-24; "up to 100" stays even when almost empty). Upper bound inclusive:
+ * ₪100.00 is "up to 100", ₪100.50 is "101–600". Kept in this order on every screen (a scale, never sorted by count).
  * - Stock is banded by the item's asking price (`priceMinor`) now.
  * - A shop sale is banded by what the customer paid per unit, after the sale discount (the movement's `priceMinor` / units),
  *   so an item listed at ₪120 and sold for ₪90 is a sale "up to 100". A website sale by its order line per unit.
  */
 export const PRICE_BANDS = [
   { label: 'עד 100 ₪', maxMinor: 10_000 },
-  { label: '101–500 ₪', maxMinor: 50_000 },
-  { label: '501–1,000 ₪', maxMinor: 100_000 },
-  { label: 'מעל 1,000 ₪', maxMinor: Infinity },
+  { label: '101–600 ₪', maxMinor: 60_000 },
+  { label: '601–1,000 ₪', maxMinor: 100_000 },
+  { label: '1,001–1,500 ₪', maxMinor: 150_000 },
+  { label: 'מעל 1,500 ₪', maxMinor: Infinity },
 ] as const
 export const PRICE_BAND_LABELS: readonly string[] = PRICE_BANDS.map((b) => b.label)
 export function priceBand(minor: number | null | undefined): string {
