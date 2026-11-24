@@ -25,7 +25,7 @@ export function PriceBands({ bands, itemHref, lang = 'he', showPrice = true, cla
         <li key={b.band}>
           <details className="group">
             {/* `!grid` and `after:!hidden`: shop mode styles every summary as a flex row with its own chevron (globals.css). */}
-            <summary className="!grid min-h-12 after:!hidden cursor-pointer list-none grid-cols-[6.5rem_1fr_auto_auto] items-center gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+            <summary className="!grid min-h-12 after:!hidden cursor-pointer list-none grid-cols-[7.5rem_1fr_auto_auto] items-center gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
               <span className="font-medium text-ink" dir="rtl"><bdi>{b.band}</bdi></span>
               <span className="h-3 overflow-hidden rounded-full bg-sunken" aria-hidden><span className="block h-full rounded-full bg-sage" style={{ width: `${b.units ? Math.max(4, b.percent) : 0}%` }} /></span>
               <span className="num min-w-[7.5rem] text-end"><span className="font-semibold text-ink">{b.percent}%</span> <span className="text-muted">· {t.units(b.units)}</span></span>
